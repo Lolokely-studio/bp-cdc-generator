@@ -44,6 +44,7 @@ api/
 │   ├── safety.py               Refus des migrations hors base locale
 │   ├── auth/
 │   │   ├── __init__.py
+│   │   ├── bearer.py           Découpage de l'en-tête Authorization
 │   │   ├── routes.py           /auth/register, /auth/login, /auth/logout, /me
 │   │   ├── repository.py            Accès SQL aux tables users et sessions
 │   │   └── dependencies.py     Dépendance FastAPI « utilisateur actif »
@@ -55,6 +56,7 @@ api/
     ├── test_health.py
     ├── test_config.py
     ├── test_safety.py
+    ├── test_bearer.py
     ├── test_db.py
     ├── test_security.py
     ├── test_register.py
@@ -1067,9 +1069,11 @@ git commit -m "feat(api): inscription, compte inactif par défaut"
 ## Tâche 6 : connection, session et refus d'un compte inactif
 
 **Fichiers :**
+- Créer : `api/esquisse/auth/bearer.py`
 - Modifier : `api/esquisse/auth/repository.py`
 - Modifier : `api/esquisse/auth/routes.py`
 - Test : `api/tests/test_login.py`
+- Test : `api/tests/test_bearer.py`
 
 **Interfaces :**
 - Consomme : `new_token`, `verify_password`, `user_by_email`
@@ -1173,6 +1177,55 @@ async def test_plaintext_token_not_stored(client, migrated_db):
 Lancer : `cd api && uv run pytest tests/test_login.py -v`
 Attendu : ÉCHEC, 404 sur `/auth/login`
 
+- [ ] **Étape 2b : découper l'en-tête Authorization, une fois pour toutes**
+
+Deux endroits liront ce même en-tête : la déconnexion ici, et la dépendance
+« utilisateur actif » de la tâche 7. Un module minuscule, testé seul, évite
+que la deuxième copie diverge de la première.
+
+`api/esquisse/auth/bearer.py` :
+
+```python
+def bearer_token(authorization: str) -> str:
+    """Extrait le jeton d'un en-tête Authorization, ou rend une chaîne vide.
+
+    Le schéma est insensible à la casse d'après la norme HTTP. Le comparer au
+    caractère près ferait qu'un client envoyant « bearer » se verrait refuser
+    l'accès sans raison visible — ou, à la déconnexion, recevrait un 204 sans
+    que sa session soit révoquée : il se croirait déconnecté alors que son
+    jeton reste valable."""
+    schema, _, valeur = authorization.partition(" ")
+    return valeur.strip() if schema.lower() == "bearer" else ""
+```
+
+`api/tests/test_bearer.py` :
+
+```python
+import pytest
+
+from esquisse.auth.bearer import bearer_token
+
+
+@pytest.mark.parametrize(
+    "entete, attendu",
+    [
+        ("Bearer abc", "abc"),
+        ("bearer abc", "abc"),
+        ("BEARER abc", "abc"),
+        ("Bearer   abc  ", "abc"),
+        ("", ""),
+        ("abc", ""),
+        ("Basic abc", ""),
+        ("Bearer", ""),
+    ],
+)
+def test_bearer_token(entete, attendu):
+    assert bearer_token(entete) == attendu
+```
+
+Lancer : `cd api && uv run pytest tests/test_bearer.py -v`
+Attendu : SUCCÈS, huit cas
+
 - [ ] **Étape 3 : compléter le dépôt**
 
 Ajouter à `api/esquisse/auth/repository.py` :
@@ -1206,6 +1259,7 @@ Ajouter à `api/esquisse/auth/routes.py` :
 ```python
 from fastapi import Header, HTTPException
 
+from esquisse.auth.bearer import bearer_token
 from esquisse.config import settings
 from esquisse.security import new_token, verify_password, token_hash
 
@@ -1246,18 +1300,9 @@ async def login(demande: LoginRequest) -> LoginResponse:
     return LoginResponse(jeton=plaintext)
 
 
-def _jeton_du_header(authorization: str) -> str:
-    """Le schéma est insensible à la casse d'après la norme HTTP. Comparer
-    « Bearer » au caractère près ferait qu'un client envoyant « bearer »
-    recevrait un 204 sans que sa session soit révoquée : il se croirait
-    déconnecté alors que son jeton reste valable."""
-    schema, _, valeur = authorization.partition(" ")
-    return valeur.strip() if schema.lower() == "bearer" else ""
-
-
 @router.post("/logout", status_code=204)
 async def logout(authorization: str = Header(default="")) -> None:
-    jeton = _jeton_du_header(authorization)
+    jeton = bearer_token(authorization)
     if jeton:
         async with connection() as conn:
             await repository.revoke_session(conn, token_hash(jeton))
@@ -1355,6 +1400,7 @@ Attendu : ÉCHEC, 404 sur `/me`
 ```python
 from fastapi import Header, HTTPException
 
+from esquisse.auth.bearer import bearer_token
 from esquisse.db import connection
 from esquisse.security import token_hash
 
@@ -1363,7 +1409,7 @@ async def active_user(authorization: str = Header(default="")) -> dict:
     """Une requête par appel, indexée sur la clé primaire de sessions.
     C'est le prix de la révocation instantanée, et il est négligeable
     aux volumes visés."""
-    jeton = authorization.removeprefix("Bearer ").strip()
+    jeton = bearer_token(authorization)
     if not jeton:
         raise HTTPException(status_code=401, detail="jeton_absent")
 
