@@ -1486,13 +1486,14 @@ git commit -m "feat(api): dépendance utilisateur actif et route /me"
   - les tables `projects`, `facts`, `sections`, `exports`, `llm_usage` du §2.1 de la spec
   - `esquisse.projects.repository.project_for_user(conn, project_id: UUID, user_id: UUID) -> dict` — lève `ProjectNotFound`
   - `esquisse.projects.repository.ProjectNotFound`
-  - `esquisse.projects.repository.create_project(conn, user_id, nom, documents, profil_cdc, profil_bp, thread_id, templates_version) -> UUID`
+  - `esquisse.projects.repository.create_project(conn, user_id, *, nom, documents, profil_cdc, profil_bp, thread_id, templates_version) -> UUID` — les six derniers sont nommés obligatoirement
 
 - [ ] **Étape 1 : écrire le test qui échoue**
 
 `api/tests/test_isolation.py` :
 
 ```python
+import re
 from pathlib import Path
 from uuid import uuid4
 
@@ -1519,8 +1520,10 @@ async def _make_user(email: str):
 async def test_owner_reads_own_project(migrated_db):
     uid = await _make_user(f"prop-{uuid4()}@exemple.fr")
     async with connection() as conn:
-        pid = await create_project(conn, uid, "CoachDom", "both", "consultation", "banque",
-                                 f"thread-{uuid4()}", "0.1")
+        pid = await create_project(
+            conn, uid, nom="CoachDom", documents="both", profil_cdc="consultation",
+            profil_bp="banque", thread_id=f"thread-{uuid4()}", templates_version="0.1",
+        )
         projet = await project_for_user(conn, pid, uid)
     assert projet["nom"] == "CoachDom"
 
@@ -1530,8 +1533,10 @@ async def test_other_user_cannot_find_it(migrated_db):
     proprietaire = await _make_user(f"a-{uuid4()}@exemple.fr")
     intrus = await _make_user(f"b-{uuid4()}@exemple.fr")
     async with connection() as conn:
-        pid = await create_project(conn, proprietaire, "Privé", "cdc", "cadrage", None,
-                                 f"thread-{uuid4()}", "0.1")
+        pid = await create_project(
+            conn, proprietaire, nom="Privé", documents="cdc", profil_cdc="cadrage",
+            profil_bp=None, thread_id=f"thread-{uuid4()}", templates_version="0.1",
+        )
         with pytest.raises(ProjectNotFound):
             await project_for_user(conn, pid, intrus)
 
@@ -1543,16 +1548,61 @@ async def test_missing_project_raises_same_error(migrated_db):
             await project_for_user(conn, uuid4(), uid)
 
 
+# Chercher « from projects » au caractère près ne couvre qu'une seule façon
+# d'écrire la requête. Les jointures — la forme la plus probable pour lire les
+# projets à côté des sections — ne contiennent jamais cette suite de mots.
+_PROJECTS_TABLE = re.compile(r"\b(from|join|into|update)\s+(?:public\.)?projects\b")
+
+
+def _touches_projects_table(source: str) -> bool:
+    """Cherche une référence SQL à la table `projects`, quelle que soit sa mise
+    en forme. Les sauts de ligne et espaces multiples sont ramenés à un espace
+    unique avant la recherche, sinon une requête écrite sur plusieurs lignes
+    passerait à travers."""
+    return bool(_PROJECTS_TABLE.search(re.sub(r"\s+", " ", source.lower())))
+
+
+@pytest.mark.parametrize(
+    "extrait",
+    [
+        "select * from projects where id = 1",
+        "select *\n  from\n  projects\n where id = 1",
+        "select * from public.projects",
+        "select s.* from sections s join projects p on p.id = s.project_id",
+        "update projects set nom = 'x'",
+        "insert into projects (nom) values ('x')",
+    ],
+)
+def test_the_guard_catches_every_shape(extrait):
+    """On teste le garde-fou lui-même. Un garde-fou qu'on peut franchir sans
+    s'en apercevoir est pire que pas de garde-fou : il fabrique de la
+    confiance. La jointure est le cas qui compte, parce que c'est la forme la
+    plus probable pour lire les projets à côté d'une autre table."""
+    assert _touches_projects_table(extrait)
+
+
+@pytest.mark.parametrize(
+    "extrait",
+    [
+        "from esquisse.projects.repository import project_for_user",
+        "import esquisse.projects",
+        "select * from sections where project_id = %s",
+    ],
+)
+def test_the_guard_does_not_cry_wolf(extrait):
+    assert not _touches_projects_table(extrait)
+
+
 def test_no_projects_query_outside_repository():
-    """Garde-fou structurel : le cloisonnement ne vaut que si personne ne
-    contourne le dépôt. Ce test casse dès qu'une route écrit son propre SQL."""
-    racine = Path(__file__).resolve().parents[1] / "esquisse"
-    autorise = racine / "projects" / "repository.py"
-    coupables = [
-        f for f in racine.rglob("*.py")
-        if f != autorise and "from projects" in f.read_text(encoding="utf-8").lower()
+    """Le cloisonnement ne vaut que si personne ne contourne le dépôt. Ce test
+    casse dès qu'un autre fichier écrit son propre SQL sur la table."""
+    root = Path(__file__).resolve().parents[1] / "esquisse"
+    allowed = root / "projects" / "repository.py"
+    offenders = [
+        f for f in root.rglob("*.py")
+        if f != allowed and _touches_projects_table(f.read_text(encoding="utf-8"))
     ]
-    assert coupables == [], f"SQL sur projects hors du dépôt : {coupables}"
+    assert offenders == [], f"SQL sur projects hors du dépôt : {offenders}"
 ```
 
 - [ ] **Étape 2 : lancer le test et vérifier qu'il échoue**
@@ -1671,6 +1721,7 @@ class ProjectNotFound(Exception):
 async def create_project(
     conn,
     user_id: UUID,
+    *,
     nom: str,
     documents: str,
     profil_cdc: str | None,
@@ -1678,6 +1729,14 @@ async def create_project(
     thread_id: str,
     templates_version: str,
 ) -> UUID:
+    """Les six derniers paramètres sont nommés obligatoirement.
+
+    Ce sont des chaînes voisines, interchangeables pour le typage : intervertir
+    `profil_cdc` et `profil_bp`, ou `nom` et `documents`, donnerait un appel
+    parfaitement valide qui écrirait les valeurs dans les mauvaises colonnes.
+    Aucun test ne le verrait, puisqu'un test écrit avec la même interversion
+    passerait aussi. L'étoile transforme cette corruption silencieuse en
+    `TypeError` au point d'appel."""
     async with conn.cursor() as cur:
         await cur.execute(
             """
@@ -1705,10 +1764,13 @@ async def project_for_user(conn, project_id: UUID, user_id: UUID) -> dict:
             (project_id, user_id),
         )
         ligne = await cur.fetchone()
-    if not ligne:
-        raise ProjectNotFound
-    champs = ("id", "user_id", "nom", "documents", "profil_cdc", "profil_bp",
-              "thread_id", "run_status", "templates_version")
+        if not ligne:
+            raise ProjectNotFound
+        # Les noms de colonnes viennent du curseur, jamais d'une liste tenue à
+        # la main en parallèle du SELECT : deux listes finissent par diverger,
+        # et `zip` ne dit rien — il tronque en silence ou attache les valeurs
+        # aux mauvaises clés.
+        champs = [colonne.name for colonne in cur.description]
     return dict(zip(champs, ligne))
 ```
 
