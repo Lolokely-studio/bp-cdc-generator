@@ -1,0 +1,433 @@
+# Template du business plan — Esquisse
+#
+# Trame issue de Bpifrance Création, éclatée en sections rédigeables une à une.
+# Voir docs/analyse-cdc-bp.md pour les sources et le raisonnement.
+#
+# Champs d'une section
+#   id              identifiant technique
+#   titre           titre affiché dans le document produit
+#   ordre           ordre de GÉNÉRATION, pas de lecture. Le résumé exécutif est
+#                   écrit en dernier mais imprimé en premier (voir ordre_lecture).
+#   ordre_lecture   position dans le document final
+#   profils         lecteurs pour lesquels la section est active : banque, investisseur
+#   objectif        une phrase : à quoi sert cette section
+#   validation      « toujours » : la section s'arrête pour relecture quoi qu'il
+#                   arrive. « si_note_basse » : elle ne s'arrête que si
+#                   l'auto-critique reste sous le seuil après ses révisions.
+#                   Une section validée sans arrêt reste ouvrable à tout moment.
+#   depend_de       sections dont le contenu doit être figé avant d'écrire celle-ci
+#   faits_requis    la section ne peut pas être écrite sans eux : toujours
+#                   demandés s'ils sont inconnus
+#   faits_utiles    demandés si le lot de questions de la section n'est pas
+#                   déjà plein ; ne bloquent jamais la rédaction
+#                   (les deux listes alimentent les questions ciblées ;
+#                   « Je ne sais pas » est toujours une réponse valable)
+#   calculs         outils déterministes appelés avant la rédaction
+#   consignes       ce que le modèle doit faire et ne pas faire
+#   grille          critères de l'auto-critique, tous vérifiables
+#
+# Statut : brouillon du 17 septembre 2026, à retravailler section par section.
+
+version: 0.1
+statut: brouillon
+
+# Seuil de relecture : sous cette note, la section s'arrête pour relecture.
+# Au-dessus, elle est validée sans arrêt et signalée comme telle dans le plan.
+seuil_relecture: 8
+document: bp
+profils_disponibles:
+  banque: "Banque ou financeur public. Prudence des hypothèses, partie financière au centre."
+  investisseur: "Investisseur privé. Taille de marché, traction, scalabilité, équipe."
+
+sections:
+
+  - id: probleme_solution
+    titre: "Problème, solution et proposition de valeur"
+    ordre: 1
+    ordre_lecture: 2
+    profils: [banque, investisseur]
+    validation: toujours
+    objectif: >
+      Poser en une page ce que le projet change pour quelqu'un de précis,
+      et pourquoi cette solution-là plutôt qu'une autre.
+    depend_de: []
+    longueur_cible: 400-600 mots
+    faits_requis: [nom_projet, probleme_resolu, cible_principale, solution_proposee, benefice_mesurable]
+    faits_utiles: [origine_idee, alternatives_actuelles, avantage_differenciant, type_projet]
+    consignes: |
+      Ouvrir sur le problème vécu, jamais sur la solution.
+      Nommer la cible par ce qu'elle fait, pas par une tranche d'âge.
+      Décrire ce que la personne fait aujourd'hui faute de mieux : c'est la vraie concurrence.
+      Chiffrer le bénéfice si le fait est disponible, sinon écrire [Donnée à compléter].
+      Profil banque : factuel, aucun superlatif.
+      Profil investisseur : montrer en quoi le problème est répandu.
+    grille:
+      - "Le problème est décrit du point de vue de celui qui le vit, pas du porteur"
+      - "La cible est identifiable : on saurait à qui envoyer un message demain"
+      - "Ce que la cible fait aujourd'hui faute de mieux est explicite"
+      - "Aucun chiffre qui ne vienne d'un fait fourni"
+      - "Aucun superlatif invérifiable (révolutionnaire, unique, leader)"
+
+  - id: porteurs_equipe
+    titre: "Porteurs de projet et équipe"
+    ordre: 2
+    ordre_lecture: 3
+    profils: [banque, investisseur]
+    validation: si_note_basse
+    objectif: >
+      Montrer que ces personnes-là sont capables de mener ce projet-là.
+    depend_de: [probleme_solution]
+    longueur_cible: 300-500 mots
+    faits_requis: [porteurs, experience_porteurs]
+    faits_utiles: [competences_manquantes, origine_idee]
+    consignes: |
+      Relier chaque expérience citée à une difficulté concrète du projet.
+      Une compétence manquante assumée et accompagnée d'un plan vaut mieux qu'une équipe
+      présentée comme complète : l'écrire franchement.
+      Profil investisseur : insister sur la complémentarité et sur ce qui a déjà été fait ensemble.
+      Ne jamais inventer un diplôme, un employeur ou une durée.
+    grille:
+      - "Chaque expérience citée est reliée à un besoin du projet"
+      - "Les compétences manquantes sont nommées, pas dissimulées"
+      - "Aucun élément de parcours qui ne vienne d'un fait fourni"
+      - "Les rôles de chacun dans le projet sont explicites"
+
+  - id: etude_marche
+    titre: "Étude de marché"
+    ordre: 3
+    ordre_lecture: 4
+    profils: [banque, investisseur]
+    validation: si_note_basse
+    objectif: >
+      Établir qu'il existe un marché, le dimensionner, et dire d'où viennent les chiffres.
+    depend_de: [probleme_solution]
+    longueur_cible: 500-800 mots
+    faits_requis: [segments_clients, cible_principale, taille_marche_som]
+    faits_utiles: [taille_marche_tam, taille_marche_sam, source_donnees_marche, tendances_marche, volume_ventes_an1]
+    calculs: [tam_sam_som]
+    consignes: |
+      Citer la source de chaque chiffre de marché dans le texte, puis dire où l'on se situe
+      par rapport à elle : « ces volumes sont inférieurs aux moyennes du secteur », « cette
+      hypothèse retient la fourchette basse de l'étude ». Les plans d'affaires réels ne se
+      contentent jamais de sourcer, ils positionnent l'hypothèse comme prudente ou optimiste,
+      et c'est ce qui permet au lecteur de juger sans refaire le calcul.
+      Un chiffre sans source est inutilisable : écrire [Donnée à compléter : source]
+      plutôt que de l'affirmer.
+      Numéroter et titrer chaque tableau produit : « Tableau 2 : taille du marché adressable ».
+      Descendre du marché total au marché réellement visé, sans saut de raisonnement.
+      Profil banque : privilégier des données publiques vérifiables.
+      Profil investisseur : relier la taille du marché à la trajectoire visée.
+      Ne jamais produire un chiffre de marché de mémoire : la recherche web n'est pas utilisée.
+    grille:
+      - "Chaque chiffre de marché est accompagné de sa source ou d'un marqueur à compléter"
+      - "Chaque hypothèse est située par rapport à sa source : prudente ou optimiste"
+      - "Chaque tableau porte un numéro et un titre"
+      - "Le passage du marché total au marché visé est justifié, pas asséné"
+      - "Les segments sont décrits par un comportement d'achat, pas seulement par une catégorie"
+      - "Aucun chiffre orphelin, sans fait ni calcul derrière"
+
+  - id: analyse_concurrentielle
+    titre: "Analyse concurrentielle"
+    ordre: 4
+    ordre_lecture: 5
+    profils: [banque, investisseur]
+    validation: si_note_basse
+    objectif: >
+      Situer le projet parmi ce qui existe déjà, y compris les solutions de fortune.
+    depend_de: [probleme_solution, etude_marche]
+    longueur_cible: 400-600 mots
+    faits_requis: [concurrents_directs, avantage_differenciant]
+    faits_utiles: [alternatives_actuelles, barrieres_entree, positionnement_prix]
+    consignes: |
+      Traiter « ne rien faire » et les solutions bricolées comme des concurrents à part entière.
+      Présenter les concurrents en tableau lorsqu'ils sont trois ou plus.
+      Reconnaître au moins une force réelle chez un concurrent : un panorama où tous
+      sont mauvais n'est pas crédible.
+      Ne jamais attribuer un chiffre (part de marché, chiffre d'affaires) à un concurrent
+      sans fait fourni.
+    grille:
+      - "Les alternatives non commerciales sont traitées comme des concurrents"
+      - "Au moins une force réelle est reconnue chez un concurrent"
+      - "L'avantage différenciant est vérifiable, pas déclaratif"
+      - "Aucun chiffre attribué à un concurrent sans source"
+
+  - id: modele_economique
+    titre: "Modèle économique"
+    ordre: 5
+    ordre_lecture: 6
+    profils: [banque, investisseur]
+    validation: si_note_basse
+    objectif: >
+      Expliquer qui paie quoi, combien, et à quelle fréquence.
+    depend_de: [probleme_solution, etude_marche]
+    longueur_cible: 400-600 mots
+    faits_requis: [sources_revenus, unite_vendue, prix_moyen_unite, cout_variable_unitaire]
+    faits_utiles: [taux_commission, recurrence_revenus, positionnement_prix]
+    calculs: [marge_unitaire]
+    consignes: |
+      Dire qui paie, ce n'est pas toujours celui qui utilise : le préciser si c'est le cas.
+      Donner la marge unitaire quand le coût variable est connu, la calculer par l'outil,
+      jamais de tête.
+      Justifier le prix par le positionnement retenu et par ce que fait la concurrence.
+      Profil banque : donner la marge sous les deux scénarios nommés du compte de résultat,
+      conditions ordinaires et conditions favorables, et non un seul chiffre.
+    grille:
+      - "On sait qui paie, combien et à quelle fréquence"
+      - "La marge unitaire vient du calcul outillé, pas du texte"
+      - "Le prix est justifié, pas simplement annoncé"
+      - "Aucun chiffre orphelin"
+
+  - id: strategie_commerciale
+    titre: "Stratégie marketing et commerciale"
+    ordre: 6
+    ordre_lecture: 7
+    profils: [banque, investisseur]
+    validation: si_note_basse
+    objectif: >
+      Décrire comment les premiers clients arrivent, concrètement et à quel coût.
+    depend_de: [etude_marche, analyse_concurrentielle, modele_economique]
+    longueur_cible: 400-600 mots
+    faits_requis: [canaux_acquisition, cible_principale]
+    faits_utiles: [cout_acquisition_client, positionnement_prix, segments_clients, prix_moyen_unite, concurrents_directs]
+    consignes: |
+      Distinguer les cent premiers clients des mille suivants : ce ne sont jamais les mêmes canaux.
+      Rapporter le coût d'acquisition à la marge unitaire lorsque les deux sont connus ;
+      si l'acquisition coûte plus que la marge, le dire au lieu de le masquer.
+      Proscrire les actions non actionnables : « communiquer sur les réseaux sociaux »
+      n'est pas une stratégie, « publier deux fois par semaine sur tel réseau » en est le début.
+    grille:
+      - "Chaque canal cité est actionnable tel quel, sans traduction"
+      - "Les premiers clients sont traités à part des suivants"
+      - "Le coût d'acquisition est confronté à la marge quand les deux existent"
+      - "Aucun chiffre orphelin"
+
+  - id: plan_operationnel
+    titre: "Plan opérationnel et jalons"
+    ordre: 7
+    ordre_lecture: 8
+    profils: [banque, investisseur]
+    validation: si_note_basse
+    objectif: >
+      Dire ce qui se passe, dans quel ordre, avec qui, jusqu'au lancement et après.
+    depend_de: [modele_economique, strategie_commerciale]
+    longueur_cible: 400-600 mots
+    faits_requis: [date_lancement_visee, jalons_operationnels]
+    faits_utiles: [moyens_humains_an1, competences_manquantes, locaux_equipements, perimetre_inclus]
+    consignes: |
+      Dater chaque jalon par rapport à la date de lancement, jamais dans l'absolu si elle est inconnue.
+      Si un cahier des charges est produit en parallèle, le périmètre et le planning doivent
+      concorder avec lui : ne pas réinventer de délai.
+      Nommer qui fait quoi pour chaque jalon.
+      Terminer par le risque propre à ce plan — un jalon qui dépend d'un tiers, une
+      compétence à recruter — en une phrase. Les plans d'affaires réels attachent le risque
+      à ce qu'il menace ; la section « Risques » finale les consolide, elle ne les découvre pas.
+    grille:
+      - "Chaque jalon porte une date ou une position relative au lancement"
+      - "Chaque jalon a un responsable identifié"
+      - "Le calendrier est cohérent avec la date de lancement fournie"
+      - "Aucune tâche sans ressource associée"
+
+  - id: moyens_investissements
+    titre: "Moyens et investissements"
+    ordre: 8
+    ordre_lecture: 9
+    profils: [banque, investisseur]
+    validation: si_note_basse
+    objectif: >
+      Chiffrer ce qu'il faut acheter ou financer avant de vendre la première unité.
+    depend_de: [plan_operationnel]
+    longueur_cible: 300-500 mots
+    faits_requis: [investissements_initiaux]
+    faits_utiles: [budget_developpement, locaux_equipements, moyens_humains_an1]
+    calculs: [tableau_investissements]
+    consignes: |
+      Produire le tableau des investissements sur trois ans en bloc structuré, jamais en prose.
+      Le budget de développement, s'il est fourni, entre ici en immobilisation incorporelle :
+      c'est le même montant que celui du cahier des charges, il ne doit pas en différer.
+      Distinguer matériel et immatériel, et amortissement de charge.
+    grille:
+      - "Le tableau est produit en bloc structuré, pas en texte"
+      - "Le budget de développement correspond exactement à celui du cahier des charges"
+      - "Matériel et immatériel sont distingués"
+      - "Aucun montant qui ne vienne d'un fait ou d'un calcul"
+
+  - id: compte_resultat
+    titre: "Compte de résultat prévisionnel"
+    ordre: 9
+    ordre_lecture: 10
+    profils: [banque, investisseur]
+    validation: toujours
+    objectif: >
+      Montrer sur trois ans si l'activité dégage un résultat, et sous quelles hypothèses.
+    depend_de: [modele_economique, strategie_commerciale, moyens_investissements]
+    longueur_cible: 300-500 mots de commentaire, hors tableau
+    faits_requis: [prix_moyen_unite, volume_ventes_an1, charges_fixes_mensuelles, masse_salariale_an1]
+    faits_utiles: [taux_commission, cout_variable_unitaire, hypothese_croissance, cout_acquisition_client, emprunt_montant, sources_revenus, unite_vendue, forme_juridique]
+    calculs: [compte_resultat_3ans]
+    consignes: |
+      Le modèle n'effectue aucun calcul : il structure les hypothèses, l'outil calcule.
+      Lister les hypothèses en tête, chacune rattachée au fait dont elle vient.
+      Commenter ce qui surprend dans le tableau plutôt que de le paraphraser ligne à ligne.
+      Produire le tableau sous deux scénarios nommés — conditions ordinaires et conditions
+      favorables — plutôt que sous un unique jeu d'hypothèses. C'est la forme qu'emploient
+      les plans d'affaires réels, et elle vaut mieux qu'un abattement arbitraire : chaque
+      scénario dit ce qui change et pourquoi, au lieu d'appliquer un pourcentage au hasard.
+      Chaque hypothèse est située par rapport à sa source : prudente ou optimiste.
+      Numéroter et titrer chaque tableau.
+      Toute donnée manquante devient [Donnée à compléter], jamais une estimation inventée.
+    grille:
+      - "Aucun nombre du commentaire qui ne figure dans le tableau calculé"
+      - "Les hypothèses sont listées, rattachées à leur fait d'origine et situées comme prudentes ou optimistes"
+      - "Deux scénarios nommés sont présentés, chacun expliquant ce qui change"
+      - "Chaque tableau porte un numéro et un titre"
+      - "Le commentaire explique, il ne paraphrase pas le tableau"
+      - "Les trous sont marqués [Donnée à compléter], jamais comblés par une estimation"
+
+  - id: plan_tresorerie
+    titre: "Plan de trésorerie sur 12 mois"
+    ordre: 10
+    ordre_lecture: 11
+    profils: [banque, investisseur]
+    validation: si_note_basse
+    objectif: >
+      Vérifier mois par mois que l'entreprise peut payer ce qu'elle doit.
+    depend_de: [compte_resultat, moyens_investissements]
+    longueur_cible: 200-400 mots de commentaire, hors tableau
+    faits_requis: [charges_fixes_mensuelles, date_lancement_visee, delai_paiement_clients]
+    faits_utiles: [masse_salariale_an1, emprunt_montant, emprunt_duree, aides_subventions, tresorerie_securite, recurrence_revenus, volume_ventes_an1]
+    calculs: [plan_tresorerie_12mois]
+    consignes: |
+      Le chiffre d'affaires ne démarre pas avant la date de lancement : caler le tableau dessus.
+      Nommer le mois où la trésorerie est au plus bas et le montant correspondant : c'est
+      l'information que le lecteur cherche.
+      Tenir compte du délai de paiement des clients s'il est connu ; sinon le signaler comme
+      hypothèse non vérifiée.
+    grille:
+      - "Le démarrage du chiffre d'affaires coïncide avec la date de lancement fournie"
+      - "Le creux de trésorerie est nommé, daté et chiffré"
+      - "Le délai de paiement est pris en compte ou son absence est signalée"
+      - "Aucun nombre hors du tableau calculé"
+
+  - id: seuil_rentabilite
+    titre: "Seuil de rentabilité et point mort"
+    ordre: 11
+    ordre_lecture: 12
+    profils: [banque, investisseur]
+    validation: si_note_basse
+    objectif: >
+      Dire à partir de quel volume l'activité couvre ses charges, et quand ce moment arrive.
+    depend_de: [compte_resultat]
+    longueur_cible: 200-350 mots
+    faits_requis: [prix_moyen_unite, charges_fixes_mensuelles]
+    faits_utiles: [cout_variable_unitaire, taux_commission, masse_salariale_an1, volume_ventes_an1, unite_vendue, cout_acquisition_client]
+    calculs: [seuil_rentabilite, point_mort]
+    consignes: |
+      Exprimer le seuil dans l'unité que le porteur comprend : un nombre de séances, de commandes,
+      d'abonnés, pas seulement un chiffre d'affaires.
+      Confronter ce seuil au volume prévu : s'il est plus haut, le dire nettement.
+      Le point mort est une date, pas une phrase vague.
+    grille:
+      - "Le seuil est exprimé en unités vendues, pas seulement en euros"
+      - "Le seuil est comparé au volume prévisionnel"
+      - "Le point mort est daté"
+      - "Les deux valeurs viennent du calcul outillé"
+
+  - id: besoin_financement
+    titre: "Besoin et plan de financement"
+    ordre: 12
+    ordre_lecture: 13
+    profils: [banque, investisseur]
+    validation: toujours
+    objectif: >
+      Chiffrer ce qu'il faut réunir, et en face, d'où cela vient.
+    depend_de: [moyens_investissements, plan_tresorerie, seuil_rentabilite]
+    longueur_cible: 300-500 mots
+    faits_requis: [investissements_initiaux, apport_fondateurs]
+    faits_utiles: [budget_developpement, emprunt_montant, emprunt_duree, aides_subventions, tresorerie_securite, delai_paiement_clients, hypothese_croissance]
+    calculs: [plan_financement_initial, plan_financement_3ans, annuites_credit]
+    consignes: |
+      Besoins et ressources s'équilibrent : si ce n'est pas le cas, écrire l'écart en toutes
+      lettres au lieu de l'arrondir.
+      Le besoin en fonds de roulement se déduit du délai de paiement et du creux de trésorerie ;
+      s'il n'est pas calculable, le marquer à compléter.
+      Profil banque : faire apparaître le ratio apport / emprunt.
+      Profil investisseur : dire ce que le tour de table finance et jusqu'à quelle échéance.
+    grille:
+      - "Besoins et ressources s'équilibrent, ou l'écart est explicitement chiffré"
+      - "Le besoin en fonds de roulement est justifié par le délai de paiement ou marqué à compléter"
+      - "Chaque ressource citée a un statut : acquise, demandée, envisagée"
+      - "Aucun montant hors des tableaux calculés"
+
+  - id: juridique
+    titre: "Forme juridique et répartition du capital"
+    ordre: 13
+    ordre_lecture: 14
+    profils: [banque, investisseur]
+    validation: si_note_basse
+    objectif: >
+      Justifier la forme choisie et dire qui détient quoi et qui décide.
+    depend_de: [porteurs_equipe, besoin_financement]
+    longueur_cible: 200-350 mots
+    faits_requis: [forme_juridique]
+    faits_utiles: [repartition_capital, porteurs, apport_fondateurs]
+    consignes: |
+      Justifier la forme par le projet : nombre d'associés, entrée d'investisseurs prévue,
+      régime social du dirigeant, fiscalité.
+      Si la forme n'est pas arrêtée, présenter les deux options plausibles et ce qui les départage,
+      plutôt que d'en choisir une à la place du porteur.
+      Ne jamais donner de conseil fiscal chiffré : renvoyer à un professionnel.
+    grille:
+      - "La forme est justifiée par des caractéristiques du projet, pas par une généralité"
+      - "Répartition du capital et pouvoirs sont distingués"
+      - "Aucun conseil fiscal chiffré"
+      - "Une forme non arrêtée est présentée comme telle"
+
+  - id: risques_bp
+    titre: "Risques et plan de mitigation"
+    ordre: 14
+    ordre_lecture: 15
+    profils: [banque, investisseur]
+    validation: si_note_basse
+    objectif: >
+      Nommer ce qui peut faire échouer le projet et ce qui est prévu pour chaque cas.
+    depend_de: [etude_marche, analyse_concurrentielle, compte_resultat, besoin_financement]
+    longueur_cible: 300-500 mots
+    faits_requis: []
+    faits_utiles: [competences_manquantes, barrieres_entree, tendances_marche, contraintes_calendaires]
+    consignes: |
+      Consolider les risques déjà signalés en fin de section ailleurs dans le document, et
+      n'en ajouter que ce qui n'a pas trouvé sa place : une hypothèse de volume fragile,
+      une compétence manquante, une dépendance à un canal unique.
+      Un risque sans parade n'est pas un risque identifié, c'est un aveu : associer une action à chacun.
+      Présenter en tableau : risque, probabilité, impact, parade.
+      Ne pas inventer de risque générique qui ne concerne pas ce projet.
+    grille:
+      - "Chaque risque renvoie à un élément précis du document"
+      - "Chaque risque porte une parade actionnable"
+      - "Aucun risque générique sans lien avec ce projet"
+      - "Le tableau est produit en bloc structuré"
+
+  - id: resume_executif
+    titre: "Résumé exécutif"
+    ordre: 15
+    ordre_lecture: 1
+    profils: [banque, investisseur]
+    validation: si_note_basse
+    objectif: >
+      Donner en une à deux pages de quoi décider de lire la suite.
+    depend_de: [probleme_solution, porteurs_equipe, etude_marche, modele_economique, compte_resultat, besoin_financement]
+    longueur_cible: 400-700 mots
+    faits_requis: []
+    faits_utiles: []
+    consignes: |
+      Rédigé en dernier, imprimé en premier.
+      N'introduire aucune information absente des sections validées : c'est une synthèse,
+      pas une section de plus.
+      Terminer par le montant recherché et ce qu'il finance.
+      Profil banque : le besoin de financement et le point mort apparaissent dès le premier tiers.
+      Profil investisseur : le marché visé et la trajectoire apparaissent dès le premier tiers.
+    grille:
+      - "Aucune information absente des sections validées"
+      - "Tous les chiffres cités correspondent exactement aux sections d'origine"
+      - "Le montant recherché et son emploi figurent dans le texte"
+      - "Tient dans la longueur cible"

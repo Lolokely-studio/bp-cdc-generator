@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Esquisse — Parcours simple</title>
+<script>(function(){try{var t=localStorage.getItem("esquisse-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}})();</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FAF9F6; --card:#FFFFFF; --soft:#F1EFE9;
+  --ink:#1C1F26; --ink-2:#5C6270; --ink-3:#8A909C;
+  --rule:#E5E2DA; --rule-2:#CFCBC1;
+  --acc:#23408E; --acc-soft:#E7EBF6; --acc-ink:#FFFFFF;
+  --warn:#8A5A16; --warn-soft:#F6EEDF;
+  --danger:#A5342A;
+  --f:"Figtree",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --lift:0 1px 2px rgba(28,31,38,.04), 0 12px 28px -16px rgba(28,31,38,.26);
+  --r:12px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#14161A; --card:#1C1F25; --soft:#232730;
+  --ink:#EDEEF1; --ink-2:#A0A6B2; --ink-3:#7C8390;
+  --rule:#2A2E37; --rule-2:#3B404B;
+  --acc:#8FA6E8; --acc-soft:#1E2640; --acc-ink:#111521;
+  --warn:#D9A45E; --warn-soft:#2E2415;
+  --danger:#EE8578;
+  --lift:0 1px 2px rgba(0,0,0,.4), 0 14px 32px -18px rgba(0,0,0,.85);
+}}
+:root[data-theme="dark"]{
+  --bg:#14161A; --card:#1C1F25; --soft:#232730;
+  --ink:#EDEEF1; --ink-2:#A0A6B2; --ink-3:#7C8390;
+  --rule:#2A2E37; --rule-2:#3B404B;
+  --acc:#8FA6E8; --acc-soft:#1E2640; --acc-ink:#111521;
+  --warn:#D9A45E; --warn-soft:#2E2415;
+  --danger:#EE8578;
+  --lift:0 1px 2px rgba(0,0,0,.4), 0 14px 32px -18px rgba(0,0,0,.85);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 17px/1.6 var(--f);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:inherit}
+input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px;border-radius:6px}
+h1,h2,h3,p,ul,ol{margin:0}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- En-tête ---------- */
+.hd{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--rule)}
+.hd-in{max-width:1000px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:16px}
+.brand svg{width:16px;height:20px;display:block;flex:none;color:var(--acc)}
+.hd-r{display:flex;align-items:center;gap:14px}
+.saved{display:flex;align-items:center;gap:7px;font-size:14px;color:var(--ink-3)}
+.saved i{width:7px;height:7px;border-radius:50%;background:var(--acc);display:block}
+.theme{display:flex;gap:2px;padding:2px;border:1px solid var(--rule-2);border-radius:999px;background:var(--card)}
+.theme button{width:34px;height:28px;border-radius:999px;display:grid;place-items:center;color:var(--ink-3)}
+.theme button svg{width:16px;height:16px;display:block}
+.theme button[aria-pressed="false"]:hover{color:var(--ink)}
+.theme button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+
+/* ---------- Avancement ---------- */
+.pg{border-bottom:1px solid var(--rule);background:var(--card)}
+.pg-in{max-width:1000px;margin:0 auto;padding:11px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.pg-b{flex:1;min-width:140px;height:6px;border-radius:999px;background:var(--soft);overflow:hidden}
+.pg-b i{display:block;height:100%;background:var(--acc);border-radius:999px}
+.pg-t{font-size:14.5px;color:var(--ink-2);white-space:nowrap}
+.pg-t b{color:var(--ink);font-weight:600}
+.pg-a{font-size:14.5px;color:var(--acc);font-weight:500;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
+.pg-a:hover{color:var(--ink)}
+
+/* ---------- Colonne ---------- */
+main{max-width:1000px;margin:0 auto;padding:0 24px}
+.col{max-width:640px;margin:0 auto;padding:44px 0 88px}
+.col.wide{max-width:780px}
+.eyebrow{display:inline-block;font-size:14px;font-weight:500;color:var(--acc);background:var(--acc-soft);padding:4px 11px;border-radius:999px;margin-bottom:14px}
+h1.t{font-size:clamp(27px,3.4vw,36px);font-weight:600;letter-spacing:-.022em;line-height:1.18;text-wrap:balance}
+h1.t:focus{outline:none}
+.lead{font-size:18px;color:var(--ink-2);margin-top:12px;max-width:52ch}
+.sub{font-size:15.5px;color:var(--ink-2)}
+.small{font-size:14.5px}
+
+/* ---------- Actions : une seule principale ---------- */
+.go{display:inline-flex;align-items:center;justify-content:center;background:var(--acc);color:var(--acc-ink);border-radius:10px;padding:14px 26px;font-size:17px;font-weight:600;min-height:52px}
+.go:hover{filter:brightness(1.12)}
+.go.quiet{background:var(--card);color:var(--ink);border:1.5px solid var(--rule-2)}
+.go.quiet:hover{filter:none;border-color:var(--ink);background:var(--soft)}
+.go:disabled{opacity:.45;cursor:default;filter:none}
+.after{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-top:28px}
+.link{font-size:16px;color:var(--ink-2);text-decoration:underline;text-underline-offset:3px}
+.link:hover{color:var(--ink)}
+.link.warn{color:var(--warn)}
+
+/* ---------- Cartes de question ---------- */
+.q{background:var(--card);border:1px solid var(--rule);border-radius:var(--r);padding:22px 24px;margin-bottom:14px}
+.q.dim{background:var(--soft);border-style:dashed}
+.q-l{display:block;font-size:17.5px;font-weight:500;line-height:1.4;margin-bottom:14px}
+.in{width:100%;border:1.5px solid var(--rule-2);border-radius:9px;padding:13px 15px;font-size:17px;background:var(--bg);color:var(--ink);min-height:52px}
+.in::placeholder{color:var(--ink-3)}
+.in:focus{border-color:var(--acc)}
+.in.bad{border-color:var(--danger)}
+textarea.in{resize:vertical;line-height:1.6}
+.q-row{display:flex;gap:10px;align-items:flex-start}
+.q-row .in{flex:1}
+.dunno{flex:none;border:1.5px solid var(--rule-2);border-radius:9px;background:var(--soft);padding:13px 15px;font-size:15.5px;font-weight:500;color:var(--ink-2);min-height:52px;white-space:nowrap}
+.dunno:hover{border-color:var(--ink);color:var(--ink)}
+.dunno[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:var(--acc-ink);font-weight:500}
+.q-note{font-size:14.5px;color:var(--ink-3);margin-top:10px;line-height:1.5}
+.q-err{font-size:15px;color:var(--danger);margin-top:10px}
+.q-ans{font-size:16px;color:var(--ink-2);font-style:italic}
+
+/* ---------- Choix ---------- */
+.opts{display:grid;gap:12px;margin-top:26px}
+.opt{display:grid;grid-template-columns:24px minmax(0,1fr);gap:16px;background:var(--card);border:1.5px solid var(--rule);border-radius:var(--r);padding:20px 22px;align-items:start}
+.opt:hover{border-color:var(--rule-2);background:var(--soft)}
+.opt[aria-pressed="true"]{border-color:var(--acc);background:var(--acc-soft)}
+.opt .r{width:22px;height:22px;border-radius:50%;border:2px solid var(--rule-2);margin-top:3px;position:relative}
+.opt[aria-pressed="true"] .r{border-color:var(--acc)}
+.opt[aria-pressed="true"] .r::after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--acc)}
+.opt b{display:block;font-size:18px;font-weight:600;letter-spacing:-.01em}
+.opt span.d{display:block;font-size:15.5px;color:var(--ink-2);margin-top:4px;line-height:1.5}
+.opt .reco{display:inline-block;font-size:13.5px;font-weight:600;color:var(--acc);background:var(--acc-soft);border-radius:999px;padding:2px 10px;margin-top:9px}
+.opt[aria-pressed="true"] .reco{background:var(--card)}
+
+/* ---------- Le texte écrit ---------- */
+.doc{background:var(--card);border:1px solid var(--rule);border-radius:var(--r);padding:30px 32px;font-size:17px;line-height:1.72;box-shadow:var(--lift)}
+.doc p{margin:0 0 16px}
+.doc p:last-child{margin-bottom:0}
+.doc table{border-collapse:collapse;width:100%;font-size:15.5px;margin:6px 0 18px;font-variant-numeric:tabular-nums}
+.doc th,.doc td{border-bottom:1px solid var(--rule);padding:9px 10px;text-align:right;white-space:nowrap}
+.doc th:first-child,.doc td:first-child{text-align:left}
+.doc th{font-weight:600;color:var(--ink-2);font-size:14px}
+.tw{overflow-x:auto}
+.doc mark{background:var(--warn-soft);color:var(--warn);font-weight:500;padding:1px 6px;border-radius:5px;font-size:15.5px}
+.caret{display:inline-block;width:8px;height:1.05em;background:var(--acc);vertical-align:-2px;margin-left:2px}
+.writing{display:flex;align-items:center;gap:11px;color:var(--ink-2);font-size:16px;margin-bottom:18px}
+.writing i{width:9px;height:9px;border-radius:50%;background:var(--acc);display:block;flex:none}
+.flag{display:flex;flex-direction:column;gap:4px;background:var(--warn-soft);border-radius:10px;padding:15px 18px;margin-top:18px;font-size:15.5px;line-height:1.5;color:var(--ink)}
+.flag b{color:var(--warn)}
+.ask{font-size:19px;font-weight:600;margin:30px 0 4px}
+
+/* ---------- Attente ---------- */
+.run{list-style:none;padding:0;display:grid;gap:18px;margin-top:32px;max-width:46ch}
+.run li{display:flex;gap:14px;align-items:center;color:var(--ink-3);font-size:17px}
+.run li.ok,.run li.go{color:var(--ink)}
+.run .d{width:20px;height:20px;border-radius:50%;border:2px solid var(--rule-2);flex:none;position:relative}
+.run li.ok .d{background:var(--acc);border-color:var(--acc)}
+.run li.ok .d::after{content:"";position:absolute;left:6px;top:3px;width:4px;height:8px;border:solid var(--acc-ink);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.run li.go .d{border-color:var(--acc);border-right-color:transparent;border-top-color:transparent}
+
+/* ---------- Comparaison d'un désaccord ---------- */
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:22px 0 4px}
+.vs-c{background:var(--card);border:1px solid var(--rule);border-radius:var(--r);padding:18px 20px}
+.vs-v{display:block;font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1.1}
+.vs-d{display:block;font-size:14.5px;color:var(--ink-2);margin-top:7px;line-height:1.45}
+
+/* ---------- Projets et fichiers ---------- */
+.rows{display:grid;gap:12px;margin-top:28px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;background:var(--card);border:1px solid var(--rule);border-radius:var(--r);padding:20px 22px}
+.row:hover{border-color:var(--rule-2);background:var(--soft)}
+.row b{display:block;font-size:19px;font-weight:600;letter-spacing:-.012em}
+.row span.d{display:block;font-size:15px;color:var(--ink-2);margin-top:3px}
+.row .st{display:flex;flex-direction:column;align-items:flex-end;gap:7px;min-width:132px}
+.row .bar{width:132px;height:6px;border-radius:999px;background:var(--soft);overflow:hidden}
+.row .bar i{display:block;height:100%;background:var(--acc);border-radius:999px}
+.row .m{font-size:14px;color:var(--ink-3)}
+.files{display:grid;gap:12px;margin-top:26px}
+.file{display:flex;gap:18px;align-items:center;background:var(--card);border:1px solid var(--rule);border-radius:var(--r);padding:18px 20px;flex-wrap:wrap}
+.file b{display:block;font-size:18px;font-weight:600}
+.file .m{display:block;font-size:14.5px;color:var(--ink-2);margin-top:2px}
+.file .r{margin-left:auto;display:flex;gap:10px}
+.file .go{padding:11px 18px;font-size:15.5px;min-height:46px}
+.pap{width:36px;height:46px;background:var(--bg);border:1px solid var(--rule-2);border-radius:3px;flex:none;padding:7px 5px;display:flex;flex-direction:column;gap:4px}
+.pap i{display:block;height:2px;border-radius:1px;background:var(--rule-2)}
+.pap i:first-child{width:62%;background:var(--ink-3)}
+
+/* ---------- Panneau escamotable ---------- */
+.sheet{position:fixed;inset:0;z-index:60;display:grid;place-items:end center;pointer-events:none}
+.sheet .bd{position:absolute;inset:0;background:rgba(20,22,26,.42);pointer-events:auto}
+.sheet .pn{position:relative;pointer-events:auto;width:min(560px,100%);max-height:84vh;background:var(--bg);border:1px solid var(--rule-2);border-radius:16px 16px 0 0;overflow:auto;box-shadow:var(--lift);padding:24px 26px 30px}
+@media (min-width:720px){.sheet{place-items:center}.sheet .pn{border-radius:16px;max-height:80vh}}
+.sheet h2{font-size:22px;font-weight:600;letter-spacing:-.015em;padding-right:40px}
+.sheet h2:focus{outline:none}
+.sheet .x{position:absolute;top:18px;right:20px;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--ink-2);font-size:20px;line-height:1}
+.sheet .x:hover{background:var(--soft);color:var(--ink)}
+.pl{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:2px}
+.pl li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 10px;border-radius:8px;font-size:15.5px;color:var(--ink-3)}
+.pl li.ok{color:var(--ink-2)}
+.pl li.now{color:var(--ink);font-weight:600;background:var(--acc-soft)}
+.pl .m{width:18px;height:18px;border-radius:50%;border:2px solid var(--rule-2);position:relative}
+.pl li.ok .m{background:var(--acc);border-color:var(--acc)}
+.pl li.ok .m::after{content:"";position:absolute;left:5px;top:2px;width:4px;height:8px;border:solid var(--bg);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.pl li.now .m{border-color:var(--acc);border-width:5px}
+.pl .g{font-size:13px;color:var(--ink-3);white-space:nowrap}
+.mem{display:grid;gap:2px;margin-top:18px}
+.mem-r{display:grid;grid-template-columns:20px minmax(0,1fr);gap:12px;padding:11px 10px;border-radius:8px;align-items:start}
+.mem-r:nth-child(odd){background:var(--card)}
+.mem-k{display:block;font-size:14px;color:var(--ink-3)}
+.mem-v{display:block;font-size:16px;line-height:1.45}
+.mem-r.unknown .mem-v{color:var(--ink-3);font-style:italic}
+.sd{width:16px;height:16px;border-radius:50%;border:2px solid var(--ink-3);margin-top:4px;flex:none;display:block}
+.sd.user{background:var(--acc);border-color:var(--acc)}
+.sd.inferred{border-color:var(--warn);background:linear-gradient(90deg,var(--warn) 50%,transparent 50%)}
+.key{display:flex;gap:16px;flex-wrap:wrap;font-size:14px;color:var(--ink-2);margin-top:14px}
+.key span{display:inline-flex;gap:8px;align-items:center}
+
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:13px 22px;border-radius:10px;font-size:16px;z-index:70;box-shadow:var(--lift);max-width:90%}
+
+@media (prefers-reduced-motion:no-preference){
+  .fade{animation:f .38s ease both}
+  @keyframes f{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .caret,.writing i{animation:bl 1.1s ease-in-out infinite}
+  @keyframes bl{50%{opacity:.2}}
+  .run li.go .d{animation:sp .85s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .pg-b i{transition:width .45s ease}
+}
+@media (max-width:640px){
+  body{font-size:16px}
+  main,.hd-in,.pg-in{padding-left:16px;padding-right:16px}
+  .col{padding:30px 0 64px}
+  .q,.doc,.opt,.row,.file{padding-left:18px;padding-right:18px}
+  .doc{padding-top:22px;padding-bottom:22px}
+  .q-row{flex-direction:column}
+  .dunno{width:100%;text-align:center}
+  .vs{grid-template-columns:1fr}
+  .go{width:100%}
+  .after{flex-direction:column;align-items:flex-start;gap:14px}
+  .row{grid-template-columns:1fr;gap:12px}
+  .row .st{align-items:flex-start}
+  .saved span{display:none}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-sheet" viewBox="0 0 16 20"><rect x="1" y="1" width="14" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4.6 6.8h6.8M4.6 10h6.8M4.6 13.2h4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+<symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.1" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 .9v2M8 13.1v2M15.1 8h-2M2.9 8h-2M13 3l-1.4 1.4M4.4 11.6 3 13M13 13l-1.4-1.4M4.4 4.4 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+<symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.4 9.6A5.9 5.9 0 0 1 6.4 2.6a5.9 5.9 0 1 0 7 7Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+</defs></svg>
+
+<header class="hd"><div class="hd-in">
+  <span class="brand"><svg aria-hidden="true"><use href="#i-sheet"/></svg>Esquisse</span>
+  <div class="hd-r">
+    <span class="saved" id="saved"></span>
+    <div class="theme" role="group" aria-label="Thème de la page">
+      <button type="button" data-set="light" aria-pressed="false" title="Mode clair"><svg aria-hidden="true"><use href="#i-sun"/></svg><span class="sr">Mode clair</span></button>
+      <button type="button" data-set="dark" aria-pressed="false" title="Mode sombre"><svg aria-hidden="true"><use href="#i-moon"/></svg><span class="sr">Mode sombre</span></button>
+    </div>
+  </div>
+</div></header>
+
+<div id="pg"></div>
+<main><div class="col" id="col" aria-live="polite"></div></main>
+<div id="sheet"></div>
+
+<script>
+(function(){
+  var root=document.documentElement, bs=[].slice.call(document.querySelectorAll(".theme button")),
+      mq=matchMedia("(prefers-color-scheme: dark)");
+  function cur(){ return root.getAttribute("data-theme") || (mq.matches?"dark":"light"); }
+  function sync(){ var c=cur(); bs.forEach(function(b){ b.setAttribute("aria-pressed", String(b.dataset.set===c)); }); }
+  bs.forEach(function(b){ b.addEventListener("click", function(){
+    root.setAttribute("data-theme", b.dataset.set);
+    try{ localStorage.setItem("esquisse-theme", b.dataset.set); }catch(e){}
+    sync();
+  }); });
+  mq.addEventListener("change", sync); sync();
+})();
+
+(function(){
+const el = id => document.getElementById(id);
+const esc = t => String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const nb = s => String(s).replace(/[  ]/g," ");
+const eur = n => nb(Math.round(n).toLocaleString("fr-FR")) + " €";
+
+const PLAN = [["BP","Problème, solution et proposition de valeur"],["BP","Porteurs de projet et équipe"],["CDC","Contexte et objectifs"],["CDC","Parties prenantes et utilisateurs"],["BP","Étude de marché"],["BP","Modèle économique"],["BP","Analyse concurrentielle"],["BP","Stratégie marketing et commerciale"],["BP","Plan opérationnel et jalons"],["CDC","Périmètre du projet"],["CDC","Exigences fonctionnelles"],["CDC","Exigences non fonctionnelles"],["CDC","Contraintes techniques et architecture"],["BP","Prévisionnel financier"],["BP","Besoin et plan de financement"],["BP","Risques et plan de mitigation"],["CDC","Livrables, planning et jalons"],["CDC","Budget et modalités"],["CDC","Recette et critères d'acceptation"],["CDC","Risques et points d'attention"],["BP","Résumé exécutif"]];
+const DOCNAME = {BP:"Business plan", CDC:"Cahier des charges"};
+const IDEA = "Une application qui met en relation des coachs sportifs indépendants et des particuliers pour des séances à domicile, avec réservation, paiement intégré et une commission sur chaque séance.";
+
+function financial(pct){
+  const s=[24000,36000,54000];
+  const rows = s.map((v,i)=>`<tr><td>Année ${i+1}</td><td>${nb(v.toLocaleString("fr-FR"))}</td><td>${eur(v*45)}</td><td>${eur(v*45*pct/100)}</td></tr>`).join("");
+  return [
+    `<p>Le modèle repose sur une commission de ${pct} % prélevée sur chaque séance réservée, au prix moyen de 45 €. Avec 24 000 séances la première année et une croissance de 50 % par an, le chiffre d'affaires passe de ${eur(s[0]*45*pct/100)} à ${eur(s[2]*45*pct/100)} en trois ans.</p>`,
+    `<div class="tw"><table><thead><tr><th></th><th>Séances</th><th>Volume d'affaires</th><th>Chiffre d'affaires</th></tr></thead><tbody>${rows}</tbody></table></div>`,
+    `<p>Faute d'information de votre part, j'ai estimé la masse salariale à <mark>90 000 € à vérifier</mark> pour la première année. Le besoin de trésorerie maximal dépend de <mark>votre apport initial à compléter</mark> que vous pourrez renseigner avant l'export.</p>`
+  ];
+}
+
+const SCENES = [
+  {plan:0, revise:"Ajoute un exemple concret de client type.", holes:1,
+   questions:[
+     {label:"Problème adressé", q:"Quel problème concret votre projet résout-il, et pour qui ?", value:"Trouver un coach fiable et disponible à domicile prend du temps, et les coachs indépendants peinent à remplir leur agenda.", unknown:false},
+     {label:"Proposition de valeur", q:"Pourquoi un client vous choisirait-il plutôt que de chercher un coach lui-même ?", value:"Coachs vérifiés, réservation en deux minutes, paiement sécurisé.", unknown:false},
+     {label:"Solution", q:"J'ai compris que la solution est une application de mise en relation avec réservation et paiement intégrés. C'est bien ça ?", value:"Application de mise en relation avec réservation et paiement intégrés", check:true, unknown:false}],
+   draft:()=>[`<p>Trouver un coach sportif fiable et disponible pour des séances à domicile reste compliqué : les particuliers passent par le bouche-à-oreille ou par des annonces peu vérifiées, et les coachs indépendants peinent à remplir leur agenda.</p>`,
+     `<p>CoachDom réunit ces deux publics dans une application unique. Les coachs sont vérifiés, la réservation prend deux minutes et le paiement est sécurisé, avec une commission prélevée sur chaque séance.</p>`],
+   draft2:()=>[`<p>Trouver un coach sportif fiable et disponible pour des séances à domicile reste compliqué : les particuliers passent par le bouche-à-oreille ou par des annonces peu vérifiées, et les coachs indépendants peinent à remplir leur agenda.</p>`,
+     `<p>Exemple : Claire, 38 ans, veut reprendre le sport sans dépendre des horaires d'une salle. Elle réserve le mardi soir une séance avec une coach certifiée qui habite à dix minutes de chez elle.</p>`,
+     `<p>CoachDom réunit ces deux publics dans une application unique. Les coachs sont vérifiés, la réservation prend deux minutes et le paiement est sécurisé, avec une commission prélevée sur chaque séance.</p>`]},
+  {plan:2, revise:"Précise comment les objectifs seront suivis.", holes:1,
+   note:"Bonne nouvelle : le problème et la solution sont déjà connus grâce au business plan. Une seule question ici.",
+   questions:[{label:"Indicateurs de succès", q:"À quoi verrez-vous que le projet marche, dans 6 mois puis dans un an ?", value:"500 séances réservées par mois à 6 mois, 60 coachs actifs à 12 mois.", unknown:false}],
+   draft:()=>[`<p>Le projet consiste à concevoir une application web et mobile de mise en relation entre coachs sportifs indépendants et particuliers pour des séances à domicile, avec réservation et paiement intégrés.</p>`,
+     `<p>Objectifs à 6 mois : 500 séances réservées par mois. Objectifs à 12 mois : 60 coachs actifs et une note de satisfaction moyenne supérieure à <mark>4,5 sur 5 à vérifier</mark> selon mon estimation.</p>`],
+   draft2:()=>[`<p>Le projet consiste à concevoir une application web et mobile de mise en relation entre coachs sportifs indépendants et particuliers pour des séances à domicile, avec réservation et paiement intégrés.</p>`,
+     `<p>Objectifs à 6 mois : 500 séances réservées par mois. Objectifs à 12 mois : 60 coachs actifs et une note de satisfaction moyenne supérieure à <mark>4,5 sur 5 à vérifier</mark> selon mon estimation.</p>`,
+     `<p>Ces indicateurs seront suivis chaque mois dans le tableau de bord d'administration, à partir des réservations et des avis laissés après chaque séance.</p>`]},
+  {plan:13, revise:"Passe la commission à 15 % et recalcule.", holes:2,
+   questions:[
+     {label:"Prix moyen par séance", q:"Quel prix moyen comptez-vous pratiquer par séance ?", value:"45 €", unknown:false},
+     {label:"Commission", q:"J'ai compris que vous preniez 20 % de commission par séance. C'est bien ça ?", value:"20 % par séance", check:true, unknown:false},
+     {label:"Masse salariale", q:"Quelle masse salariale prévoyez-vous la première année ?", value:"", ph:"Montant annuel en euros", unknown:true}]  ,
+   draft:()=>financial(20), draft2:()=>financial(15)}
+];
+
+const ACCORDS = [
+  {t:"Deux dates de lancement", q:"Dans combien de temps lancez-vous ?",
+   a:{v:"4 mois", d:"Cahier des charges, partie « Livrables, planning et jalons »"},
+   b:{v:"6 mois", d:"Business plan, partie « Plan opérationnel et jalons »"},
+   o:[{l:"Retenir 6 mois",d:"Le planning du business plan est le plus détaillé des deux."},
+      {l:"Retenir 4 mois",d:"Je resserre le plan opérationnel pour tenir ce délai."}], reco:0},
+  {t:"Deux budgets de développement", q:"Sur quel budget part-on ?",
+   a:{v:"80 000 €", d:"Cahier des charges, partie « Budget et modalités »"},
+   b:{v:"60 000 €", d:"Business plan, partie « Besoin et plan de financement »"},
+   o:[{l:"Retenir 60 000 €",d:"C'est le montant que vous m'avez donné au départ."},
+      {l:"Retenir 80 000 €",d:"Je relève le besoin de financement en conséquence."}], reco:0}
+];
+
+const mk = a => a.map(([label,value,src])=>({label,value,src}));
+const FACTS_IDEA=[["Solution","Application de mise en relation entre coachs indépendants et particuliers","inferred"],["Cibles","Particuliers et coachs sportifs indépendants","inferred"],["Modèle de revenus","Commission sur chaque séance","inferred"],["Fonctionnalités clés","Réservation et paiement intégré","inferred"]];
+const FACTS_CD=[["Problème adressé","Trouver un coach fiable à domicile prend du temps","user"],["Solution","Application de mise en relation avec réservation et paiement","user"],["Cibles","Particuliers et coachs sportifs indépendants","user"],["Proposition de valeur","Coachs vérifiés, réservation en deux minutes","user"],["Indicateurs de succès","500 séances par mois à 6 mois","user"],["Marché géographique","Lyon, puis les grandes villes françaises","user"],["Modèle de revenus","Commission sur chaque séance","user"],["Concurrents","Annonces en ligne, salles de sport, coaching vidéo","user"],["Budget projet","60 000 €","user"]];
+
+const S={v:"accueil", doc:2, idea:IDEA, scene:2, phase:"questions", version:1,
+         facts:[], acc:[null,null], accI:0, errs:{}, blocks:99, an:0, ex:0, sheet:null, toast:""};
+let timers=[];
+const clear=()=>{timers.forEach(t=>{clearTimeout(t);clearInterval(t);});timers=[];};
+const idx = () => S.phase==="fini" ? 21 : SCENES[S.scene].plan;
+const err = k => S.errs[k] ? `<p class="q-err" id="e-${k}">${S.errs[k]}</p>` : "";
+const bad = k => S.errs[k] ? " bad" : "";
+
+/* ===== Avancement : un compte en clair et une estimation de temps ===== */
+function progress(){
+  if (!["travail","accords","generation","pret"].includes(S.v)) return "";
+  const i = idx(), pct = Math.round(i/21*100);
+  const mins = Math.max(1, Math.round((21-i)*0.8));
+  const right = S.v==="travail"
+    ? `<span class="pg-t"><b>Étape ${i+1} sur 21</b> — environ ${mins} min restantes</span>`
+    : `<span class="pg-t"><b>Les 21 parties sont écrites</b></span>`;
+  return `<div class="pg"><div class="pg-in">
+    <span class="pg-b" role="img" aria-label="${pct} % du dossier écrit"><i style="width:${pct}%"></i></span>
+    ${right}<button class="pg-a" data-s="plan">Voir le plan</button><button class="pg-a" data-s="memoire">Ce que je sais</button></div></div>`;
+}
+function saved(){
+  return ["travail","accords","generation","pret"].includes(S.v)
+    ? `<i aria-hidden="true"></i><span>Enregistré</span>` : "";
+}
+
+/* ===== Écrans ===== */
+const VIEWS = {
+
+accueil: () => `<span class="eyebrow">Vos projets</span>
+  <h1 class="t" tabindex="-1">Reprenez où vous en étiez</h1>
+  <p class="lead">Trois projets en cours. Ouvrez-en un, ou démarrez-en un nouveau : il faut cinq minutes pour commencer.</p>
+  <div class="rows">
+    ${[["coachdom","CoachDom","Cahier des charges et business plan",67,"14 parties sur 21","il y a 2 heures"],
+       ["pret","Vrac et Compagnie","Business plan",100,"Terminé","le 2 septembre"],
+       ["demo","Covoit'Campus","Cahier des charges",40,"4 parties sur 10","hier"]]
+      .map(p=>`<button class="row" data-a="${p[0]}"><span><b>${p[1]}</b><span class="d">${p[2]}</span></span>
+        <span class="st"><span class="bar"><i style="width:${p[3]}%"></i></span><span class="m">${p[4]} — ${p[5]}</span></span></button>`).join("")}
+  </div>
+  <div class="after"><button class="go" data-a="new">Démarrer un projet</button></div>`,
+
+type: () => `<h1 class="t" tabindex="-1">Que voulez-vous préparer ?</h1>
+  <p class="lead">Vous pourrez changer d'avis plus tard. Si vous prenez les deux, je ne vous poserai chaque question qu'une seule fois.</p>
+  <div class="opts">${[
+    ["Un cahier des charges","Pour cadrer ce qu'il faut construire : besoins, contraintes, planning, budget.","10 parties"],
+    ["Un business plan","Pour convaincre : marché, modèle économique, stratégie, prévisionnel sur trois ans.","11 parties"],
+    ["Les deux","Les deux documents écrits ensemble, avec une relecture croisée à la fin.","21 parties"]]
+    .map((t,i)=>`<button class="opt" data-a="doc:${i}" aria-pressed="${S.doc===i}"><span class="r"></span>
+      <span><b>${t[0]}</b><span class="d">${t[1]}</span><span class="reco">${t[2]}</span></span></button>`).join("")}</div>
+  <div class="after"><button class="go" data-a="to-idea">Continuer</button><button class="link" data-a="accueil">Revenir aux projets</button></div>`,
+
+idee: () => `<h1 class="t" tabindex="-1">Parlez-moi de votre projet</h1>
+  <p class="lead">Deux ou trois phrases suffisent : le problème, pour qui, et comment vous le réglez. Je m'occupe du reste et je vous poserai des questions au fil de l'eau.</p>
+  <div class="q" style="margin-top:26px"><label class="q-l" for="f-idea">Votre idée, avec vos mots</label>
+    <textarea id="f-idea" class="in${bad("idea")}" rows="6">${esc(S.idea)}</textarea>${err("idea")}</div>
+  <div class="after"><button class="go" data-a="analyze">C'est parti</button><button class="link" data-a="type">Revenir en arrière</button></div>`,
+
+analyse: () => `<h1 class="t" tabindex="-1">Je lis votre idée</h1>
+  <p class="lead">Quelques secondes, le temps de préparer votre plan.</p>
+  <ul class="run">${["Je comprends votre projet","J'en retiens 4 informations, dont 1 à confirmer avec vous","Je prépare un plan de 21 parties"]
+    .map((t,i)=>`<li class="${i<S.an?"ok":i===S.an?"go":""}"><span class="d"></span>${t}</li>`).join("")}</ul>`,
+
+travail: () => {
+  const sc = SCENES[S.scene], p = PLAN[sc.plan];
+  const head = `<span class="eyebrow">${DOCNAME[p[0]]}</span><h1 class="t" tabindex="-1">${p[1]}</h1>`;
+
+  if (S.phase === "questions"){
+    const qs = sc.questions.map((q,k)=>{
+      const on = q.unknown;
+      return `<div class="q${on?" dim":""}"><label class="q-l" for="f-q${k}">${q.q}</label>
+        <div class="q-row">
+          ${on ? `<span class="in q-ans" style="display:flex;align-items:center">Je verrai ça plus tard</span>`
+               : `<input class="in${bad("q"+k)}" id="f-q${k}" value="${esc(q.value)}"${q.ph?` placeholder="${q.ph}"`:""}>`}
+          <button class="dunno" data-a="dunno:${k}" aria-pressed="${on}">${on?"Finalement, je sais":"Je ne sais pas"}</button>
+        </div>
+        ${q.check?`<p class="q-note">C'est une supposition de ma part. Corrigez-la si je me trompe.</p>`:""}
+        ${on?`<p class="q-note">J'écrirai cette partie sans, et je marquerai le trou pour que vous le retrouviez.</p>`:""}
+        ${err("q"+k)}</div>`;
+    }).join("");
+    return head + `<p class="lead">${sc.questions.length===1?"Il me manque une chose":"Il me manque "+sc.questions.length+" choses"} pour écrire cette partie.</p>
+      ${sc.note?`<div class="flag" style="background:var(--acc-soft);margin-top:18px">${sc.note}</div>`:""}
+      <div style="margin-top:26px">${qs}</div>
+      <div class="after"><button class="go" data-a="answer">Écrire cette partie</button></div>`;
+  }
+
+  const blocks = (S.version===1?sc.draft:sc.draft2)();
+  const shown = S.phase==="ecriture" ? blocks.slice(0,S.blocks) : blocks;
+  const doc = `<div class="doc">${shown.map((b,i)=>S.phase==="ecriture"&&i===S.blocks-1?`<div class="fade">${b}</div>`:b).join("")}${S.phase==="ecriture"?`<span class="caret" aria-hidden="true"></span>`:""}</div>`;
+
+  if (S.phase === "ecriture")
+    return head + `<div class="writing" style="margin-top:22px"><i aria-hidden="true"></i>J'écris…</div>${doc}`;
+
+  if (S.phase === "revision")
+    return head + `<div class="q" style="margin-top:26px"><label class="q-l" for="f-fb">Qu'est-ce qui ne va pas ?</label>
+      <textarea id="f-fb" class="in${bad("fb")}" rows="3">${esc(sc.revise)}</textarea>${err("fb")}
+      <p class="q-note">Dites-le comme vous le diriez à quelqu'un. Je réécris toute la partie.</p></div>
+      <div class="after"><button class="go" data-a="rerun">Réécrire</button><button class="link" data-a="revise-cancel">Garder le texte actuel</button></div>`;
+
+  const holes = sc.holes;
+  return head + `<p class="lead">Voilà ce que j'ai écrit à partir de vos réponses.</p>
+    <div style="margin-top:22px">${doc}</div>
+    ${holes?`<div class="flag"><b>${holes===1?"1 point":holes+" points"} à vérifier</b><span>Ce qui est surligné est une supposition ou une donnée qui manque. Vous les retrouverez tous à la fin, avant de télécharger.</span></div>`:""}
+    <p class="ask">C'est bon pour vous ?</p>
+    <div class="after"><button class="go" data-a="approve">Oui, on continue</button>
+      <button class="link" data-a="revise">Changer quelque chose</button>
+      <button class="link" data-a="skip">J'y reviendrai plus tard</button></div>`;
+},
+
+accords: () => {
+  const c = ACCORDS[S.accI], n = ACCORDS.length;
+  return `<span class="eyebrow">Relecture croisée ${S.accI+1} sur ${n}</span>
+    <h1 class="t" tabindex="-1">${c.t}</h1>
+    <p class="lead">Vos deux documents ne disent pas la même chose. ${c.q}</p>
+    <div class="vs">
+      <span class="vs-c"><span class="vs-v">${c.a.v}</span><span class="vs-d">${c.a.d}</span></span>
+      <span class="vs-c"><span class="vs-v">${c.b.v}</span><span class="vs-d">${c.b.d}</span></span></div>
+    <div class="opts">${c.o.map((o,j)=>`<button class="opt" data-a="acc:${j}" aria-pressed="${S.acc[S.accI]===j}"><span class="r"></span>
+      <span><b>${o.l}</b><span class="d">${o.d}</span>${j===c.reco?`<span class="reco">Ce que je vous conseille</span>`:""}</span></button>`).join("")}</div>
+    ${err("acc")}
+    <div class="after"><button class="go" data-a="acc-next">${S.accI<n-1?"C'est noté, suivant":"C'est noté, écrire les documents"}</button>
+      ${S.accI>0?`<button class="link" data-a="acc-prev">Revenir en arrière</button>`:""}</div>`;
+},
+
+generation: () => `<h1 class="t" tabindex="-1">Je prépare vos documents</h1>
+  <p class="lead">Moins d'une minute. Vous pouvez laisser cet écran ouvert.</p>
+  <ul class="run">${["Je reprends les parties concernées","Je mets en page le Word","Je fabrique le PDF","J'enregistre le tout"]
+    .map((t,i)=>`<li class="${i<S.ex?"ok":i===S.ex?"go":""}"><span class="d"></span>${t}</li>`).join("")}</ul>`,
+
+pret: () => `<h1 class="t" tabindex="-1">Vos documents sont prêts</h1>
+  <p class="lead">CoachDom, deuxième version. Vous pouvez les télécharger, ou revenir sur une partie à tout moment.</p>
+  <div class="files">${[["Cahier des charges","10 parties, 24 pages"],["Business plan","11 parties, 31 pages"]]
+    .map(d=>`<div class="file"><span class="pap" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span><b>${d[0]}</b><span class="m">${d[1]}</span></span>
+      <span class="r"><button class="go" data-a="dl">Word</button><button class="go quiet" data-a="dl">PDF</button></span></div>`).join("")}</div>
+  <div class="flag" style="margin-top:26px"><b>3 choses à compléter</b><span>Avant d'envoyer ces documents à qui que ce soit : votre apport initial, le nombre de coachs indépendants à Lyon, et le coût de l'assurance des coachs. Ils sont surlignés dans le texte.</span></div>
+  <div class="after"><button class="go quiet" data-a="reopen">Revenir sur une partie</button><button class="link" data-a="accueil">Revenir aux projets</button></div>`
+};
+
+/* ===== Panneaux escamotables : disponibles, jamais imposés ===== */
+function sheetHTML(){
+  if (!S.sheet) return "";
+  const i = idx();
+  if (S.sheet === "plan"){
+    const items = PLAN.map((p,k)=>`<li class="${k<i?"ok":k===i?"now":""}"><span class="m"></span><span>${p[1]}</span><span class="g">${p[0]==="BP"?"Business plan":"Cahier des charges"}</span></li>`).join("");
+    return `<div class="sheet"><div class="bd" data-a="close"></div><div class="pn" role="dialog" aria-modal="true" aria-label="Le plan de votre dossier">
+      <button class="x" data-a="close" aria-label="Fermer">×</button>
+      <h2 tabindex="-1">Le plan de votre dossier</h2>
+      <p class="sub" style="margin-top:6px">${i} parties écrites sur 21. Je les prends dans cet ordre pour ne jamais vous redemander deux fois la même chose.</p>
+      <ol class="pl">${items}</ol></div></div>`;
+  }
+  const rows = S.facts.length
+    ? S.facts.map(f=>`<div class="mem-r ${f.src}"><span class="sd ${f.src}" aria-hidden="true"></span>
+        <span><span class="mem-k">${f.label}</span><span class="mem-v">${esc(f.value)}</span></span></div>`).join("")
+    : `<p class="sub" style="margin-top:16px">Rien pour l'instant. Ça se remplira au fil de vos réponses.</p>`;
+  return `<div class="sheet"><div class="bd" data-a="close"></div><div class="pn" role="dialog" aria-modal="true" aria-label="Ce que je sais de votre projet">
+    <button class="x" data-a="close" aria-label="Fermer">×</button>
+    <h2 tabindex="-1">Ce que je sais de votre projet</h2>
+    <p class="sub" style="margin-top:6px">Je m'en sers pour les deux documents, pour ne pas vous poser deux fois la même question.</p>
+    <div class="key"><span><span class="sd user"></span>Vous me l'avez dit</span><span><span class="sd inferred"></span>Je l'ai déduit</span><span><span class="sd unknown"></span>Personne ne sait encore</span></div>
+    <div class="mem">${rows}</div></div>`;
+}
+
+function render(){
+  el("saved").innerHTML = saved();
+  el("pg").innerHTML = progress();
+  el("col").className = "col" + (["travail","pret"].includes(S.v) ? " wide" : "");
+  el("col").innerHTML = VIEWS[S.v]();
+  el("sheet").innerHTML = sheetHTML();
+  const t = document.querySelector(".toast"); if (t) t.remove();
+  if (S.toast){ const d=document.createElement("div"); d.className="toast"; d.setAttribute("role","status"); d.textContent=S.toast; document.body.appendChild(d); }
+}
+function focusTop(){ const h = el("col").querySelector("h1.t"); if (h) h.focus({preventScroll:true}); }
+function go(v){ clear(); S.v=v; S.errs={}; S.toast=""; S.sheet=null; render(); focusTop(); window.scrollTo({top:0,behavior:reduce?"auto":"smooth"}); }
+function reco(){ if (S.acc[S.accI]===null) S.acc[S.accI]=ACCORDS[S.accI].reco; }
+function toast(m){ S.toast=m; render(); timers.push(setTimeout(()=>{S.toast="";render();},2800)); }
+
+function openCoachdom(){ clear(); S.scene=2; S.phase="questions"; S.version=1; S.blocks=99;
+  S.facts=mk(FACTS_CD); S.acc=[null,null]; S.accI=0; S.ex=0; go("travail"); }
+function openPret(){ clear(); S.scene=2; S.phase="fini"; S.version=2; S.facts=mk(FACTS_CD); S.acc=[0,0]; S.ex=0; go("pret"); }
+function startNew(){ clear(); S.doc=2; S.idea=IDEA; S.facts=[]; S.scene=0; S.acc=[null,null]; S.accI=0; go("type"); }
+
+function runAnalyze(){
+  const step = reduce?340:900; S.an=0; go("analyse");
+  [1,2,3].forEach(n=>timers.push(setTimeout(()=>{S.an=n;render();},step*n)));
+  timers.push(setTimeout(()=>{ S.facts=mk(FACTS_IDEA); S.scene=0; S.phase="questions"; S.version=1; go("travail"); }, step*3+600));
+}
+function runGen(){
+  const step = reduce?300:820; S.ex=0; go("generation");
+  [1,2,3,4].forEach(n=>timers.push(setTimeout(()=>{S.ex=n;render();},step*n)));
+  timers.push(setTimeout(()=>{ S.version=2; go("pret"); }, step*4+500));
+}
+function runDraft(){
+  clear(); S.phase="ecriture"; S.blocks=1; render();
+  const total = (S.version===1?SCENES[S.scene].draft:SCENES[S.scene].draft2)().length;
+  const t = setInterval(()=>{
+    if (S.blocks>=total){ clearInterval(t); S.phase="relecture"; render(); focusTop(); return; }
+    S.blocks++; render();
+  }, reduce?250:900);
+  timers.push(t);
+}
+function sync(){
+  if (S.v!=="travail" || S.phase!=="questions") return;
+  SCENES[S.scene].questions.forEach((q,k)=>{ const i=el("f-q"+k); if(i) q.value=i.value; });
+}
+function setFact(label,value,src){
+  const f = S.facts.find(x=>x.label===label);
+  if (f){ f.value=value; f.src=src; } else S.facts.push({label,value,src});
+}
+
+document.addEventListener("input", e=>{
+  const t=e.target;
+  if (t.id==="f-idea"){ S.idea=t.value; t.classList.remove("bad"); const x=el("e-idea"); if(x){x.remove(); delete S.errs.idea;} }
+  const m=t.id && t.id.match(/^f-q(\d+)$/);
+  if (m){ t.classList.remove("bad"); const x=el("e-q"+m[1]); if(x){x.remove(); delete S.errs["q"+m[1]];} }
+  if (t.id==="f-fb"){ t.classList.remove("bad"); const x=el("e-fb"); if(x){x.remove(); delete S.errs.fb;} }
+});
+document.addEventListener("keydown", e=>{ if (e.key==="Escape" && S.sheet){ S.sheet=null; render(); } });
+
+document.addEventListener("click", e=>{
+  const sb=e.target.closest("[data-s]");
+  if (sb){ S.sheet=sb.dataset.s; render(); const h=document.querySelector(".pn h2"); if(h) h.focus({preventScroll:true}); return; }
+  const b=e.target.closest("[data-a]"); if(!b) return;
+  const a=b.dataset.a;
+  sync();
+  if (a==="close"){ S.sheet=null; return render(); }
+  if (a==="accueil") return go("accueil");
+  if (a==="new") return startNew();
+  if (a==="coachdom") return openCoachdom();
+  if (a==="pret" || a==="reopen") return a==="reopen" ? (S.scene=2, S.phase="relecture", S.version=2, S.blocks=99, go("travail")) : openPret();
+  if (a==="demo") return toast("Dans cette maquette, seul le projet CoachDom est ouvert.");
+  if (a.startsWith("doc:")){ S.doc=+a.split(":")[1]; return render(); }
+  if (a==="type") return go("type");
+  if (a==="to-idea") return go("idee");
+  if (a==="analyze"){
+    if (S.idea.trim().length<20){ S.errs.idea="Deux ou trois phrases, le temps que je comprenne de quoi il s'agit."; render(); el("f-idea").focus(); return; }
+    return runAnalyze();
+  }
+  if (a.startsWith("dunno:")){
+    const k=+a.split(":")[1], q=SCENES[S.scene].questions[k];
+    q.unknown=!q.unknown; delete S.errs["q"+k]; render();
+    const f=el("f-q"+k); if(f) f.focus();
+    return;
+  }
+  if (a==="answer"){
+    const sc=SCENES[S.scene]; S.errs={};
+    sc.questions.forEach((q,k)=>{ if(!q.unknown && !q.value.trim()) S.errs["q"+k]="Répondez, ou dites-moi que vous ne savez pas."; });
+    if (Object.keys(S.errs).length){ render(); const f=el("f-q"+Object.keys(S.errs)[0].slice(1)); if(f) f.focus(); return; }
+    sc.questions.forEach(q => q.unknown ? setFact(q.label,"À compléter plus tard","unknown") : setFact(q.label,q.value.trim(),"user"));
+    S.version=1; return runDraft();
+  }
+  if (a==="approve" || a==="skip"){
+    S.version=1;
+    if (S.scene < SCENES.length-1){ S.scene++; S.phase="questions"; clear(); render(); focusTop(); window.scrollTo({top:0,behavior:reduce?"auto":"smooth"}); return; }
+    S.phase="fini"; S.accI=0; reco(); return go("accords");
+  }
+  if (a==="revise"){ S.phase="revision"; render(); const f=el("f-fb"); if(f) f.focus(); return; }
+  if (a==="revise-cancel"){ S.phase="relecture"; return render(); }
+  if (a==="rerun"){
+    const f=el("f-fb");
+    if (!f || !f.value.trim()){ S.errs.fb="Dites-moi ce qu'il faut changer."; render(); el("f-fb").focus(); return; }
+    SCENES[S.scene].revise=f.value; S.version=2;
+    if (S.scene===2) setFact("Commission","15 % par séance","user");
+    return runDraft();
+  }
+  if (a.startsWith("acc:")){ S.acc[S.accI]=+a.split(":")[1]; delete S.errs.acc; return render(); }
+  if (a==="acc-prev"){ S.accI--; reco(); render(); focusTop(); return; }
+  if (a==="acc-next"){
+    if (S.acc[S.accI]===null){ S.errs.acc="Choisissez une des deux options pour continuer."; return render(); }
+    if (S.accI < ACCORDS.length-1){ S.accI++; reco(); render(); focusTop(); window.scrollTo({top:0,behavior:reduce?"auto":"smooth"}); return; }
+    return runGen();
+  }
+  if (a==="dl") return toast("Téléchargement simulé : la maquette ne produit aucun fichier.");
+});
+
+go("accueil");
+})();
+</script>
+</body>
+</html>

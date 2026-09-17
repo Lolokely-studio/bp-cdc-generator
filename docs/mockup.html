@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Esquisse : dossier de conception</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F3F5F8;--surface:#FFFFFF;--surface2:#EBEEF3;--ink:#172033;--muted:#5B6475;
+  --line:#DCE1E8;--line2:#C3CAD5;--focus:#4A55C8;--mark:#FBE7C2;--mark-ink:#6B4308;
+  --l0:#5A6478;--l1:#8B4A9C;--l2:#0F7B74;--l3:#4A55C8;--l4:#6B7A2A;--l5:#B06A12;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --text:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11151D;--surface:#191F29;--surface2:#222936;--ink:#E6E9EF;--muted:#9BA4B3;
+    --line:#2B3341;--line2:#3D4758;--focus:#9CA4F3;--mark:#4A3919;--mark-ink:#F4D49B;
+    --l0:#A9B2C3;--l1:#D39BE0;--l2:#4FC4BA;--l3:#9CA4F3;--l4:#B9C76D;--l5:#E9A656;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11151D;--surface:#191F29;--surface2:#222936;--ink:#E6E9EF;--muted:#9BA4B3;
+  --line:#2B3341;--line2:#3D4758;--focus:#9CA4F3;--mark:#4A3919;--mark-ink:#F4D49B;
+  --l0:#A9B2C3;--l1:#D39BE0;--l2:#4FC4BA;--l3:#9CA4F3;--l4:#B9C76D;--l5:#E9A656;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--text);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
+.wrap{max-width:1280px;margin:0 auto;padding:40px 28px 64px}
+header.top{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:40px;align-items:end;padding-bottom:28px;border-bottom:1px solid var(--line)}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(2rem,3.4vw,3rem);line-height:1.02;letter-spacing:-0.02em;margin:0 0 14px;max-width:16ch}
+.lede{margin:0;color:var(--muted);max-width:56ch;font-size:1.05rem}
+.lanes-legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.lane-chip{display:flex;gap:10px;align-items:flex-start;text-align:left;background:transparent;border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer}
+.lane-chip:hover{border-color:var(--line2)}
+.lane-chip[aria-pressed="true"]{border-color:currentColor;background:var(--surface)}
+.lane-chip .sw{width:10px;height:10px;border-radius:3px;margin-top:6px;flex:none;background:currentColor}
+.lane-chip b{display:block;font-weight:600;font-size:.92rem;color:var(--ink)}
+.lane-chip small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
+.legend-hint{grid-column:1/-1;color:var(--muted);font-size:.8rem;margin:2px 0 0}
+
+nav.rail{display:flex;gap:4px;margin:24px 0 28px;overflow-x:auto}
+.phase{flex:1 1 0;min-width:150px;text-align:left;background:transparent;border:0;padding:10px 12px 12px;cursor:pointer;border-top:3px solid var(--line);color:var(--muted)}
+.phase strong{display:block;color:var(--ink);font-weight:600}
+.phase span{font-size:.82rem}
+.phase.loop{flex-grow:2}
+.phase[aria-current="true"]{border-top-color:var(--ink)}
+.phase .loopnote{display:block;color:var(--l2);font-size:.82rem}
+
+.layout{display:grid;grid-template-columns:290px minmax(0,1fr);gap:36px;align-items:start}
+aside.steps{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto;padding-right:6px}
+.group-title{font-family:var(--display);font-weight:500;font-size:.95rem;color:var(--muted);margin:18px 0 6px}
+.group-title:first-child{margin-top:0}
+.step-btn{display:grid;grid-template-columns:28px 1fr;gap:6px;width:100%;text-align:left;background:transparent;border:0;border-radius:8px;padding:8px 8px;cursor:pointer}
+.step-btn:hover{background:var(--surface2)}
+.step-btn[aria-current="step"]{background:var(--surface);box-shadow:inset 3px 0 0 var(--ink)}
+.step-btn .n{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.9rem;padding-top:1px}
+.step-btn .t{font-weight:500;line-height:1.3}
+.step-btn .dots{display:flex;gap:4px;margin-top:5px}
+.step-btn .dots i{width:7px;height:7px;border-radius:50%;display:block}
+.step-btn.dim{opacity:.35}
+
+article.detail{min-width:0}
+.detail-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;flex-wrap:wrap}
+.kicker{color:var(--muted);font-size:.9rem;margin:0 0 4px}
+h2{font-family:var(--display);font-weight:700;font-size:clamp(1.6rem,2.4vw,2.1rem);letter-spacing:-0.015em;line-height:1.1;margin:0}
+.kind{display:inline-block;margin-top:10px;font-size:.82rem;font-weight:600;padding:3px 10px;border-radius:999px;border:1px solid var(--line2);color:var(--muted)}
+.controls{display:flex;gap:6px;align-items:center}
+.controls .pos{color:var(--muted);font-size:.9rem;margin-right:6px;font-variant-numeric:tabular-nums}
+.ctrl{border:1px solid var(--line2);background:var(--surface);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:.9rem}
+.ctrl:hover{border-color:var(--ink)}
+.ctrl:disabled{opacity:.4;cursor:default;border-color:var(--line2)}
+.summary{max-width:68ch;font-size:1.08rem;margin:18px 0 26px}
+
+.seq-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 12px 14px}
+.seq{min-width:760px}
+.seq-head{display:grid;grid-template-columns:repeat(6,1fr);text-align:center;padding-bottom:10px}
+.seq-head div{font-weight:600;font-size:.88rem}
+.seq-head div::after{content:"";display:block;width:36px;height:3px;border-radius:2px;background:currentColor;margin:6px auto 0}
+.seq-body{position:relative;padding:4px 0 8px}
+.life{position:absolute;top:0;bottom:0;border-left:1px dashed var(--line2)}
+.msg{position:relative;height:54px}
+.msg .lbl{position:absolute;top:3px;transform:translateX(-50%);text-align:center;font-size:.8rem;line-height:1.25;color:var(--ink)}
+.msg .lbl span{background:var(--surface);padding:0 5px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.msg .line{position:absolute;top:40px;height:0;border-top:2px solid currentColor}
+.msg .line.ret{border-top-style:dashed}
+.msg .line::after{content:"";position:absolute;top:-6px;border-top:5px solid transparent;border-bottom:5px solid transparent}
+.msg .line.right::after{right:-2px;border-left:9px solid currentColor}
+.msg .line.left::after{left:-2px;border-right:9px solid currentColor}
+.msg .loop{position:absolute;top:24px;width:30px;height:20px;border:2px solid currentColor;border-left:0;border-radius:0 8px 8px 0}
+.msg .loop::after{content:"";position:absolute;left:-2px;bottom:-6px;border-top:5px solid transparent;border-bottom:5px solid transparent;border-right:8px solid currentColor}
+.msg .lbl.side{transform:none;top:26px;text-align:left;width:190px}
+.msg .lbl.side.end{text-align:right}
+.msg.dim{opacity:.25}
+.seq-key{display:flex;gap:18px;color:var(--muted);font-size:.8rem;margin:10px 4px 0;flex-wrap:wrap}
+.seq-key i{display:inline-block;width:26px;border-top:2px solid var(--muted);vertical-align:middle;margin-right:6px}
+.seq-key i.d{border-top-style:dashed}
+@media (prefers-reduced-motion: no-preference){
+  .msg{animation:msgIn .38s ease both;animation-delay:var(--d,0ms)}
+  @keyframes msgIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+  .caret{animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+}
+
+.below{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;margin-top:28px}
+.below.no-ui{grid-template-columns:minmax(0,1fr)}
+.notes{display:grid;gap:18px}
+.note{border-left:3px solid currentColor;padding:2px 0 2px 14px;border-radius:0}
+.note h3{font-family:var(--display);font-weight:500;font-size:1.02rem;margin:0 0 2px}
+.note p{margin:0;color:var(--ink);max-width:62ch}
+.note.none p{color:var(--muted)}
+.next{margin-top:24px;padding:14px 16px;background:var(--surface2);border-radius:10px}
+.next b{font-weight:600}
+
+.ui-title{font-family:var(--display);font-weight:500;font-size:1.02rem;margin:0 0 8px}
+.host{border:1px solid var(--line2);border-radius:12px;background:var(--surface);overflow:hidden;color:var(--l0)}
+.host-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:.8rem;color:var(--muted);background:var(--surface2)}
+.host-bar i{width:8px;height:8px;border-radius:50%;background:currentColor;display:block;color:var(--l0)}
+.host-body{padding:16px;color:var(--ink)}
+.host-body .ctx{display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:.82rem;margin-bottom:10px;flex-wrap:wrap}
+.host-body h4{margin:0 0 12px;font-size:1.05rem;font-weight:600}
+.host-body h4 + .opt-row + h4{margin-top:16px}
+.host-body h4 small{display:block;font-weight:400;font-size:.82rem;color:var(--muted);margin-top:2px}
+.opt-row{display:flex;flex-wrap:wrap;gap:8px}
+.opt{border:1px solid var(--line2);border-radius:8px;padding:7px 12px;font-size:.9rem}
+.opt.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.field{border:1px solid var(--line2);border-radius:8px;padding:9px 11px;font-size:.92rem;min-height:40px;background:var(--bg)}
+.field.empty{color:var(--muted)}
+.q{margin-bottom:14px}
+.q label{display:block;font-size:.9rem;font-weight:500;margin-bottom:5px}
+.q .row{display:flex;gap:8px;align-items:center}
+.q .row .field{flex:1}
+.check{display:flex;gap:7px;align-items:center;font-size:.85rem;color:var(--muted);margin-top:6px}
+.check i{width:15px;height:15px;border-radius:4px;background:var(--ink);display:inline-block;position:relative}
+.check i::after{content:"";position:absolute;left:5px;top:2px;width:4px;height:8px;border:solid var(--surface);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.primary{display:inline-block;margin-top:12px;background:var(--ink);color:var(--surface);border-radius:8px;padding:8px 14px;font-size:.9rem;font-weight:500}
+.excerpt{background:var(--bg);border-radius:8px;padding:12px;font-size:.93rem;line-height:1.55}
+mark{background:var(--mark);color:var(--mark-ink);padding:0 3px;border-radius:3px}
+.score{font-weight:600;font-size:.82rem;border:1px solid var(--line2);border-radius:999px;padding:1px 9px}
+.bar{height:8px;background:var(--surface2);border-radius:999px;overflow:hidden;margin:10px 0 6px}
+.bar i{display:block;height:100%;background:var(--l2)}
+.files{display:grid;gap:6px;margin:0 0 12px;padding:0;list-style:none}
+.files li{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:.92rem}
+.files li em{font-style:normal;font-size:.75rem;font-weight:600;color:var(--muted)}
+.conflict{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+.conflict:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.conflict p{margin:0 0 8px;font-size:.92rem}
+
+@media (max-width: 980px){
+  header.top{grid-template-columns:1fr;gap:24px}
+  .below{grid-template-columns:1fr}
+}
+@media (max-width: 860px){
+  .wrap{padding:28px 16px 48px}
+  .layout{grid-template-columns:1fr;gap:20px}
+  aside.steps{position:static;max-height:none;display:flex;gap:6px;overflow-x:auto;padding:0 0 6px}
+  .group-title{display:none}
+  .step-btn{min-width:180px;border:1px solid var(--line)}
+  .lanes-legend{grid-template-columns:1fr}
+  .phase{min-width:130px}
+}
+
+:root{--danger:#B42318;--paper:"Source Serif 4",Georgia,"Times New Roman",serif}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--danger:#F97066}}
+:root[data-theme="dark"]{--danger:#F97066}
+
+.topnav{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--line)}
+.topnav-in{max-width:1280px;margin:0 auto;padding:10px 28px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:700;font-size:1.15rem}
+.brand small{font-family:var(--text);font-weight:400;font-size:.88rem;color:var(--muted)}
+.mark{width:22px;height:22px;border-radius:6px;background:var(--ink);position:relative;display:inline-block;flex:none}
+.mark::before,.mark::after{content:"";position:absolute;left:5px;height:2px;border-radius:2px;background:var(--bg)}
+.mark::before{top:7px;right:5px}
+.mark::after{top:12px;right:9px}
+.tabs{display:flex;gap:4px;overflow-x:auto}
+.tabs a{text-decoration:none;color:var(--muted);padding:7px 12px;border-radius:8px;font-weight:500;white-space:nowrap}
+.tabs a:hover{color:var(--ink);background:var(--surface2)}
+.tabs a[aria-current="page"]{color:var(--ink);background:var(--surface);box-shadow:inset 0 -2px 0 var(--ink)}
+.theme{display:flex;gap:2px;flex:none;border:1px solid var(--line);border-radius:9px;padding:2px;background:var(--surface)}
+.theme button{background:transparent;border:0;border-radius:7px;padding:5px 10px;font-size:.84rem;font-weight:500;color:var(--muted);cursor:pointer;white-space:nowrap}
+.theme button:hover{color:var(--ink)}
+.theme button[aria-pressed="true"]{background:var(--surface2);color:var(--ink)}
+.page[hidden]{display:none}
+.page-head{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:40px;align-items:end;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:24px}
+.page-aside{margin:0;color:var(--muted);max-width:52ch}
+
+/* Maquette */
+.m-pills{display:flex;gap:6px;overflow-x:auto;margin:0 0 14px;padding-bottom:4px}
+.m-pill{border:1px solid var(--line2);background:transparent;border-radius:999px;padding:6px 13px;cursor:pointer;white-space:nowrap;font-size:.9rem}
+.m-pill:hover{border-color:var(--ink)}
+.m-pill[aria-current="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.m-frame{border:1px solid var(--line2);border-radius:14px;overflow:hidden;background:var(--surface)}
+.m-chrome{display:flex;align-items:center;gap:14px;padding:9px 14px;background:var(--surface2);border-bottom:1px solid var(--line)}
+.m-dots{display:flex;gap:6px}
+.m-dots i{width:10px;height:10px;border-radius:50%;background:var(--line2);display:block}
+.m-url{flex:1;max-width:520px;background:var(--bg);border-radius:6px;padding:4px 10px;font-size:.82rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.m-app{position:relative;min-height:660px;color:var(--ink)}
+.m-bar{display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid var(--line)}
+.m-logo{display:flex;align-items:center;gap:8px;background:none;border:0;cursor:pointer;font-family:var(--display);font-weight:700;font-size:1.1rem;padding:4px}
+.m-bar-r{display:flex;align-items:center;gap:12px}
+.m-link{background:none;border:0;cursor:pointer;color:var(--muted);font-size:.92rem;padding:6px}
+.m-link:hover{color:var(--ink)}
+.m-body{padding:28px}
+.m-narrow{max-width:820px}
+.m-h{font-family:var(--display);font-weight:700;font-size:1.45rem;letter-spacing:-0.01em;line-height:1.15;margin:0 0 6px}
+.m-h:focus{outline:none}
+.m-muted{color:var(--muted);margin:0}
+.small{font-size:.84rem}
+.m-cap{font-family:var(--display);font-weight:500;margin:0 0 8px}
+.m-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.m-btn{background:var(--ink);color:var(--bg);border:1px solid var(--ink);border-radius:8px;padding:9px 16px;cursor:pointer;font-weight:500}
+.m-btn:hover{opacity:.88}
+.m-btn.sec{background:transparent;color:var(--ink);border-color:var(--line2)}
+.m-btn.sec:hover{border-color:var(--ink);opacity:1}
+.m-btn.sm{padding:6px 12px;font-size:.88rem}
+.m-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap}
+.m-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.m-projects{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.m-proj{display:flex;flex-direction:column;gap:8px;text-align:left;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:16px;cursor:pointer}
+.m-proj:hover{border-color:var(--ink)}
+.m-proj-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.m-proj-top b{font-size:1.05rem}
+.m-tag{font-size:.74rem;font-weight:600;border-radius:999px;padding:1px 8px;border:1px solid var(--line2);color:var(--muted)}
+.m-tag.done{color:var(--l2);border-color:var(--l2)}
+.m-prog{height:6px;background:var(--surface2);border-radius:999px;overflow:hidden;margin:2px 0}
+.m-prog i{display:block;height:100%;background:var(--l2)}
+.m-stepper{display:flex;gap:22px;margin-bottom:22px;font-size:.88rem;color:var(--muted);flex-wrap:wrap}
+.m-stepper span{display:flex;gap:7px;align-items:center}
+.m-stepper em{font-style:normal;width:22px;height:22px;border-radius:50%;border:1px solid var(--line2);display:grid;place-items:center;font-size:.78rem}
+.m-stepper .on{color:var(--ink);font-weight:600}
+.m-stepper .on em{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.m-stepper .past em{background:var(--l2);color:var(--bg);border-color:var(--l2)}
+.m-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}
+.m-profile{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.m-profile .m-cap{margin-bottom:2px}
+.m-tile{text-align:left;border:1.5px solid var(--line2);border-radius:12px;background:var(--surface);padding:18px;cursor:pointer;display:flex;flex-direction:column;gap:6px}
+.m-tile:hover{border-color:var(--ink)}
+.m-tile[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.m-tile b{font-size:1.05rem}
+.m-avatar{width:30px;height:30px;border-radius:50%;background:var(--surface2);display:grid;place-items:center;font-size:.78rem;font-weight:600}
+.m-pending{border:1px solid var(--line2);border-radius:10px;padding:14px 16px;margin-top:18px;background:var(--surface)}
+.m-pending b{display:block}
+.m-label{display:block;font-weight:500;margin:0 0 6px;font-size:.95rem}
+.m-input{width:100%;border:1px solid var(--line2);border-radius:8px;padding:9px 11px;background:var(--bg);color:var(--ink);font:inherit;font-size:.95rem}
+.m-input:disabled{opacity:.5}
+textarea.m-input{resize:vertical;line-height:1.5}
+.m-q{margin-bottom:16px}
+.m-hint{font-size:.8rem;color:var(--muted);margin:5px 0 0}
+.m-err{font-size:.84rem;color:var(--danger);margin:6px 0 0}
+.m-check{display:inline-flex;gap:7px;align-items:center;font-size:.88rem;color:var(--muted);margin-top:7px;cursor:pointer}
+.m-note{background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:.9rem;margin:0 0 16px}
+.m-steps{list-style:none;padding:0;margin:22px 0 0;display:grid;gap:12px}
+.m-steps li{display:flex;gap:10px;align-items:center;color:var(--muted)}
+.m-steps li.ok{color:var(--ink)}
+.m-steps .ic{width:18px;height:18px;border-radius:50%;border:2px solid var(--line2);flex:none;position:relative}
+.m-steps li.ok .ic{background:var(--l2);border-color:var(--l2)}
+.m-steps li.ok .ic::after,.m-planlist li.ok .st::after{content:"";position:absolute;left:5px;top:2px;width:4px;height:8px;border:solid var(--bg);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.m-steps li.run .ic{border-color:var(--ink);border-right-color:transparent}
+
+.m-ws{display:grid;grid-template-columns:250px minmax(0,1fr) 270px;min-height:620px}
+.m-col{padding:18px}
+.m-col.plan,.m-col.facts{background:var(--bg)}
+.m-col.plan{border-right:1px solid var(--line)}
+.m-col.facts{border-left:1px solid var(--line)}
+.m-col.center{padding:24px 28px;min-width:0}
+.m-planlist{list-style:none;margin:12px 0 0;padding:0}
+.m-planlist li{display:grid;grid-template-columns:16px 1fr auto;gap:8px;align-items:start;padding:5px 2px;font-size:.84rem;line-height:1.3;color:var(--muted)}
+.m-planlist li.ok{color:var(--ink)}
+.m-planlist li.now{color:var(--ink);font-weight:600}
+.m-planlist .st{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--line2);margin-top:1px;position:relative}
+.m-planlist li.ok .st{background:var(--l2);border-color:var(--l2)}
+.m-planlist li.ok .st::after{left:4px;top:1px;width:3px;height:7px}
+.m-planlist li.now .st{border:4px solid var(--ink)}
+.m-doc{font-size:.68rem;font-weight:600;border-radius:4px;padding:1px 5px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
+.m-sechead{display:flex;gap:10px;align-items:center;margin-bottom:6px}
+.m-status{display:flex;gap:10px;align-items:center;margin:10px 0 14px;flex-wrap:wrap}
+.m-pulse{width:9px;height:9px;border-radius:50%;background:var(--l2);display:inline-block}
+.m-paper{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:24px 28px;font-family:var(--paper);font-size:1rem;line-height:1.7;max-width:72ch}
+.m-paper p{margin:0 0 12px}
+.m-paper p:last-child{margin-bottom:0}
+.m-paper table{border-collapse:collapse;width:100%;font-family:var(--text);font-size:.86rem;margin:4px 0 14px}
+.m-paper th,.m-paper td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:right;white-space:nowrap}
+.m-paper th:first-child,.m-paper td:first-child{text-align:left}
+.m-paper th{font-weight:600;color:var(--muted)}
+.m-tablewrap{overflow-x:auto}
+.m-caret{display:inline-block;width:8px;height:1.1em;background:var(--ink);vertical-align:text-bottom}
+.m-facts{margin-top:10px}
+.m-fact{padding:9px 6px;border-bottom:1px solid var(--line);border-radius:4px}
+.m-fact b{display:flex;justify-content:space-between;gap:6px;font-size:.78rem;color:var(--muted);font-weight:500;margin-bottom:2px}
+.m-fact span.v{font-size:.87rem;line-height:1.35;display:block}
+.m-fact.fresh{background:var(--mark)}
+.m-src{font-size:.68rem;font-weight:600;border-radius:999px;padding:0 7px;border:1px solid currentColor;white-space:nowrap;height:fit-content}
+.m-src.user{color:var(--l2)}
+.m-src.inferred{color:var(--l5)}
+.m-src.unknown{color:var(--muted)}
+.m-legend{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 4px}
+.m-done{max-width:560px;padding-top:30px}
+.m-done p{margin:6px 0 18px;color:var(--muted)}
+.m-conf{border:1px solid var(--line);border-radius:10px;padding:16px;margin-top:12px;background:var(--surface)}
+.m-conf b{display:block;margin-bottom:4px}
+.m-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.m-chip{border:1px solid var(--line2);background:transparent;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:.9rem}
+.m-chip:hover{border-color:var(--ink)}
+.m-chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.m-docs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.m-docc{display:flex;gap:16px;border:1px solid var(--line);border-radius:10px;padding:16px;background:var(--surface)}
+.m-docc b{display:block;font-size:1.05rem}
+.m-docc .m-row{margin-top:12px}
+.m-thumb{width:62px;height:82px;border:1px solid var(--line2);border-radius:3px;background:var(--bg);padding:10px 8px;display:flex;flex-direction:column;gap:6px;flex:none}
+.m-thumb i{display:block;height:3px;border-radius:2px;background:var(--line2)}
+.m-thumb i:first-child{width:70%;background:var(--muted)}
+.m-thumb i:nth-child(3){width:85%}
+.m-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;margin-top:28px}
+.m-list{list-style:none;padding:0;margin:0}
+.m-list li{display:flex;flex-direction:column;gap:2px;padding:9px 0;border-bottom:1px solid var(--line)}
+.m-toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:.9rem;max-width:90%}
+@media (prefers-reduced-motion: no-preference){
+  .m-appear{animation:mIn .45s ease both}
+  @keyframes mIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .m-pulse,.m-caret{animation:mPulse 1s ease-in-out infinite}
+  @keyframes mPulse{50%{opacity:.25}}
+  .m-steps li.run .ic{animation:mSpin .8s linear infinite}
+  @keyframes mSpin{to{transform:rotate(360deg)}}
+  .m-fact{transition:background-color 1.2s ease}
+}
+@media (max-width:1100px){
+  .m-ws{grid-template-columns:220px minmax(0,1fr)}
+  .m-col.facts{grid-column:1/-1;border-left:0;border-top:1px solid var(--line)}
+}
+@media (max-width:760px){
+  .m-ws{grid-template-columns:1fr}
+  .m-col.plan{border-right:0;border-bottom:1px solid var(--line);max-height:240px;overflow:auto}
+  .m-tiles,.m-split{grid-template-columns:1fr}
+  .m-body,.m-col.center{padding:18px}
+  .m-paper{padding:18px}
+}
+
+/* Stack */
+.s-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 24px;margin:0}
+.s-facts dt{color:var(--muted);font-size:.86rem}
+.s-facts dd{margin:0;font-weight:600}
+.s-h{margin:44px 0 14px}
+.s-h:first-of-type{margin-top:8px}
+.s-diagram{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;overflow-x:auto}
+.s-diagram svg{min-width:720px;width:100%;height:auto;display:block}
+.s-box{fill:var(--surface);stroke-width:1.5}
+.s-t{fill:var(--ink);font:600 14px var(--text)}
+.s-s{fill:var(--muted);font:400 12px var(--text)}
+.s-edge{stroke:var(--line2);stroke-width:1.5;fill:none}
+.s-el{fill:var(--muted);font:500 11.5px var(--text)}
+.s-note{color:var(--muted);max-width:72ch;margin:10px 0 0;font-size:.95rem}
+.s-layer{display:grid;grid-template-columns:230px minmax(0,1fr);gap:28px;padding:22px 0;border-top:1px solid var(--line)}
+.s-layer:last-child{border-bottom:1px solid var(--line)}
+.s-layer h3{font-family:var(--display);font-weight:500;font-size:1.2rem;margin:0;display:flex;gap:10px;align-items:center}
+.s-layer h3 i{width:10px;height:10px;border-radius:3px;background:currentColor;display:inline-block}
+.s-layer .s-host{display:block;color:var(--muted);font-size:.9rem;margin-top:4px}
+.s-items{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px 32px}
+.s-item b{display:block;font-weight:600}
+.s-item p{margin:2px 0 0;color:var(--muted);font-size:.94rem}
+.s-table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table.s-table{border-collapse:collapse;width:100%;min-width:720px}
+.s-table th,.s-table td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;font-size:.94rem}
+.s-table tr:last-child td{border-bottom:0}
+.s-table th{font-weight:600;color:var(--muted);font-size:.86rem}
+.s-table td small{display:block;color:var(--muted);font-size:.84rem;line-height:1.35;margin-top:2px}
+.s-table code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em}
+.s-tree{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.85rem;line-height:1.65;overflow-x:auto;color:var(--ink);margin:0}
+@media (max-width:980px){.page-head{grid-template-columns:1fr;gap:20px}}
+@media (max-width:860px){
+  .topnav-in{padding:10px 16px}
+  .s-layer{grid-template-columns:1fr;gap:10px}
+}
+
+.layout aside.steps{top:74px;max-height:calc(100vh - 90px)}
+@media (max-width:860px){.layout aside.steps{top:auto;max-height:none}}
+</style>
+<script>
+(function(){try{var t=localStorage.getItem("esquisse-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}})();
+</script>
+</head>
+<body>
+<nav class="topnav" aria-label="Pages du dossier">
+  <div class="topnav-in">
+    <span class="brand"><span class="mark" aria-hidden="true"></span>Esquisse <small>Dossier de conception</small></span>
+    <div class="tabs">
+      <a href="#maquette" data-route="maquette">Maquette</a>
+      <a href="#workflow" data-route="workflow">Workflow</a>
+      <a href="#stack" data-route="stack">Stack technique</a>
+    </div>
+    <div class="theme" role="group" aria-label="Thème de l'interface">
+      <button type="button" data-theme-set="light">Clair</button>
+      <button type="button" data-theme-set="dark">Sombre</button>
+      <button type="button" data-theme-set="system">Système</button>
+    </div>
+  </div>
+</nav>
+<section class="page" id="page-maquette">
+<div class="wrap">
+  <header class="page-head">
+    <div>
+      <h1>Maquette de l'application</h1>
+      <p class="lede">Un prototype cliquable du parcours complet, de la liste des projets jusqu'aux exports Word et PDF. Les données sont fictives et rien n'est envoyé.</p>
+    </div>
+    <p class="page-aside">Suivez le parcours en cliquant dans l'application, ou accédez directement à un écran avec les boutons ci-dessous. « Nouveau projet » démarre du début ; le projet CoachDom ouvre une rédaction déjà avancée.</p>
+  </header>
+  <div class="m-pills" id="m-pills" aria-label="Écrans de la maquette"></div>
+  <div class="m-frame">
+    <div class="m-chrome"><span class="m-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="m-url" id="m-url"></span></div>
+    <div class="m-app" id="m-app"></div>
+  </div>
+</div>
+</section>
+
+<section class="page" id="page-workflow" hidden>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Du premier clic au PDF</h1>
+      <p class="lede">Le va-et-vient complet entre le front, le backend, LangGraph, LangChain, les services et LangSmith : qui appelle qui, à quel moment l'utilisateur intervient, et ce que chaque brique enregistre.</p>
+    </div>
+    <div class="lanes-legend" id="legend" aria-label="Filtrer par brique"></div>
+  </header>
+
+  <nav class="rail" id="rail" aria-label="Phases du parcours"></nav>
+
+  <div class="layout">
+    <aside class="steps" id="steps" aria-label="Étapes"></aside>
+
+    <article class="detail" aria-live="polite">
+      <div class="detail-head">
+        <div>
+          <p class="kicker" id="kicker"></p>
+          <h2 id="title"></h2>
+          <span class="kind" id="kind"></span>
+        </div>
+        <div class="controls">
+          <span class="pos" id="pos"></span>
+          <button class="ctrl" id="prev" aria-label="Étape précédente">Précédente</button>
+          <button class="ctrl" id="play">Lecture auto</button>
+          <button class="ctrl" id="next" aria-label="Étape suivante">Suivante</button>
+        </div>
+      </div>
+      <p class="summary" id="summary"></p>
+
+      <div class="seq-wrap">
+        <div class="seq">
+          <div class="seq-head" id="seqHead"></div>
+          <div class="seq-body" id="seqBody"></div>
+        </div>
+        <div class="seq-key"><span><i></i>Appel</span><span><i class="d"></i>Retour ou réponse</span><span>Boucle sur une même brique : traitement interne</span></div>
+      </div>
+
+      <div class="below" id="below">
+        <div>
+          <div class="notes" id="notes"></div>
+          <div class="next" id="next-box"></div>
+        </div>
+        <div id="ui"></div>
+      </div>
+    </article>
+  </div>
+</div>
+</section>
+
+<section class="page" id="page-stack" hidden>
+<div class="wrap">
+  <header class="page-head">
+    <div>
+      <h1>Stack technique</h1>
+      <p class="lede">Une architecture entièrement basée sur des paliers gratuits, du premier clic aux exports Word et PDF. Accès sur inscription, activé à la main : pas de facturation, mais pas d'ouverture au tout-venant non plus.</p>
+    </div>
+    <dl class="s-facts">
+      <div><dt>Hébergement</dt><dd>Vercel, Render, Supabase</dd></div>
+      <div><dt>Agent</dt><dd>LangGraph et LangChain</dd></div>
+      <div><dt>Modèles</dt><dd>5 paliers gratuits, routés par tâche</dd></div>
+      <div><dt>Coût fixe</dt><dd>0 €, appels au LLM compris</dd></div>
+    </dl>
+  </header>
+
+  <h2 class="s-h">Vue d'ensemble</h2>
+  <div class="s-diagram">
+    <svg viewBox="0 0 860 390" role="img" aria-labelledby="s-dt s-dd">
+      <title id="s-dt">Architecture de l'application</title>
+      <desc id="s-dd">Le navigateur charge le front Next.js hébergé sur Vercel et échange en direct avec le backend FastAPI hébergé sur Render. Le backend gère lui-même les comptes et la connexion, sans recourir au service d'authentification de Supabase. Il exécute l'agent LangGraph et joint Postgres par le pooler en mode transaction, puis s'appuie sur une chaîne de fournisseurs de modèles gratuits, LangSmith et un service Gotenberg pour les PDF.</desc>
+      <defs><marker id="s-arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#8A93A3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+      <path class="s-edge" d="M180 188 L246 88" marker-end="url(#s-arr)"/>
+      <path class="s-edge" d="M180 212 L246 212" marker-start="url(#s-arr)" marker-end="url(#s-arr)"/>
+      <text class="s-el" x="213" y="232" text-anchor="middle">SSE</text>
+      <path class="s-edge" d="M450 190 L596 92" marker-end="url(#s-arr)"/>
+      <text class="s-el" x="548" y="160">Pooler transaction</text>
+      <path class="s-edge" d="M450 212 L596 212" marker-end="url(#s-arr)"/>
+      <text class="s-el" x="523" y="204" text-anchor="middle">Prompts</text>
+      <path class="s-edge" d="M450 234 L596 318" marker-end="url(#s-arr)"/>
+      <text class="s-el" x="500" y="292" text-anchor="end">Traces</text>
+      <path class="s-edge" d="M350 257 L350 291" marker-end="url(#s-arr)"/>
+
+      <rect class="s-box" x="30" y="168" width="150" height="64" rx="10" style="stroke:var(--line2)"/>
+      <text class="s-t" x="105" y="196" text-anchor="middle">Navigateur</text>
+      <text class="s-s" x="105" y="214" text-anchor="middle">Porteur de projet</text>
+
+      <rect class="s-box" x="250" y="30" width="200" height="72" rx="10" style="stroke:var(--l0)"/>
+      <text class="s-t" x="350" y="60" text-anchor="middle">Front Next.js</text>
+      <text class="s-s" x="350" y="80" text-anchor="middle">Vercel, plan Hobby</text>
+
+      <rect class="s-box" x="250" y="165" width="200" height="92" rx="10" style="stroke:var(--l1)"/>
+      <text class="s-t" x="350" y="192" text-anchor="middle">Backend FastAPI</text>
+      <text class="s-s" x="350" y="212" text-anchor="middle">Agent LangGraph + LangChain</text>
+      <text class="s-s" x="350" y="230" text-anchor="middle">Render, service gratuit</text>
+
+      <rect class="s-box" x="250" y="295" width="200" height="64" rx="10" style="stroke:var(--l4)"/>
+      <text class="s-t" x="350" y="323" text-anchor="middle">Gotenberg</text>
+      <text class="s-s" x="350" y="341" text-anchor="middle">Word vers PDF, Render</text>
+
+      <rect class="s-box" x="600" y="30" width="230" height="72" rx="10" style="stroke:var(--l4)"/>
+      <text class="s-t" x="715" y="60" text-anchor="middle">Supabase</text>
+      <text class="s-s" x="715" y="80" text-anchor="middle">Postgres et Storage</text>
+
+      <rect class="s-box" x="600" y="176" width="230" height="72" rx="10" style="stroke:var(--l3)"/>
+      <text class="s-t" x="715" y="206" text-anchor="middle">Modèles gratuits</text>
+      <text class="s-s" x="715" y="226" text-anchor="middle">5 fournisseurs, routés par tâche</text>
+
+      <rect class="s-box" x="600" y="290" width="230" height="72" rx="10" style="stroke:var(--l5)"/>
+      <text class="s-t" x="715" y="320" text-anchor="middle">LangSmith</text>
+      <text class="s-s" x="715" y="340" text-anchor="middle">Traces et évaluations</text>
+    </svg>
+  </div>
+  <p class="s-note">Le navigateur se connecte directement au backend pour suivre la rédaction en direct, sans passer par les fonctions Vercel et leurs limites de durée. L'agent tourne dans le backend avec la bibliothèque LangGraph open source : le runtime LangSmith Deployment n'existe pas en version gratuite.</p>
+
+  <h2 class="s-h">Les briques, couche par couche</h2>
+  <div class="s-layers">
+    <div class="s-layer">
+      <div><h3 style="color:var(--l0)"><i></i><span style="color:var(--ink)">Interface</span></h3><span class="s-host">Vercel, plan Hobby</span></div>
+      <div class="s-items">
+        <div class="s-item"><b>Next.js et TypeScript</b><p>Tableau de bord, parcours guidé, espace de rédaction et exports.</p></div>
+        <div class="s-item"><b>Tailwind CSS et shadcn/ui</b><p>Composants accessibles et cohérents sans partir de zéro.</p></div>
+        <div class="s-item"><b>React Hook Form et Zod</b><p>Formulaires de questions validés selon le contrat d'interactions.</p></div>
+        <div class="s-item"><b>TipTap</b><p>Modification directe d'un brouillon avant validation.</p></div>
+      </div>
+    </div>
+    <div class="s-layer">
+      <div><h3 style="color:var(--l1)"><i></i><span style="color:var(--ink)">Backend</span></h3><span class="s-host">Render, service web gratuit</span></div>
+      <div class="s-items">
+        <div class="s-item"><b>Python 3.12 et FastAPI</b><p>Créer un projet, répondre à une interaction, suivre la progression, télécharger.</p></div>
+        <div class="s-item"><b>Flux SSE</b><p>Diffusion de la rédaction en direct vers le navigateur.</p></div>
+        <div class="s-item"><b>Comptes et sessions</b><p>Inscription, connexion et jeton signés par l'API elle-même. Le service d'authentification de Supabase n'est pas utilisé : seule sa base l'est.</p></div>
+        <div class="s-item"><b>Contrôle d'activation</b><p>Chaque requête vérifie le drapeau du compte. Un compte non activé est refusé avant d'atteindre le graphe.</p></div>
+      </div>
+    </div>
+    <div class="s-layer">
+      <div><h3 style="color:var(--l2)"><i></i><span style="color:var(--ink)">Agent</span></h3><span class="s-host">Exécuté dans le backend</span></div>
+      <div class="s-items">
+        <div class="s-item"><b>LangGraph</b><p>Graphe principal, sous-graphe de section, pauses, routage et checkpoints Postgres.</p></div>
+        <div class="s-item"><b>LangChain</b><p>Prompts, modèles interchangeables, sorties structurées et streaming.</p></div>
+        <div class="s-item"><b>Pydantic</b><p>Schémas des faits, des questions, de la critique et des hypothèses financières.</p></div>
+        <div class="s-item"><b>Templates YAML</b><p>Structure du CDC et du BP, catalogue de faits et grilles de relecture, versionnés dans Git.</p></div>
+      </div>
+    </div>
+    <div class="s-layer">
+      <div><h3 style="color:var(--l4)"><i></i><span style="color:var(--ink)">Données</span></h3><span class="s-host">Supabase, plan gratuit, région UE</span></div>
+      <div class="s-items">
+        <div class="s-item"><b>PostgreSQL 17</b><p>Comptes, projets rattachés à leur propriétaire, checkpoints LangGraph, sections validées et historique des exports. Le cloisonnement est appliqué par l'API, qui filtre toujours sur le propriétaire.</p></div>
+        <div class="s-item"><b>Table des comptes</b><p>Adresse, empreinte du mot de passe, et un drapeau <code>is_active</code> passé à vrai à la main dans la base. C'est le robinet : personne ne consomme les quotas gratuits sans accord.</p></div>
+        <div class="s-item"><b>Pooler en mode transaction</b><p>Port 6543. Une connexion est rendue au pool à la fin de chaque transaction, ce qui convient à un backend sans état mais interdit de compter sur la moindre variable de session.</p></div>
+        <div class="s-item"><b>Supabase Storage</b><p>Fichiers Word et PDF, téléchargés par lien signé.</p></div>
+      </div>
+    </div>
+    <div class="s-layer">
+      <div><h3 style="color:var(--l4)"><i></i><span style="color:var(--ink)">Documents</span></h3><span class="s-host">Backend et second service Render</span></div>
+      <div class="s-items">
+        <div class="s-item"><b>docxtpl et python-docx</b><p>Remplissage du modèle Word à la charte et tableaux structurés.</p></div>
+        <div class="s-item"><b>matplotlib</b><p>Graphiques du prévisionnel, insérés en images.</p></div>
+        <div class="s-item"><b>Gotenberg</b><p>Conversion du Word en PDF. Repli possible : PDF généré depuis du HTML.</p></div>
+      </div>
+    </div>
+    <div class="s-layer">
+      <div><h3 style="color:var(--l3)"><i></i><span style="color:var(--ink)">Modèles de langage</span></h3><span class="s-host">Cinq paliers gratuits, routés par tâche</span></div>
+      <div class="s-items">
+        <div class="s-item"><b>Trois routes, pas une cascade</b><p>Le nœud demande une capacité — appel court, rédaction, grand contexte — et jamais un fournisseur nommé. La table de routage est un réglage.</p></div>
+        <div class="s-item"><b>Compteurs locaux</b><p>Requêtes par minute, tokens par minute et requêtes par jour suivis par fournisseur. Budget insuffisant pour la section entière : on bascule avant d'ouvrir le flux, pas au milieu.</p></div>
+        <div class="s-item"><b>Plusieurs modèles par fournisseur</b><p>Essayés dans l'ordre. Un modèle retiré ou qui répond hors format coûte un nouvel essai, pas un changement de fournisseur.</p></div>
+        <div class="s-item"><b>Mode simulé</b><p>Réponses factices pour tester le graphe sans réseau ni quota.</p></div>
+      </div>
+    </div>
+    <div class="s-layer">
+      <div><h3 style="color:var(--l5)"><i></i><span style="color:var(--ink)">Qualité et suivi</span></h3><span class="s-host">Outils et plans gratuits</span></div>
+      <div class="s-items">
+        <div class="s-item"><b>LangSmith</b><p>Traces complètes, prompts versionnés, jeux d'évaluation et retours utilisateurs.</p></div>
+        <div class="s-item"><b>pytest</b><p>Tests du graphe et des calculs financiers avec le LLM simulé.</p></div>
+        <div class="s-item"><b>Playwright</b><p>Test du parcours complet dans le navigateur.</p></div>
+        <div class="s-item"><b>GitHub Actions et Docker</b><p>Intégration continue et environnement local identique pour toute l'équipe.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="s-h">Trois routes, un fournisseur par contrainte</h2>
+  <div class="s-table-wrap">
+    <table class="s-table">
+      <thead><tr><th>Tâche</th><th>Appels par projet</th><th>Route</th><th>La contrainte qui décide</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Appels courts structurés<small>Faits, questions, hypothèses chiffrées, auto-critique</small></td>
+          <td>50 à 70<small>1 à 3 k tokens chacun</small></td>
+          <td>Groq Cloud → NVIDIA Build → Mistral</td>
+          <td>Groq plafonne à 12 000 tokens par minute : largement assez à cette taille, et 14 400 requêtes par jour. Ce volume sort ainsi du budget de Gemini.</td>
+        </tr>
+        <tr>
+          <td>Rédaction des sections<small>Longue, diffusée en direct</small></td>
+          <td>21 et plus<small>10 k tokens ou davantage</small></td>
+          <td>Gemini → Mistral → NVIDIA Build</td>
+          <td>Seuls ces deux-là encaissent un prompt de 10 k : 250 000 et 200 000 tokens par minute. Groq en est exclu, un seul appel saturerait sa minute.</td>
+        </tr>
+        <tr>
+          <td>Contrôle de cohérence<small>CDC et BP comparés en entier</small></td>
+          <td>1 à 2<small>Très grand contexte</small></td>
+          <td>OpenRouter → Gemini</td>
+          <td>Le million de tokens de contexte n'existe que là. Ses 50 requêtes par jour suffisent, à condition de ne jamais s'en servir de repli général.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="s-note">Un nœud du graphe ne nomme jamais un fournisseur : il demande une de ces trois capacités. Changer de route est un réglage, pas une modification du graphe.</p>
+
+  <h2 class="s-h">Modèles essayés, dans l'ordre</h2>
+  <div class="s-table-wrap">
+    <table class="s-table">
+      <thead><tr><th>Fournisseur</th><th>Quotas du palier gratuit</th><th>Modèles</th></tr></thead>
+      <tbody>
+        <tr><td>Gemini</td><td>15 req/min · 250 000 tokens/min · 1 000 req/jour</td><td><code>gemini-3.1-flash-lite</code></td></tr>
+        <tr><td>Mistral AI</td><td>1 req/seconde · 200 000 à 315 000 tokens/min</td><td>Modèle par défaut du palier gratuit</td></tr>
+        <tr><td>OpenRouter</td><td>20 req/min · 50 req/jour · jusqu'à 1 000 000 tokens de contexte</td><td><code>openrouter/free</code>, <code>nvidia/nemotron-3-ultra-550b-a55b:free</code>, <code>poolside/laguna-s-2.1:free</code>, <code>inclusionai/ling-3.0-flash-fin:free</code></td></tr>
+        <tr><td>NVIDIA Build</td><td>40 req/min · tokens non plafonnés publiquement</td><td><code>nvidia/nemotron-3.5-lightning-30b-a3b</code>, <code>deepseek-ai/deepseek-v4-flash-0731</code>, <code>minimaxai/minimax-m3</code>, <code>z-ai/glm-5.3</code>, <code>moonshotai/kimi-k3</code></td></tr>
+        <tr><td>Groq Cloud</td><td>30 req/min · 12 000 tokens/min · 14 400 req/jour · 500 000 tokens/jour</td><td><code>groq/compound</code>, <code>openai/gpt-oss-120b</code>, <code>qwen/qwen3.8-27b</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="s-note"><code>meta-llama/llama-prompt-guard-2-86m</code> ne figure pas dans cette liste : ce n'est pas un modèle génératif mais un classifieur d'injections de prompt. Sa place est en amont du graphe, pour filtrer l'idée saisie avant qu'elle n'entre dans les prompts.</p>
+
+  <h2 class="s-h">Limites des offres gratuites et parades</h2>
+  <div class="s-table-wrap">
+    <table class="s-table">
+      <thead><tr><th>Service</th><th>Limite</th><th>Conséquence</th><th>Parade</th></tr></thead>
+      <tbody>
+        <tr><td>Supabase</td><td>Pause après 7 jours d'inactivité</td><td>Application hors ligne jusqu'à la restauration manuelle</td><td>Ouvrir le projet régulièrement, et le réveiller avant chaque session de travail</td></tr>
+        <tr><td>Supabase</td><td>Pooler en mode transaction : la connexion change entre deux transactions</td><td>Toute variable de session posée hors transaction peut disparaître sans prévenir</td><td>Rien ne repose sur l'état de session. Ce qui doit valoir pour une requête est posé en <code>SET LOCAL</code>, dans la transaction</td></tr>
+        <tr><td>Supabase</td><td>Base de 500 Mo, lecture seule au-delà</td><td>Les checkpoints remplissent la base</td><td>Purger les checkpoints intermédiaires à la fin de chaque projet</td></tr>
+        <tr><td>Render</td><td>Veille après 15 minutes sans trafic, environ 1 minute de réveil</td><td>Première action lente après une pause</td><td>Réveiller le backend à l'ouverture de l'application, avec un écran d'attente</td></tr>
+        <tr><td>Render</td><td>Redémarrage ou redéploiement du service</td><td>Rédaction en cours interrompue</td><td>Bouton « Reprendre » depuis le dernier checkpoint</td></tr>
+        <tr><td>Render</td><td>512 Mo de RAM et 0,1 CPU</td><td>Conversion PDF impossible dans le même service</td><td>Gotenberg sur un service séparé, ou PDF généré depuis du HTML</td></tr>
+        <tr><td>Vercel</td><td>Usage personnel et non commercial uniquement</td><td>Aucune tant que l'outil n'est pas ouvert à des clients</td><td>Passer au plan Pro le jour d'une mise en service</td></tr>
+        <tr><td>Fournisseurs de modèles</td><td>Quota par minute atteint pendant une rédaction</td><td>Section coupée au milieu du flux, sous les yeux de l'utilisateur</td><td>Compteur local : si le budget ne couvre pas la section entière, on bascule avant d'ouvrir le flux. Coupure malgré tout : la section repart entière sur le fournisseur suivant</td></tr>
+        <tr><td>Fournisseurs de modèles</td><td>Un modèle gratuit peut disparaître, ralentir ou répondre hors format</td><td>Nœud en échec au milieu d'un projet</td><td>Plusieurs modèles par fournisseur essayés dans l'ordre, puis fournisseur suivant de la route. Sortie validée par un schéma, modèle retenu noté sur la trace</td></tr>
+        <tr><td>OpenRouter</td><td>50 requêtes par jour</td><td>Épuisé par un seul projet s'il sert de repli général</td><td>Tenu hors des routes courantes, réservé au contrôle de cohérence</td></tr>
+        <tr><td>Paliers gratuits</td><td>Les contenus envoyés peuvent servir à améliorer les modèles</td><td>Les idées de projet partent chez cinq tiers</td><td>Le dire clairement dans l'application ; palier payant obligatoire avant tout usage client</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="s-note">Limites relevées en septembre 2026. Les offres gratuites évoluent souvent, et les quotas des fournisseurs de modèles plus vite que les autres : vérifiez-les avant toute mise en service.</p>
+
+  <h2 class="s-h">Organisation du dépôt</h2>
+<pre class="s-tree">esquisse/
+├── web/                    Front Next.js (Vercel)
+│   ├── app/                Projets, parcours guidé, rédaction, exports
+│   └── components/         Cartes d'interaction, éditeur, mémoire du projet
+├── api/                    Backend FastAPI (Render)
+│   ├── routes/             Comptes, projets, interactions, progression, exports
+│   ├── auth/               Inscription, connexion, jetons, contrôle d'activation
+│   ├── agent/
+│   │   ├── graph/          Graphe principal et sous-graphe de section
+│   │   ├── nodes/          Intake, questions, rédaction, critique, validation
+│   │   ├── llm/            Fournisseurs gratuits, rôles de modèle et repli
+│   │   ├── templates/      Cahier des charges, business plan, catalogue de faits
+│   │   └── tools/          Calculs financiers, vérificateur de chiffres
+│   ├── export/             Modèle Word, graphiques, appel à Gotenberg
+│   └── tests/              Graphe avec LLM simulé, calculs
+├── evals/                  Jeux d'évaluation LangSmith
+└── docker-compose.yml      Backend et Gotenberg en local</pre>
+</div>
+</section>
+
+<script>
+const LANES = [
+  {name:"Front Next.js", role:"Affiche les interactions et renvoie les réponses"},
+  {name:"Backend FastAPI", role:"Comptes, projets, interactions, streaming"},
+  {name:"LangGraph", role:"Orchestration, état, pauses et reprises"},
+  {name:"LangChain", role:"Prompts, repli entre fournisseurs, sorties structurées"},
+  {name:"Services", role:"Supabase, outils de calcul, Gotenberg"},
+  {name:"LangSmith", role:"Traces, prompts versionnés, évaluations"}
+];
+const KINDS = {
+  pause:"Pause utilisateur", llm:"Appel LLM", logic:"Logique déterministe",
+  llmpause:"Appel LLM puis pause", tool:"Calcul outillé", export:"Export de documents"
+};
+const PHASES = [
+  {name:"Initialisation", from:1, to:3},
+  {name:"Cadrage", from:4, to:5},
+  {name:"Boucle de section", from:6, to:14, loop:true},
+  {name:"Finalisation", from:15, to:17},
+  {name:"Livraison", from:18, to:18}
+];
+
+const STEPS = [
+{title:"Création du projet", kind:"logic",
+ summary:"L'utilisateur connecté clique sur « Nouveau projet ». Le backend vérifie que son compte est activé, crée le projet à son nom, l'associe à un thread LangGraph et démarre le graphe.",
+ seq:[[0,1,"Créer un projet (jeton de session)","c"],[1,4,"Vérifier le compte et son activation","c"],[1,4,"Enregistrer projet ↔ thread ↔ propriétaire","c"],[1,2,"Démarrer le run","c"],[2,5,"Ouvrir la trace racine","c"],[2,4,"Checkpoint initial","c"]],
+ graph:"Le graphe principal démarre. Le checkpointer Postgres de Supabase enregistre un état vide rattaché au thread : tout ce qui suit pourra être repris à n'importe quel moment.",
+ chain:null,
+ smith:"Une trace racine est ouverte avec des métadonnées : projet, organisation, version des templates, environnement. Toutes les étapes suivantes s'y rattachent, ce qui permet de revoir un projet de bout en bout.",
+ next:"Choix des documents."},
+
+{title:"Choix des documents et des profils", kind:"pause",
+ summary:"Le graphe se met en pause et pose trois questions d'un coup : quels documents, à quoi servira le cahier des charges, qui lira le business plan. Les deux dernières décident des sections et des consignes qui seront activées.",
+ seq:[[2,4,"Checkpoint avant pause","c"],[2,1,"Pause : documents et profils","r"],[1,0,"Interaction à afficher","r"],[0,0,"L'utilisateur choisit « Les deux », « Consulter des prestataires », « Une banque »","c"],[0,1,"Envoyer les réponses","c"],[1,2,"Reprendre le run","c"],[2,4,"Checkpoint (profils enregistrés)","c"]],
+ ui:{type:"setup", groups:[
+   {title:"Quel(s) document(s) voulez-vous générer ?", hint:"Les informations communes ne sont demandées qu'une fois.", options:["Cahier des charges","Business plan","Les deux"], selected:2},
+   {title:"À quoi servira le cahier des charges ?", hint:"Consulter active le cadre de réponse imposé aux prestataires.", options:["Consulter des prestataires","Cadrer mon projet"], selected:0},
+   {title:"Qui lira le business plan ?", hint:"Le lecteur change le ton et l'ordre des arguments, pas les chiffres.", options:["Une banque ou un financeur public","Un investisseur privé"], selected:0}
+ ]},
+ graph:"Le nœud appelle interrupt : le run s'arrête et l'état est persisté. La reprise se fait sur le même thread, même si l'utilisateur revient le lendemain. Les deux profils entrent dans l'état : ils conditionnent les sections du plan et les consignes de rédaction.",
+ chain:null,
+ smith:"La pause et la reprise apparaissent comme deux runs du même thread. Le délai entre les deux correspond au temps de réponse de l'utilisateur. Les profils retenus sont posés en métadonnées : on peut comparer la qualité d'un cahier des charges de consultation et celle d'un cahier des charges de cadrage.",
+ next:"Saisie de l'idée."},
+
+{title:"Saisie de l'idée", kind:"pause",
+ summary:"L'utilisateur décrit son projet en quelques phrases. C'est la seule saisie libre du parcours : tout le reste est guidé.",
+ seq:[[2,1,"Pause : saisie de l'idée","r"],[1,0,"Interaction à afficher","r"],[0,0,"L'utilisateur décrit son projet","c"],[0,1,"Envoyer l'idée","c"],[1,2,"Reprendre le run","c"],[2,4,"Checkpoint (idée enregistrée)","c"]],
+ ui:{type:"text", title:"Décrivez votre projet", hint:"Le problème, pour qui, et comment vous le résolvez.", value:"Une app qui met en relation des coachs sportifs indépendants et des particuliers pour des séances à domicile, avec paiement intégré et une commission sur chaque séance."},
+ graph:"Même mécanique de pause qu'à l'étape précédente. Le texte brut reste dans l'état pour être réutilisé par tous les prompts.",
+ chain:null,
+ smith:"L'idée brute est conservée dans les entrées du run. Une fois anonymisée, elle peut alimenter le jeu de données d'évaluation.",
+ next:"Analyse de l'idée."},
+
+{title:"Analyse de l'idée", kind:"llm",
+ summary:"Le LLM lit l'idée et en extrait les faits déjà connus (solution, cible, modèle de revenus…), chacun avec un niveau de confiance.",
+ seq:[[2,3,"Prompt d'extraction + catalogue de faits","c"],[3,3,"Appel LLM, sortie structurée","c"],[3,5,"Span LLM : fournisseur, tokens, latence","c"],[3,2,"Type de projet + faits + confiances","r"],[2,4,"Checkpoint (faits fusionnés)","c"]],
+ graph:"Les faits reçus sont fusionnés dans la mémoire partagée. Ceux déduits avec une confiance faible seront confirmés plus tard par une question.",
+ chain:"Prompt versionné, sortie structurée validée par un schéma. Le nœud demande la route « appel court » : Groq Cloud, puis NVIDIA Build, puis Mistral. Réponse mal formée : nouvel essai sur le modèle suivant du même fournisseur. Quota ou panne : fournisseur suivant de la route, sans changer le prompt.",
+ smith:"Le prompt est versionné dans LangSmith. Un jeu d'idées réelles anonymisées sert à évaluer l'extraction à chaque modification : un fait inventé compte comme un échec.",
+ next:"Plan de génération."},
+
+{title:"Plan de génération", kind:"logic",
+ summary:"Les templates CDC et BP sont chargés, les sections que les profils retenus n'activent pas sont écartées, puis les sections restantes sont ordonnées selon leurs dépendances : cadrage, détail, puis synthèse.",
+ seq:[[2,4,"Charger les templates (version figée)","c"],[4,2,"Sections + dépendances","r"],[2,2,"Tri topologique par phase","c"],[2,5,"Métadonnées : plan, nombre de sections","c"],[2,1,"Progression : 0 sur 30","r"],[1,0,"Afficher le sommaire prévu","r"]],
+ graph:"Nœud sans LLM. Le plan et le curseur sont écrits dans l'état. Le résumé exécutif, en tête du BP, est placé en dernier dans l'ordre de génération.",
+ chain:null,
+ smith:"Le plan est attaché à la trace : pour chaque projet, on sait quelles sections ont été générées et dans quel ordre.",
+ next:"Boucle de section, en commençant par la première section du plan."},
+
+{title:"Analyse des manques", kind:"logic",
+ summary:"Pour la section en cours, l'agent compare les faits que le template demande aux faits déjà connus. Le template distingue deux niveaux : les faits requis, sans lesquels la section ne peut pas être écrite, et les faits utiles, qui l'enrichissent sans jamais la bloquer.",
+ seq:[[2,4,"Lire la section du template","c"],[4,2,"Faits requis","r"],[2,2,"Comparer aux faits connus","c"],[2,5,"Faits manquants","c"]],
+ graph:"Une arête conditionnelle, sans appel LLM, choisit entre poser des questions et avancer vers la rédaction. Un fait requis manquant impose un tour de questions ; les faits utiles ne sont ajoutés au lot que s'il reste de la place.",
+ chain:null,
+ smith:"Les faits manquants sont notés, en séparant requis et utiles. Une section qui exige beaucoup de faits requis signale un template mal calibré : sur les 74 faits du catalogue, 42 sont requis quelque part et 32 ne sont demandés que si le budget de questions le permet.",
+ next:"Faits manquants et moins de 2 tours de questions : Questions ciblées. Sinon : Calculs déterministes (sections chiffrées) ou Rédaction."},
+
+{title:"Questions ciblées", kind:"llmpause",
+ summary:"Le LLM adapte les questions du catalogue à ce projet précis, puis le graphe se met en pause pour les poser. Les faits requis passent d'abord ; les faits utiles complètent le lot s'il reste de la place.",
+ seq:[[2,3,"Reformuler les questions","c"],[3,2,"Lot de 4 questions maximum","r"],[3,5,"Span LLM","c"],[2,1,"Pause : questions","r"],[1,0,"Formulaire à afficher","r"],[0,0,"L'utilisateur répond","c"],[0,1,"Réponses par fait","c"],[1,2,"Reprendre le run","c"]],
+ ui:{type:"form", context:"Business plan, Compte de résultat prévisionnel", progress:"Section 20 sur 30",
+   questions:[
+     {q:"Quel prix moyen par séance envisagez-vous ?", kind:"input", value:"45 € la séance"},
+     {q:"J'ai compris que la commission est de 20 %. C'est bien ça ?", kind:"confirm", value:"20 % par séance"},
+     {q:"Quelle masse salariale prévoyez-vous la première année ?", kind:"unknown"}
+   ]},
+ graph:"Deux nœuds séparés : la formulation (appel LLM), puis la pause. À la reprise, seul le nœud de pause est rejoué, donc l'appel LLM n'est jamais exécuté deux fois.",
+ chain:"Sortie structurée : une question par fait, avec un exemple et l'hypothèse actuelle quand elle existe. Route « appel court », comme l'extraction des faits.",
+ smith:"Chaque lot de questions est tracé, avec le niveau de chaque fait demandé. Un taux de « Je ne sais pas » élevé sur un fait requis signale un fait mal placé : il devrait être utile, pas requis.",
+ next:"Intégration des réponses."},
+
+{title:"Intégration des réponses", kind:"logic",
+ summary:"Les réponses rejoignent la mémoire de faits partagée. Un « Je ne sais pas » est enregistré comme inconnu et sera rédigé comme hypothèse.",
+ seq:[[2,2,"Fusion dans la mémoire de faits","c"],[2,4,"Checkpoint","c"],[2,5,"Faits ajoutés (source : utilisateur)","c"]],
+ graph:"Le reducer fusionne les nouveaux faits sans écraser les autres. Un fait validé n'est plus jamais redemandé, ni pour le CDC ni pour le BP.",
+ chain:null,
+ smith:"La source de chaque fait (utilisateur, déduit, inconnu) est visible dans l'état tracé.",
+ next:"Retour à l'analyse des manques, pour vérifier que la section est complète."},
+
+{title:"Calculs déterministes", kind:"tool",
+ summary:"Uniquement pour les sections chiffrées (prévisionnel, taille de marché). Le LLM structure les hypothèses, un outil Python fait les calculs.",
+ seq:[[2,3,"Extraire les hypothèses chiffrées","c"],[3,2,"Hypothèses structurées","r"],[2,4,"Outil : P&L, point mort, TAM/SAM/SOM","c"],[4,2,"Tableaux calculés","r"],[2,5,"Span outil : entrées et sorties","c"]],
+ graph:"Les tableaux calculés sont stockés dans l'état et transmis tels quels à la rédaction et à l'export.",
+ chain:"Sortie structurée pour les hypothèses. Le modèle ne calcule aucun chiffre.",
+ smith:"Entrées et sorties de l'outil sont tracées : face à un chiffre contesté, on retrouve immédiatement l'hypothèse d'origine.",
+ next:"Rédaction."},
+
+{title:"Rédaction", kind:"llm",
+ summary:"Le LLM rédige la section à partir des consignes du template, des faits et des sections dont elle dépend. Le texte s'affiche en direct dans l'application.",
+ seq:[[2,3,"Prompt : consignes + faits + sections liées","c"],[3,2,"Tokens en continu","r"],[2,1,"Flux de messages","r"],[1,0,"Texte en direct (SSE)","r"],[3,5,"Span LLM","c"],[3,2,"Brouillon complet","r"]],
+ ui:{type:"stream", context:"Business plan, Compte de résultat prévisionnel", text:"Le chiffre d'affaires atteint 216 000 € dès la première année, porté par 24 000 séances à 45 € avec une commission de 20 %. Le point mort est franchi au cours de la deuxième année"},
+ graph:"LangGraph diffuse les tokens du LLM en continu. Le backend les relaie au navigateur, qui affiche la rédaction au fil de l'eau.",
+ chain:"Un prompt de rédaction par type de section. Les données absentes deviennent des marqueurs « [Donnée à compléter] » et les tableaux sont produits en blocs structurés, pas en texte. Route « rédaction » : Gemini, puis Mistral, puis NVIDIA Build. Le budget tokens est vérifié avant d'ouvrir le flux ; un flux coupé malgré tout repart entier sur le fournisseur suivant.",
+ smith:"Latence du premier token et durée totale par section. Une latence qui grimpe sur une section signale un contexte trop long.",
+ next:"Vérificateur de chiffres."},
+
+{title:"Vérificateur de chiffres", kind:"logic",
+ summary:"Chaque nombre du brouillon doit venir d'un fait fourni ou d'un calcul. Un chiffre orphelin renvoie en rédaction.",
+ seq:[[2,2,"Extraire les nombres du brouillon","c"],[2,2,"Comparer aux faits et calculs","c"],[2,5,"Chiffres orphelins détectés","c"]],
+ graph:"Nœud déterministe, sans LLM. Il garantit le choix de ne pas utiliser la recherche web : aucun chiffre ne peut sortir de la mémoire du modèle.",
+ chain:null,
+ smith:"Le nombre de chiffres orphelins est suivi par version de prompt : s'il augmente, le prompt de rédaction a régressé.",
+ next:"Chiffre orphelin : retour à la Rédaction. Sinon : Auto-critique."},
+
+{title:"Auto-critique", kind:"llm",
+ summary:"Un second appel LLM note le brouillon sur 10 selon la grille du template et liste les problèmes concrets.",
+ seq:[[2,3,"Brouillon + grille du template","c"],[3,2,"Note sur 10 + problèmes","r"],[2,5,"Feedback automatique : note","c"]],
+ graph:"Une arête conditionnelle décide selon la note et le nombre de révisions déjà faites, puis selon le seuil de relecture du template. C'est le nœud qui évite les trente arrêts : une section bien notée passe sans réveiller l'utilisateur.",
+ chain:"Sortie structurée : une note et une liste de problèmes. Route « appel court » : le brouillon entre, quelques lignes sortent, ce qui tient dans les quotas de Groq.",
+ smith:"La note est enregistrée comme feedback sur le run de rédaction. C'est elle qui décide d'interrompre ou non l'utilisateur : il faut donc surveiller la proportion de sections passées sans relecture, et vérifier sur les sections rouvertes après coup que la note ne se trompait pas.",
+ next:"Note sous 7 et moins de 2 révisions : retour à la Rédaction avec les problèmes relevés. Note sous 8, ou section marquée « relecture toujours » : Relecture utilisateur. Sinon : Enregistrement directement."},
+
+{title:"Relecture utilisateur", kind:"pause",
+ summary:"Toutes les sections ne réveillent pas l'utilisateur. Le graphe ne s'arrête que si la note reste sous le seuil après les révisions automatiques, ou si le template marque la section « relecture toujours ». Les autres sont validées sans arrêt et restent ouvrables à tout moment.",
+ seq:[[2,1,"Pause : validation","r"],[1,0,"Brouillon + note + actions","r"],[0,0,"Réviser : « commission à 15 % »","c"],[0,1,"Décision + commentaire","c"],[1,5,"Feedback humain sur la trace","c"],[1,2,"Reprendre le run","c"]],
+ ui:{type:"review", context:"Business plan, Compte de résultat prévisionnel", score:"8/10",
+   excerpt:"Le chiffre d'affaires atteint 216 000 € dès la première année, porté par 24 000 séances à 45 € avec une commission de 20 %. Le besoin de trésorerie maximal dépend de [Donnée à compléter : apport initial des fondateurs].",
+   feedback:"Passe la commission à 15 % et recalcule."},
+ graph:"Sept sections sur trente s'arrêtent quoi qu'il arrive : la première de chaque document, parce qu'elle donne le ton et qu'il vaut mieux le corriger tôt que trente sections plus loin, et celles qui engagent — périmètre, exigences, budget, compte de résultat, plan de financement. Les vingt-trois autres ne s'arrêtent que si la note l'exige. Le nœud renvoie ensuite une commande : Rédaction en cas de révision, avec le commentaire injecté dans le prompt, ou Enregistrement.",
+ chain:null,
+ smith:"La décision est rattachée à la trace comme feedback humain. C'est la mesure de qualité la plus fiable. Une section passée sans arrêt puis rouverte par l'utilisateur est le signal le plus précieux du dispositif : le seuil était trop bas.",
+ next:"Réviser : Calculs déterministes si un chiffre change, puis Rédaction. Approuver ou passer : Enregistrement."},
+
+{title:"Enregistrement", kind:"logic",
+ summary:"La section est figée, le curseur avance et l'application met à jour la progression, en distinguant ce qui a été relu de ce qui est passé sans arrêt.",
+ seq:[[2,2,"Section validée, curseur + 1","c"],[2,4,"Checkpoint","c"],[2,1,"Progression : 20 sur 30","r"],[1,0,"Barre de progression","r"]],
+ ui:{type:"progress", label:"20 sections sur 30, dont 6 relues par vous", pct:67, next:"Prochaine section : Plan de trésorerie sur 12 mois"},
+ graph:"Arête conditionnelle vers la section suivante ou vers la finalisation. Rouvrir une section plus tard invalide automatiquement celles qui en dépendent.",
+ chain:null,
+ smith:"Durée, nombre de révisions et arrêts par section. Le taux d'abandon montre où les utilisateurs décrochent : c'est ce chiffre qui dira si le seuil de relecture est bien placé.",
+ next:"Il reste des sections : Analyse des manques. Plan terminé : Contrôle de cohérence."},
+
+{title:"Contrôle de cohérence", kind:"llmpause",
+ summary:"Les deux documents sont confrontés une dernière fois. Les faits qu'ils partagent ne peuvent pas diverger : ce qui est vérifié ici, ce sont les relations entre faits distincts, les chiffres apparus dans le texte, et les faits modifiés après qu'une section a été validée.",
+ seq:[[2,3,"Sections croisées CDC ↔ BP","c"],[3,2,"Incohérences + corrections proposées","r"],[2,1,"Pause : arbitrage","r"],[1,0,"Incohérences à arbitrer","r"],[0,0,"L'utilisateur tranche","c"],[0,1,"Décisions","c"],[1,2,"Reprendre le run","c"]],
+ ui:{type:"conflict", title:"2 incohérences entre le CDC et le BP",
+   items:[
+     {label:"Les ventes démarrent à 4 mois dans le BP, la livraison est fixée à 6 mois dans le CDC", options:["Décaler le lancement à 6 mois","Avancer la livraison à 4 mois","Ignorer"], selected:0},
+     {label:"Le financement réunit 75 000 €, le besoin total en atteint 90 000 €", options:["Revoir le plan de financement","Réduire le périmètre","Ignorer"], selected:null}
+   ]},
+ graph:"Un fait partagé par les deux documents ne peut pas les faire diverger : la contradiction est évitée par construction, pas détectée après coup. Restent les relations entre faits distincts — une livraison qui doit précéder un lancement, un financement qui doit couvrir un besoin. Une correction acceptée rouvre la section concernée et ses dépendantes, qui repassent par la boucle.",
+ chain:"Sortie structurée : chaque incohérence cite les deux sections concernées et propose une correction. Seul nœud de la route « grand contexte » : les deux documents entiers tiennent dans le million de tokens d'OpenRouter.",
+ smith:"Les incohérences les plus fréquentes révèlent une relation entre faits qui aurait dû être vérifiée plus tôt, dès la section qui l'introduit.",
+ next:"Correction acceptée : retour à la boucle pour les sections rouvertes. Sinon : Rendu Word."},
+
+{title:"Rendu Word", kind:"export",
+ summary:"Les sections structurées sont injectées dans le modèle Word à votre charte : page de garde, sommaire, tableaux, graphiques et annexe des données à compléter.",
+ seq:[[2,4,"Sections + modèle Word","c"],[4,4,"Tableaux et graphiques","c"],[4,4,"Annexe « Données à compléter »","c"],[4,2,"Fichiers .docx (CDC, BP)","r"],[2,5,"Span export : durée, taille","c"]],
+ graph:"Le nœud d'export appelle le service de rendu. Les documents sont construits à partir de l'état structuré, jamais à partir du texte affiché à l'écran.",
+ chain:null,
+ smith:"Les échecs de rendu (tableau trop large, image manquante) remontent en erreurs sur la trace, avec l'état exact qui les a provoqués.",
+ next:"Conversion PDF."},
+
+{title:"Conversion PDF", kind:"export",
+ summary:"Chaque fichier Word est converti en PDF : le PDF est toujours identique au Word.",
+ seq:[[2,4,"Convertir les .docx","c"],[4,4,"Rendu PDF avec Gotenberg","c"],[4,4,"Stockage dans Supabase Storage","c"],[4,2,"PDF + liens de téléchargement","r"],[2,4,"Checkpoint final","c"]],
+ graph:"Si une section a été passée sans validation, un filigrane « Brouillon » est appliqué aux deux formats.",
+ chain:null,
+ smith:"La durée de conversion est suivie, avec une alerte si le service ralentit.",
+ next:"Livraison."},
+
+{title:"Livraison", kind:"logic",
+ summary:"L'application reçoit les liens des quatre fichiers et affiche les données qui restent à compléter.",
+ seq:[[2,1,"Run terminé : fichiers","r"],[1,0,"Liens Word et PDF","r"],[0,0,"Télécharger ou partager","c"],[2,5,"Clôturer la trace","c"]],
+ ui:{type:"delivery", files:[["Cahier des charges","DOCX"],["Cahier des charges","PDF"],["Business plan","DOCX"],["Business plan","PDF"]], todo:"3 données à compléter avant diffusion, listées en annexe."},
+ graph:"Le thread reste consultable. Rouvrir une section plus tard relance un run sur le même thread, sans repartir de zéro.",
+ chain:null,
+ smith:"Tableau de bord global : coût et durée par projet, taux de complétion, révisions moyennes par section, alertes d'erreurs.",
+ next:"Fin du parcours. Une section rouverte relance la boucle uniquement pour elle et ses dépendantes."}
+];
+
+const $ = id => document.getElementById(id);
+let current = 0, laneFilter = null, timer = null;
+const lanesOf = s => new Set(s.seq.flatMap(m => [m[0], m[1]]));
+const esc = t => t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+function buildLegend(){
+  $("legend").innerHTML = LANES.map((l,i) =>
+    `<button class="lane-chip" style="color:var(--l${i})" data-lane="${i}" aria-pressed="false"><span class="sw"></span><span><b>${l.name}</b><small>${l.role}</small></span></button>`
+  ).join("") + `<p class="legend-hint">Cliquez sur une brique pour mettre en évidence les étapes où elle intervient.</p>`;
+  $("legend").querySelectorAll(".lane-chip").forEach(b => b.addEventListener("click", () => {
+    const i = +b.dataset.lane;
+    laneFilter = laneFilter === i ? null : i;
+    $("legend").querySelectorAll(".lane-chip").forEach(x => x.setAttribute("aria-pressed", String(+x.dataset.lane === laneFilter)));
+    applyFilter(); renderSeq(STEPS[current]);
+  }));
+}
+
+function buildRail(){
+  $("rail").innerHTML = PHASES.map((p,i) =>
+    `<button class="phase${p.loop?" loop":""}" data-phase="${i}"><strong>${p.name}</strong><span>${p.from===p.to?`Étape ${p.from}`:`Étapes ${p.from} à ${p.to}`}</span>${p.loop?`<span class="loopnote">↻ répétée pour chaque section</span>`:""}</button>`
+  ).join("");
+  $("rail").querySelectorAll(".phase").forEach(b => b.addEventListener("click", () => { stop(); go(PHASES[+b.dataset.phase].from - 1); }));
+}
+
+function buildSteps(){
+  $("steps").innerHTML = PHASES.map(p => {
+    const items = STEPS.slice(p.from-1, p.to).map((s,k) => {
+      const idx = p.from - 1 + k;
+      const dots = [...lanesOf(s)].sort().map(l => `<i style="background:var(--l${l})"></i>`).join("");
+      return `<button class="step-btn" data-i="${idx}"><span class="n">${idx+1}</span><span><span class="t">${s.title}</span><span class="dots" aria-hidden="true">${dots}</span></span></button>`;
+    }).join("");
+    return `<div class="group-title">${p.name}</div>${items}`;
+  }).join("");
+  $("steps").querySelectorAll(".step-btn").forEach(b => b.addEventListener("click", () => { stop(); go(+b.dataset.i); }));
+}
+
+function applyFilter(){
+  $("steps").querySelectorAll(".step-btn").forEach(b => {
+    const s = STEPS[+b.dataset.i];
+    b.classList.toggle("dim", laneFilter !== null && !lanesOf(s).has(laneFilter));
+  });
+}
+
+function renderSeq(s){
+  $("seqHead").innerHTML = LANES.map((l,i) => `<div style="color:var(--l${i})">${l.name}</div>`).join("");
+  const c = l => (l + 0.5) / 6 * 100;
+  let html = LANES.map((_,i) => `<div class="life" style="left:${c(i)}%"></div>`).join("");
+  s.seq.forEach((m,k) => {
+    const [f,t,label,type] = m;
+    const dim = laneFilter !== null && f !== laneFilter && t !== laneFilter ? " dim" : "";
+    html += `<div class="msg${dim}" style="--d:${k*140}ms;color:var(--l${f})">`;
+    if (f === t){
+      const end = f >= 4;
+      const pos = end ? `right:calc(${100 - c(f)}% + 10px)` : `left:calc(${c(f)}% + 40px)`;
+      html += `<div class="loop" style="left:${c(f)}%"></div><div class="lbl side${end?" end":""}" style="${pos}"><span>${esc(label)}</span></div>`;
+    } else {
+      const a = Math.min(c(f),c(t)), b = Math.max(c(f),c(t));
+      const dir = t > f ? "right" : "left";
+      html += `<div class="lbl" style="left:${(a+b)/2}%;width:max(${b-a}%,150px)"><span>${esc(label)}</span></div>`;
+      html += `<div class="line ${dir}${type==="r"?" ret":""}" style="left:${a}%;width:${b-a}%"></div>`;
+    }
+    html += `</div>`;
+  });
+  $("seqBody").innerHTML = html;
+}
+
+function renderUI(ui){
+  if (!ui) return "";
+  let body = "";
+  if (ui.type === "choice"){
+    body = `<h4>${ui.title}</h4><div class="opt-row">${ui.options.map((o,i)=>`<span class="opt${i===ui.selected?" on":""}">${o}</span>`).join("")}</div>`;
+  } else if (ui.type === "setup"){
+    body = ui.groups.map(g => `<h4>${g.title}${g.hint?`<small>${g.hint}</small>`:""}</h4><div class="opt-row">${g.options.map((o,i)=>`<span class="opt${i===g.selected?" on":""}">${o}</span>`).join("")}</div>`).join("");
+  } else if (ui.type === "text"){
+    body = `<h4>${ui.title}</h4><div class="ctx"><span>${ui.hint}</span></div><div class="field">${ui.value}</div><span class="primary">Continuer</span>`;
+  } else if (ui.type === "form"){
+    body = `<div class="ctx"><span>${ui.context}</span><span>${ui.progress}</span></div>` + ui.questions.map(q => {
+      if (q.kind === "input") return `<div class="q"><label>${q.q}</label><div class="field">${q.value}</div></div>`;
+      if (q.kind === "confirm") return `<div class="q"><label>${q.q}</label><div class="row"><div class="field">${q.value}</div><span class="opt on">Confirmer</span></div></div>`;
+      return `<div class="q"><label>${q.q}</label><div class="field empty">Montant annuel</div><div class="check"><i></i>Je ne sais pas</div></div>`;
+    }).join("") + `<span class="primary">Envoyer les réponses</span>`;
+  } else if (ui.type === "stream"){
+    body = `<div class="ctx"><span>${ui.context}</span><span>Rédaction en cours</span></div><div class="excerpt">${ui.text}<span class="caret">▍</span></div>`;
+  } else if (ui.type === "review"){
+    body = `<div class="ctx"><span>${ui.context}</span><span class="score">Auto-critique ${ui.score}</span></div><div class="excerpt">${ui.excerpt.replace(/\[(.+?)\]/g,"<mark>[$1]</mark>")}</div><div class="opt-row" style="margin-top:12px"><span class="opt">Approuver</span><span class="opt on">Réviser</span><span class="opt">Passer</span></div><div class="q" style="margin:10px 0 0"><label>Votre commentaire</label><div class="field">${ui.feedback}</div></div>`;
+  } else if (ui.type === "progress"){
+    body = `<h4>${ui.label}</h4><div class="bar"><i style="width:${ui.pct}%"></i></div><div class="ctx"><span>${ui.next}</span></div>`;
+  } else if (ui.type === "conflict"){
+    body = `<h4>${ui.title}</h4>` + ui.items.map(it => `<div class="conflict"><p>${it.label}</p><div class="opt-row">${it.options.map((o,i)=>`<span class="opt${i===it.selected?" on":""}">${o}</span>`).join("")}</div></div>`).join("");
+  } else if (ui.type === "delivery"){
+    body = `<h4>Vos documents sont prêts</h4><ul class="files">${ui.files.map(f=>`<li>${f[0]}<em>${f[1]}</em></li>`).join("")}</ul><div class="excerpt"><mark>${ui.todo}</mark></div>`;
+  }
+  return `<p class="ui-title">Ce que voit l'utilisateur</p><div class="host"><div class="host-bar"><i></i>Esquisse</div><div class="host-body">${body}</div></div>`;
+}
+
+function go(i){
+  current = Math.max(0, Math.min(STEPS.length - 1, i));
+  const s = STEPS[current];
+  const phaseIdx = PHASES.findIndex(p => current+1 >= p.from && current+1 <= p.to);
+  $("kicker").textContent = `Étape ${current+1} · ${PHASES[phaseIdx].name}${PHASES[phaseIdx].loop ? " (répétée pour chaque section)" : ""}`;
+  $("title").textContent = s.title;
+  $("kind").textContent = KINDS[s.kind];
+  $("pos").textContent = `${current+1} / ${STEPS.length}`;
+  $("summary").textContent = s.summary;
+  renderSeq(s);
+  const note = (name, lane, text) => `<div class="note${text?"":" none"}" style="color:var(--l${lane})"><h3>${name}</h3><p>${text || "Aucun appel LLM à cette étape."}</p></div>`;
+  $("notes").innerHTML = note("LangGraph", 2, s.graph) + note("LangChain", 3, s.chain) + note("LangSmith", 5, s.smith);
+  $("next-box").innerHTML = `<b>Ensuite</b> : ${s.next}`;
+  $("ui").innerHTML = renderUI(s.ui);
+  $("below").classList.toggle("no-ui", !s.ui);
+  $("steps").querySelectorAll(".step-btn").forEach(b => {
+    if (+b.dataset.i === current){ b.setAttribute("aria-current","step"); b.scrollIntoView({block:"nearest", inline:"nearest"}); }
+    else b.removeAttribute("aria-current");
+  });
+  $("rail").querySelectorAll(".phase").forEach((b,k) => k === phaseIdx ? b.setAttribute("aria-current","true") : b.removeAttribute("aria-current"));
+  $("prev").disabled = current === 0;
+  $("next").disabled = current === STEPS.length - 1;
+}
+
+function stop(){ if (timer){ clearInterval(timer); timer = null; $("play").textContent = "Lecture auto"; } }
+$("prev").addEventListener("click", () => { stop(); go(current - 1); });
+$("next").addEventListener("click", () => { stop(); go(current + 1); });
+$("play").addEventListener("click", () => {
+  if (timer){ stop(); return; }
+  if (current === STEPS.length - 1) go(0);
+  $("play").textContent = "Pause";
+  timer = setInterval(() => { if (current >= STEPS.length - 1){ stop(); return; } go(current + 1); }, 7000);
+});
+document.addEventListener("keydown", e => {
+  if (location.hash !== "#workflow") return;
+  if (e.key === "ArrowRight"){ stop(); go(current + 1); }
+  if (e.key === "ArrowLeft"){ stop(); go(current - 1); }
+});
+
+buildLegend(); buildRail(); buildSteps(); go(0);
+</script>
+<script>
+(function(){
+const el = id => document.getElementById(id);
+const esc = t => String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const eur = n => Math.round(n).toLocaleString("fr-FR") + " €";
+
+const PLAN = [["BP","Problème, solution et proposition de valeur"],["CDC","Contexte et objectifs"],["BP","Porteurs de projet et équipe"],["CDC","Existant et reprise de données"],["CDC","Parties prenantes et utilisateurs"],["CDC","Moyens humains, organisation et suivi"],["BP","Étude de marché"],["BP","Analyse concurrentielle"],["BP","Modèle économique"],["BP","Stratégie marketing et commerciale"],["CDC","Périmètre du projet"],["CDC","Exigences fonctionnelles"],["CDC","Exigences non fonctionnelles"],["CDC","Charte graphique et identité"],["CDC","Contraintes techniques et architecture"],["BP","Plan opérationnel et jalons"],["CDC","Livrables, planning et jalons"],["BP","Moyens et investissements"],["CDC","Budget et modalités"],["BP","Compte de résultat prévisionnel"],["BP","Plan de trésorerie sur 12 mois"],["BP","Seuil de rentabilité et point mort"],["BP","Besoin et plan de financement"],["CDC","Recette et critères d'acceptation"],["CDC","Maintenance et vie du produit"],["BP","Forme juridique et répartition du capital"],["CDC","Risques et points d'attention"],["BP","Risques et plan de mitigation"],["CDC","Cadre de réponse"],["BP","Résumé exécutif"]];
+
+const IDEA = "Une application qui met en relation des coachs sportifs indépendants et des particuliers pour des séances à domicile, avec réservation, paiement intégré et une commission sur chaque séance.";
+
+function financial(pct){
+  const seances = [24000, 36000, 54000];
+  const rows = seances.map((s,i) => `<tr><td>Année ${i+1}</td><td>${s.toLocaleString("fr-FR")}</td><td>${eur(s*45)}</td><td>${eur(s*45*pct/100)}</td></tr>`).join("");
+  return [
+    `<p>Le modèle repose sur une commission de ${pct} % prélevée sur chaque séance réservée, au prix moyen de 45 €. Avec 24 000 séances la première année et une croissance de 50 % par an, le chiffre d'affaires passe de ${eur(seances[0]*45*pct/100)} à ${eur(seances[2]*45*pct/100)} en trois ans.</p>`,
+    `<div class="m-tablewrap"><table><thead><tr><th></th><th>Séances</th><th>Volume d'affaires</th><th>Chiffre d'affaires</th></tr></thead><tbody>${rows}</tbody></table></div>`,
+    `<p>La masse salariale est estimée à 90 000 € la première année <mark>[Hypothèse]</mark>, faute d'information fournie. Le besoin de trésorerie maximal dépend de <mark>[Donnée à compléter : apport initial des fondateurs]</mark>.</p>`
+  ];
+}
+
+const USES = ["Consulter des prestataires","Cadrer mon projet"];
+const READERS = ["Une banque ou un financeur public","Un investisseur privé"];
+
+const SCENES = [
+  {plan:0, title:"Problème, solution et proposition de valeur", score:"8/10", revise:"Ajoute un exemple concret de client type.",
+   questions:[
+     {label:"Problème adressé", q:"Quel problème concret votre projet résout-il, et pour qui ?", kind:"input", value:"Trouver un coach fiable et disponible à domicile prend du temps, et les coachs indépendants peinent à remplir leur agenda."},
+     {label:"Proposition de valeur", q:"Pourquoi un client choisirait-il votre application plutôt que de chercher un coach lui-même ?", kind:"input", value:"Coachs vérifiés, réservation en deux minutes, paiement sécurisé."},
+     {label:"Solution", q:"J'ai compris que la solution est une application de mise en relation avec réservation et paiement intégrés. C'est bien ça ?", kind:"confirm", value:"Application de mise en relation avec réservation et paiement intégrés"}
+   ],
+   draft:() => [
+     `<p>Trouver un coach sportif fiable et disponible pour des séances à domicile reste compliqué : les particuliers passent par le bouche-à-oreille ou par des annonces peu vérifiées, et les coachs indépendants peinent à remplir leur agenda.</p>`,
+     `<p>CoachDom réunit ces deux publics dans une application unique. Les coachs sont vérifiés, la réservation prend deux minutes et le paiement est sécurisé, avec une commission prélevée sur chaque séance.</p>`
+   ],
+   draft2:() => [
+     `<p>Trouver un coach sportif fiable et disponible pour des séances à domicile reste compliqué : les particuliers passent par le bouche-à-oreille ou par des annonces peu vérifiées, et les coachs indépendants peinent à remplir leur agenda.</p>`,
+     `<p>Exemple : Claire, 38 ans, veut reprendre le sport sans dépendre des horaires d'une salle. Elle réserve le mardi soir une séance avec une coach certifiée qui habite à dix minutes de chez elle.</p>`,
+     `<p>CoachDom réunit ces deux publics dans une application unique. Les coachs sont vérifiés, la réservation prend deux minutes et le paiement est sécurisé, avec une commission prélevée sur chaque séance.</p>`
+   ]},
+  {plan:1, title:"Contexte et objectifs", score:"9/10", revise:"Précise comment les objectifs seront suivis.",
+   note:"Le problème et la solution sont déjà connus grâce au business plan : une seule question pour cette section.",
+   questions:[
+     {label:"Indicateurs de succès", q:"Quels indicateurs mesureront le succès du projet à 6 et 12 mois ?", kind:"input", value:"500 séances réservées par mois à 6 mois, 60 coachs actifs à 12 mois."}
+   ],
+   draft:() => [
+     `<p>Le projet consiste à concevoir une application web et mobile de mise en relation entre coachs sportifs indépendants et particuliers pour des séances à domicile, avec réservation et paiement intégrés.</p>`,
+     `<p>Objectifs à 6 mois : 500 séances réservées par mois. Objectifs à 12 mois : 60 coachs actifs et une note de satisfaction moyenne supérieure à 4,5 sur 5 <mark>[Hypothèse]</mark>.</p>`
+   ],
+   draft2:() => [
+     `<p>Le projet consiste à concevoir une application web et mobile de mise en relation entre coachs sportifs indépendants et particuliers pour des séances à domicile, avec réservation et paiement intégrés.</p>`,
+     `<p>Objectifs à 6 mois : 500 séances réservées par mois. Objectifs à 12 mois : 60 coachs actifs et une note de satisfaction moyenne supérieure à 4,5 sur 5 <mark>[Hypothèse]</mark>.</p>`,
+     `<p>Ces indicateurs seront suivis chaque mois dans le tableau de bord d'administration, à partir des réservations et des avis laissés après chaque séance.</p>`
+   ]},
+  {plan:19, title:"Compte de résultat prévisionnel", score:"8/10", revise:"Passe la commission à 15 % et recalcule.",
+   questions:[
+     {label:"Prix moyen par séance", q:"Quel prix moyen par séance envisagez-vous ?", kind:"input", value:"45 €"},
+     {label:"Commission", q:"J'ai compris que la commission est de 20 % par séance. C'est bien ça ?", kind:"confirm", value:"20 % par séance"},
+     {label:"Masse salariale", q:"Quelle masse salariale prévoyez-vous la première année ?", kind:"unknown", value:"", unknown:true}
+   ],
+   draft:() => financial(20), draft2:() => financial(15)}
+];
+
+const mk = arr => arr.map(([label,value,src]) => ({label, value, src, fresh:false}));
+const FACTS_IDEA = [["Solution","Application de mise en relation entre coachs indépendants et particuliers","inferred"],["Cibles","Particuliers et coachs sportifs indépendants","inferred"],["Modèle de revenus","Commission sur chaque séance","inferred"],["Fonctionnalités clés","Réservation et paiement intégré","inferred"]];
+const FACTS_COACHDOM = [["Problème adressé","Trouver un coach fiable à domicile prend du temps","user"],["Solution","Application de mise en relation avec réservation et paiement","user"],["Cibles","Particuliers et coachs sportifs indépendants","user"],["Proposition de valeur","Coachs vérifiés, réservation en deux minutes","user"],["Indicateurs de succès","500 séances par mois à 6 mois","user"],["Marché géographique","Lyon, puis les grandes villes françaises","user"],["Modèle de revenus","Commission sur chaque séance","user"],["Concurrents","Annonces en ligne, salles de sport, coaching vidéo","user"],["Budget projet","60 000 €","user"]];
+const SRC = {user:"Vous", inferred:"Déduit", unknown:"Inconnu"};
+const URLS = {auth:"/connexion", pending:"/compte/en-attente", dashboard:"/projets", choose:"/projets/nouveau", idea:"/projets/nouveau/idee", analyzing:"/projets/nouveau/analyse", workspace:"/projets/coachdom", coherence:"/projets/coachdom/coherence", exporting:"/projets/coachdom/exports", exports:"/projets/coachdom/exports"};
+const PILLS = [["auth","Connexion"],["dashboard","Tableau de bord"],["choose","Choix des documents"],["idea","Idée"],["workspace","Rédaction"],["coherence","Cohérence"],["exports","Exports"]];
+const PILL_OF = {analyzing:"idea", exporting:"exports", pending:"auth"};
+// Sections que le template marque « relecture toujours », ou dont la note est restée basse.
+const RELUES = 6;
+
+const S = {screen:"dashboard", auth:"login", doc:2, use:0, reader:0, idea:IDEA, scene:0, phase:"questions", version:1, revising:false, facts:[], conflicts:[null,null], errs:{}, blocks:0, an:0, ex:0, toast:""};
+let timers = [];
+const clearTimers = () => { timers.forEach(t => { clearTimeout(t); clearInterval(t); }); timers = []; };
+
+function go(screen, focus = true){
+  clearTimers();
+  S.screen = screen; S.errs = {}; S.toast = "";
+  render();
+  if (focus){ const h = el("m-app").querySelector(".m-h"); if (h){ h.setAttribute("tabindex","-1"); h.focus({preventScroll:true}); } }
+  if (screen === "analyzing") runAnalyze();
+  if (screen === "exporting") runExport();
+}
+function openCoachdom(phase = "questions", version = 1){
+  S.scene = 2; S.phase = phase; S.version = version; S.revising = false; S.blocks = 99;
+  S.facts = mk(FACTS_COACHDOM);
+  go("workspace");
+}
+function startNew(){ S.doc = 2; S.idea = IDEA; S.facts = []; S.scene = 0; go("choose"); }
+
+function bar(){
+  return `<div class="m-bar"><button class="m-logo" data-a="dashboard"><span class="mark" aria-hidden="true"></span>Esquisse</button><div class="m-bar-r"><button class="m-link" data-a="dashboard">Mes projets</button><span class="m-avatar" title="Lucie Renard — compte activé">LR</span></div></div>`;
+}
+function stepper(n){
+  return `<div class="m-stepper">${["Documents","Idée","Rédaction"].map((s,i) => `<span class="${i+1===n?"on":i+1<n?"past":""}"><em>${i+1}</em>${s}</span>`).join("")}</div>`;
+}
+const err = key => S.errs[key] ? `<p class="m-err" id="m-err-${key}">${S.errs[key]}</p>` : "";
+
+const SCREENS = {
+  auth: () => {
+    const reg = S.auth === "register";
+    return `<div class="m-body m-narrow">
+    <h3 class="m-h">${reg ? "Créer un compte" : "Se connecter"}</h3>
+    <p class="m-muted">${reg ? "L'accès se fait sur demande : le compte est créé tout de suite, mais activé à la main avant la première rédaction." : "Entrez les identifiants d'un compte activé. La session est ouverte par l'API d'Esquisse."}</p>
+    <div style="margin-top:20px"><label class="m-label" for="m-email">Adresse e-mail</label><input id="m-email" class="m-input" type="email" value="lucie.renard@exemple.fr"></div>
+    <div style="margin-top:14px"><label class="m-label" for="m-pass">Mot de passe</label><input id="m-pass" class="m-input" type="password" value="motdepasse"></div>
+    <div class="m-actions"><button class="m-btn sec" data-a="${reg ? "to-login" : "to-register"}">${reg ? "J'ai déjà un compte" : "Créer un compte"}</button><button class="m-btn" data-a="${reg ? "pending" : "dashboard"}">${reg ? "Demander un accès" : "Se connecter"}</button></div>
+  </div>`;
+  },
+
+  pending: () => `<div class="m-body m-narrow">
+    <h3 class="m-h">Votre compte attend son activation</h3>
+    <p class="m-muted">Le compte existe, mais il n'ouvre encore rien. Un administrateur le valide dans la base avant de vous laisser lancer une rédaction : c'est ce qui permet de maîtriser qui consomme les quotas de génération.</p>
+    <div class="m-pending"><b>lucie.renard@exemple.fr</b><span class="m-muted small">Compte créé · en attente d'activation</span></div>
+    <p class="m-muted small" style="margin-top:16px">Vous serez prévenu dès l'activation. D'ici là, la création de projet reste fermée.</p>
+    <div class="m-actions"><button class="m-btn sec" data-a="to-login">Retour à la connexion</button><button class="m-btn" data-a="dashboard">Simuler l'activation</button></div>
+  </div>`,
+
+  dashboard: () => `<div class="m-body">
+    <div class="m-head"><div><h3 class="m-h">Mes projets</h3><p class="m-muted">3 projets, dont 2 en cours de rédaction</p></div><button class="m-btn" data-a="new">Nouveau projet</button></div>
+    <div class="m-projects">
+      <button class="m-proj" data-a="coachdom"><span class="m-proj-top"><b>CoachDom</b><span class="m-tag">En cours</span></span><span class="m-muted small">Cahier des charges et business plan</span><span class="m-prog"><i style="width:63%"></i></span><span class="m-muted small">19 sections validées sur 30, modifié il y a 2 heures</span></button>
+      <button class="m-proj" data-a="exports"><span class="m-proj-top"><b>Vrac et Compagnie</b><span class="m-tag done">Terminé</span></span><span class="m-muted small">Business plan</span><span class="m-prog"><i style="width:100%"></i></span><span class="m-muted small">11 sections validées sur 11, exporté le 2 septembre</span></button>
+      <button class="m-proj" data-a="demo-toast"><span class="m-proj-top"><b>Covoit'Campus</b><span class="m-tag">En cours</span></span><span class="m-muted small">Cahier des charges</span><span class="m-prog"><i style="width:40%"></i></span><span class="m-muted small">4 sections validées sur 10, modifié hier</span></button>
+    </div></div>`,
+
+  choose: () => `<div class="m-body m-narrow">${stepper(1)}
+    <h3 class="m-h">Quel(s) document(s) voulez-vous générer ?</h3>
+    <p class="m-muted">Les informations communes aux deux documents ne vous seront demandées qu'une seule fois.</p>
+    <div class="m-tiles">${[["Cahier des charges","15 sections","Besoins, exigences, contraintes, planning et budget pour cadrer la réalisation."],["Business plan","15 sections","Marché, modèle économique, stratégie et prévisionnel financier sur trois ans."],["Les deux","30 sections","Les deux documents rédigés en cohérence, avec un contrôle croisé à la fin."]].map((t,i) =>
+      `<button class="m-tile" data-a="doc:${i}" aria-pressed="${S.doc===i}"><b>${t[0]}</b><span class="m-muted small">${t[1]}</span><span class="small">${t[2]}</span></button>`).join("")}</div>
+    ${S.doc !== 1 ? `<div class="m-profile"><p class="m-cap">À quoi servira le cahier des charges ?</p><p class="m-muted small">Pour consulter des prestataires, le document doit être opposable : il gagne une section « cadre de réponse » et un niveau d'exigence sur chaque besoin.</p><div class="m-chips">${USES.map((u,i) => `<button class="m-chip" data-a="use:${i}" aria-pressed="${S.use===i}">${u}</button>`).join("")}</div></div>` : ""}
+    ${S.doc !== 0 ? `<div class="m-profile"><p class="m-cap">Qui lira le business plan ?</p><p class="m-muted small">Le lecteur change le ton et l'ordre des arguments. Les chiffres, eux, ne bougent pas.</p><div class="m-chips">${READERS.map((r,i) => `<button class="m-chip" data-a="reader:${i}" aria-pressed="${S.reader===i}">${r}</button>`).join("")}</div></div>` : ""}
+    <div class="m-actions"><button class="m-btn sec" data-a="dashboard">Annuler</button><button class="m-btn" data-a="to-idea">Continuer</button></div></div>`,
+
+  idea: () => `<div class="m-body m-narrow">${stepper(2)}
+    <h3 class="m-h">Décrivez votre projet</h3>
+    <p class="m-muted">Quelques phrases suffisent : le problème, pour qui, et comment vous le résolvez.</p>
+    <div style="margin-top:18px"><label class="m-label" for="m-idea">Votre idée</label><textarea id="m-idea" class="m-input" rows="5">${esc(S.idea)}</textarea>${err("idea")}</div>
+    <div class="m-actions"><button class="m-btn sec" data-a="choose">Retour</button><button class="m-btn" data-a="analyze">Analyser mon idée</button></div></div>`,
+
+  analyzing: () => `<div class="m-body m-narrow">${stepper(2)}
+    <h3 class="m-h">Analyse de votre idée</h3><p class="m-muted">L'agent prépare votre plan de rédaction.</p>
+    <ul class="m-steps">${["Lecture de votre idée","4 informations extraites, dont 1 à confirmer","Plan de rédaction construit : 30 sections"].map((s,i) => `<li class="${i<S.an?"ok":i===S.an?"run":""}"><span class="ic"></span>${s}</li>`).join("")}</ul></div>`,
+
+  workspace: () => {
+    const sc = SCENES[S.scene];
+    const idx = S.phase === "done" ? 30 : sc.plan;
+    const plan = PLAN.map((p,i) => `<li class="${i<idx?"ok":i===idx?"now":""}"><span class="st"></span><span>${p[1]}</span><span class="m-doc">${p[0]}</span></li>`).join("");
+    const facts = S.facts.length ? S.facts.map(f => `<div class="m-fact${f.fresh?" fresh":""}"><b>${f.label}<span class="m-src ${f.src}">${SRC[f.src]}</span></b><span class="v">${esc(f.value)}</span></div>`).join("") : `<p class="m-muted small">Les informations apparaîtront ici au fil de vos réponses.</p>`;
+    return `<div class="m-ws">
+      <aside class="m-col plan"><p class="m-cap">Ordre de rédaction</p><div class="m-prog"><i style="width:${idx/30*100}%"></i></div><p class="m-muted small">${idx} sections sur 30 · ${Math.min(idx,RELUES)} relues par vous, ${Math.max(0,idx-RELUES)} passées sans arrêt</p><ol class="m-planlist">${plan}</ol></aside>
+      <div class="m-col center">${center(sc, idx)}</div>
+      <aside class="m-col facts"><p class="m-cap">Mémoire du projet</p><p class="m-muted small">Partagée entre le cahier des charges et le business plan.</p><div class="m-legend"><span class="m-src user">Vous</span><span class="m-src inferred">Déduit</span><span class="m-src unknown">Inconnu</span></div><div class="m-facts">${facts}</div></aside>
+    </div>`;
+  },
+
+  coherence: () => `<div class="m-body m-narrow">
+    <h3 class="m-h">2 incohérences entre le cahier des charges et le business plan</h3>
+    <p class="m-muted">Choisissez comment les résoudre. Les sections concernées seront mises à jour avant l'export.</p>
+    ${CONFLICTS.map((c,i) => `<div class="m-conf"><b>${c.t}</b><p class="m-muted small">${c.d}</p><div class="m-chips">${c.o.map((o,j) => `<button class="m-chip" data-a="cf:${i}:${j}" aria-pressed="${S.conflicts[i]===j}">${o}</button>`).join("")}</div></div>`).join("")}
+    ${err("cf")}
+    <div class="m-actions"><button class="m-btn sec" data-a="back-done">Retour à la rédaction</button><button class="m-btn" data-a="generate">Générer les documents</button></div></div>`,
+
+  exporting: () => `<div class="m-body m-narrow">
+    <h3 class="m-h">Génération des documents</h3><p class="m-muted">Cela prend généralement moins d'une minute.</p>
+    <ul class="m-steps">${["Mise à jour des sections concernées","Rendu Word avec le modèle à la charte","Conversion PDF avec Gotenberg","Enregistrement dans Supabase Storage"].map((s,i) => `<li class="${i<S.ex?"ok":i===S.ex?"run":""}"><span class="ic"></span>${s}</li>`).join("")}</ul></div>`,
+
+  exports: () => `<div class="m-body">
+    <div class="m-head"><div><h3 class="m-h">Vos documents sont prêts</h3><p class="m-muted">CoachDom, version 2, générée aujourd'hui</p></div><button class="m-btn sec" data-a="reopen">Rouvrir une section</button></div>
+    <div class="m-docs">${[["Cahier des charges","10 sections, 24 pages"],["Business plan","11 sections, 31 pages"]].map(d => `<div class="m-docc"><div class="m-thumb" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><div><b>${d[0]}</b><span class="m-muted small">${d[1]}</span><div class="m-row"><button class="m-btn sm" data-a="dl">Télécharger le Word</button><button class="m-btn sm sec" data-a="dl">Télécharger le PDF</button></div></div></div>`).join("")}</div>
+    <div class="m-split">
+      <div><p class="m-cap">Données à compléter avant diffusion</p><ul class="m-list">
+        <li><span><mark>Apport initial des fondateurs</mark></span><span class="m-muted small">Business plan, Besoin et plan de financement</span></li>
+        <li><span><mark>Nombre de coachs indépendants à Lyon</mark></span><span class="m-muted small">Business plan, Étude de marché</span></li>
+        <li><span><mark>Coût de l'assurance des coachs</mark></span><span class="m-muted small">Cahier des charges, Budget et modalités</span></li>
+      </ul></div>
+      <div><p class="m-cap">Historique des versions</p><ul class="m-list">
+        <li><b>Version 2</b><span class="m-muted small">Aujourd'hui, après arbitrage des incohérences</span></li>
+        <li><b>Version 1</b><span class="m-muted small">Hier, première génération complète</span></li>
+      </ul></div>
+    </div></div>`
+};
+
+const CONFLICTS = [
+  {t:"Le lancement est annoncé avant la livraison", d:"Le cahier des charges fixe la livraison à 6 mois (Livrables, planning et jalons). Le business plan fait démarrer les ventes à 4 mois (Plan opérationnel et jalons, Plan de trésorerie sur 12 mois).", o:["Décaler le lancement à 6 mois","Avancer la livraison à 4 mois","Ignorer"]},
+  {t:"Le financement ne couvre pas le besoin", d:"Le plan de financement réunit 75 000 € (Besoin et plan de financement). Le budget de développement (60 000 €, repris du cahier des charges) et les investissements hors développement (30 000 €) totalisent 90 000 €.", o:["Revoir le plan de financement","Réduire le périmètre","Ignorer"]}
+];
+
+function center(sc, idx){
+  if (S.phase === "done"){
+    return `<div class="m-done"><h3 class="m-h">Rédaction terminée</h3><p>Vous avez relu 6 sections sur 30 : celles qui engagent, et celles dont la relecture automatique n'était pas satisfaite. Les 24 autres sont passées sans vous interrompre et restent ouvrables depuis le plan, à gauche.</p><p>L'agent va maintenant comparer le cahier des charges et le business plan.</p><button class="m-btn" data-a="coherence">Lancer le contrôle de cohérence</button></div>`;
+  }
+  const head = `<div class="m-sechead"><span class="m-doc">${PLAN[idx][0]==="BP"?"Business plan":"Cahier des charges"}</span><span class="m-muted small">Section ${idx+1} sur 30</span></div><h3 class="m-h">${sc.title}</h3>`;
+  if (S.phase === "questions"){
+    const qs = sc.questions.map((q,i) => {
+      let field = `<input class="m-input" id="m-q${i}" value="${esc(q.value)}">`;
+      if (q.kind === "confirm") field += `<p class="m-hint">Hypothèse déduite de votre idée : modifiez-la si elle est incorrecte.</p>`;
+      if (q.kind === "unknown") field = `<input class="m-input" id="m-q${i}" placeholder="Montant annuel en euros" value="${esc(q.value)}"${q.unknown?" disabled":""}><label class="m-check"><input type="checkbox" id="m-u${i}"${q.unknown?" checked":""}> Je ne sais pas</label>`;
+      return `<div class="m-q"><label class="m-label" for="m-q${i}">${q.q}</label>${field}${err("q"+i)}</div>`;
+    }).join("");
+    return `${head}<p class="m-muted" style="margin-bottom:16px">${sc.questions.length===1?"Une information manque":"Quelques informations manquent"} pour rédiger cette section.</p>${sc.note?`<p class="m-note">${sc.note}</p>`:""}${qs}<div class="m-actions" style="justify-content:flex-start"><button class="m-btn" data-a="answer">Envoyer les réponses</button></div>`;
+  }
+  const blocks = (S.version === 1 ? sc.draft : sc.draft2)();
+  const shown = S.phase === "drafting" ? blocks.slice(0, S.blocks) : blocks;
+  const paper = `<div class="m-paper">${shown.map((b,i) => S.phase==="drafting" && i===S.blocks-1 ? `<div class="m-appear">${b}</div>` : b).join("")}${S.phase==="drafting"?`<span class="m-caret" aria-hidden="true"></span>`:""}</div>`;
+  if (S.phase === "drafting"){
+    return `${head}<div class="m-status"><span class="m-pulse" aria-hidden="true"></span><span class="m-muted">Rédaction en cours, version ${S.version}</span></div>${paper}`;
+  }
+  const actions = S.revising
+    ? `<div style="margin-top:18px;max-width:72ch"><label class="m-label" for="m-fb">Que faut-il changer ?</label><textarea id="m-fb" class="m-input" rows="3">${esc(sc.revise)}</textarea>${err("fb")}<div class="m-actions" style="justify-content:flex-start"><button class="m-btn" data-a="rerun">Relancer la rédaction</button><button class="m-btn sec" data-a="revise-cancel">Annuler</button></div></div>`
+    : `<div class="m-actions" style="justify-content:flex-start"><button class="m-btn" data-a="approve">Approuver</button><button class="m-btn sec" data-a="revise">Demander une révision</button><button class="m-btn sec" data-a="skip">Passer la section</button></div>`;
+  return `${head}<div class="m-status"><span class="m-src user">Auto-critique ${sc.score}</span><span class="m-muted small">Version ${S.version}, prête à relire</span></div>${paper}${actions}`;
+}
+
+function render(){
+  el("m-url").textContent = "esquisse.vercel.app" + (URLS[S.screen] || "/");
+  const active = PILL_OF[S.screen] || S.screen;
+  el("m-pills").innerHTML = PILLS.map(p => `<button class="m-pill" data-p="${p[0]}" aria-current="${p[0]===active}">${p[1]}</button>`).join("");
+  el("m-app").innerHTML = bar() + SCREENS[S.screen]() + (S.toast ? `<div class="m-toast" role="status">${S.toast}</div>` : "");
+}
+
+function runAnalyze(){
+  S.an = 0; render();
+  const step = reduce ? 350 : 900;
+  [1,2,3].forEach(n => timers.push(setTimeout(() => { S.an = n; render(); }, step*n)));
+  timers.push(setTimeout(() => {
+    S.facts = mk(FACTS_IDEA); S.scene = 0; S.phase = "questions"; S.version = 1; S.revising = false;
+    go("workspace");
+  }, step*3 + 500));
+}
+function runExport(){
+  S.ex = 0; render();
+  const step = reduce ? 300 : 800;
+  [1,2,3,4].forEach(n => timers.push(setTimeout(() => { S.ex = n; render(); }, step*n)));
+  timers.push(setTimeout(() => go("exports"), step*4 + 400));
+}
+function runDraft(){
+  clearTimers();
+  S.phase = "drafting"; S.blocks = 1; render();
+  const total = (S.version === 1 ? SCENES[S.scene].draft : SCENES[S.scene].draft2)().length;
+  const t = setInterval(() => {
+    if (S.blocks >= total){ clearInterval(t); S.phase = "review"; S.facts.forEach(f => f.fresh = false); render(); return; }
+    S.blocks++; render();
+  }, reduce ? 250 : 900);
+  timers.push(t);
+}
+function syncInputs(){
+  if (S.screen !== "workspace" || S.phase !== "questions") return;
+  SCENES[S.scene].questions.forEach((q,i) => {
+    const inp = el("m-q"+i); if (inp) q.value = inp.value;
+    const u = el("m-u"+i); if (u) q.unknown = u.checked;
+  });
+}
+function setFact(label, value, src){
+  const f = S.facts.find(x => x.label === label);
+  if (f){ f.value = value; f.src = src; f.fresh = true; }
+  else S.facts.push({label, value, src, fresh:true});
+}
+function toast(msg){
+  S.toast = msg; render();
+  timers.push(setTimeout(() => { S.toast = ""; render(); }, 2600));
+}
+
+el("m-pills").addEventListener("click", e => {
+  const b = e.target.closest("[data-p]"); if (!b) return;
+  const p = b.dataset.p;
+  if (p === "choose") startNew();
+  else if (p === "idea"){ S.idea = IDEA; go("idea"); }
+  else if (p === "workspace") openCoachdom();
+  else if (p === "coherence"){ S.conflicts = [null,null]; go("coherence"); }
+  else go(p);
+});
+
+el("m-app").addEventListener("change", e => {
+  const m = e.target.id && e.target.id.match(/^m-u(\d+)$/);
+  if (m){ const inp = el("m-q"+m[1]); if (inp){ inp.disabled = e.target.checked; if (!e.target.checked) inp.focus(); } const er = el("m-err-q"+m[1]); if (er) er.remove(); }
+});
+el("m-app").addEventListener("input", e => {
+  if (e.target.id === "m-idea"){ S.idea = e.target.value; const er = el("m-err-idea"); if (er){ er.remove(); delete S.errs.idea; } }
+  const m = e.target.id && e.target.id.match(/^m-q(\d+)$/);
+  if (m){ const er = el("m-err-q"+m[1]); if (er){ er.remove(); delete S.errs["q"+m[1]]; } }
+  if (e.target.id === "m-fb"){ const er = el("m-err-fb"); if (er){ er.remove(); delete S.errs.fb; } }
+});
+
+el("m-app").addEventListener("click", e => {
+  const b = e.target.closest("[data-a]"); if (!b) return;
+  const a = b.dataset.a;
+  syncInputs();
+  if (a === "dashboard") return go("dashboard");
+  if (a === "to-login"){ S.auth = "login"; return go("auth"); }
+  if (a === "to-register"){ S.auth = "register"; return go("auth"); }
+  if (a === "pending") return go("pending");
+  if (a === "new") return startNew();
+  if (a === "coachdom") return openCoachdom();
+  if (a === "exports") return go("exports");
+  if (a === "demo-toast") return toast("Dans la maquette, seul le projet CoachDom est ouvert en rédaction.");
+  if (a.startsWith("doc:")){ S.doc = +a.split(":")[1]; return render(); }
+  if (a.startsWith("use:")){ S.use = +a.split(":")[1]; return render(); }
+  if (a.startsWith("reader:")){ S.reader = +a.split(":")[1]; return render(); }
+  if (a === "choose") return go("choose");
+  if (a === "to-idea") return go("idea");
+  if (a === "analyze"){
+    if (S.idea.trim().length < 20){ S.errs.idea = "Décrivez votre projet en une ou deux phrases au minimum."; render(); el("m-idea").focus(); return; }
+    return go("analyzing");
+  }
+  if (a === "answer"){
+    const sc = SCENES[S.scene]; S.errs = {};
+    sc.questions.forEach((q,i) => {
+      if (q.kind === "unknown" && q.unknown) return;
+      if (!q.value.trim()) S.errs["q"+i] = q.kind === "unknown" ? "Indiquez un montant ou cochez « Je ne sais pas »." : "Répondez à cette question pour continuer.";
+    });
+    if (Object.keys(S.errs).length){ render(); const first = el("m-q"+Object.keys(S.errs)[0].slice(1)); if (first) first.focus(); return; }
+    S.facts.forEach(f => f.fresh = false);
+    sc.questions.forEach(q => q.kind === "unknown" && q.unknown ? setFact(q.label, "Non renseigné, rédigé comme hypothèse", "unknown") : setFact(q.label, q.value.trim(), "user"));
+    S.version = 1; S.revising = false;
+    return runDraft();
+  }
+  if (a === "approve" || a === "skip"){
+    S.revising = false; S.version = 1;
+    if (S.scene < SCENES.length - 1){ S.scene++; S.phase = "questions"; }
+    else S.phase = "done";
+    return go("workspace");
+  }
+  if (a === "revise"){ S.revising = true; render(); const fb = el("m-fb"); if (fb) fb.focus(); return; }
+  if (a === "revise-cancel"){ S.revising = false; return render(); }
+  if (a === "rerun"){
+    const fb = el("m-fb");
+    if (!fb || !fb.value.trim()){ S.errs.fb = "Indiquez ce qu'il faut modifier."; render(); el("m-fb").focus(); return; }
+    SCENES[S.scene].revise = fb.value; S.revising = false; S.version = 2;
+    if (S.scene === 2){ S.facts.forEach(f => f.fresh = false); setFact("Commission", "15 % par séance", "user"); }
+    return runDraft();
+  }
+  if (a === "coherence"){ S.conflicts = [null,null]; return go("coherence"); }
+  if (a.startsWith("cf:")){ const [,i,j] = a.split(":"); S.conflicts[+i] = +j; delete S.errs.cf; return render(); }
+  if (a === "back-done"){ S.phase = "done"; return go("workspace"); }
+  if (a === "generate"){
+    if (S.conflicts.some(c => c === null)){ S.errs.cf = "Choisissez une option pour chaque incohérence avant de générer les documents."; return render(); }
+    return go("exporting");
+  }
+  if (a === "dl") return toast("Téléchargement simulé : aucun fichier n'est généré dans la maquette.");
+  if (a === "reopen") return openCoachdom("review", 2);
+});
+
+go("dashboard", false);
+})();
+
+(function(){
+  const PAGES = ["maquette","workflow","stack"];
+  const TITLES = {maquette:"Maquette", workflow:"Workflow", stack:"Stack technique"};
+  function route(){
+    const r = (location.hash || "#maquette").slice(1);
+    const cur = PAGES.includes(r) ? r : "maquette";
+    PAGES.forEach(p => { document.getElementById("page-"+p).hidden = p !== cur; });
+    document.querySelectorAll(".tabs a").forEach(a => a.dataset.route === cur ? a.setAttribute("aria-current","page") : a.removeAttribute("aria-current"));
+    if (cur !== "workflow" && typeof stop === "function") stop();
+    document.title = "Esquisse : " + TITLES[cur];
+    window.scrollTo(0,0);
+  }
+  window.addEventListener("hashchange", route);
+  route();
+})();
+
+</script>
+<script>
+(function(){
+  const KEY = "esquisse-theme";
+  const btns = [...document.querySelectorAll("[data-theme-set]")];
+  const stored = () => { try { const v = localStorage.getItem(KEY); return v === "light" || v === "dark" ? v : "system"; } catch(e){ return "system"; } };
+  function apply(mode){
+    if (mode === "system") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", mode);
+    btns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.themeSet === mode)));
+  }
+  btns.forEach(b => b.addEventListener("click", () => {
+    const m = b.dataset.themeSet;
+    try { m === "system" ? localStorage.removeItem(KEY) : localStorage.setItem(KEY, m); } catch(e){}
+    apply(m);
+  }));
+  apply(stored());
+})();
+</script>
+</body>
+</html>

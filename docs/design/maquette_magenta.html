@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Esquisse — Maquette</title>
+<script>(function(){try{var t=localStorage.getItem("esquisse-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}})();</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --desk:#DEDEDB;
+  --well:#F2F2F0;
+  --sheet:#FFFFFF;
+  --ink:#000000;
+  --ink-h:#3A3A38;
+  --ink-2:#545452;
+  --ink-3:#6E6E6B;
+  --rule:#C9C9C5;
+  --rule-2:#ADADA8;
+  --ok:#000000;
+  --gap:#C4007A;
+  --gap-bg:#FBE4F1;
+  --focus:#C4007A;
+  --danger:#C4007A;
+  --lift:0 1px 1px rgba(0,0,0,.05), 0 10px 26px -14px rgba(0,0,0,.26);
+  --lift-sm:0 1px 1px rgba(0,0,0,.06), 0 4px 10px -6px rgba(0,0,0,.20);
+  --sans:"Instrument Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --serif:"Newsreader",Georgia,"Times New Roman",serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --stage:690px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --desk:#0D0D0D;
+    --well:#161616;
+    --sheet:#1E1E1D;
+    --ink:#F2F2F0;
+    --ink-h:#FFFFFF;
+    --ink-2:#9C9C99;
+    --ink-3:#7E7E7B;
+    --rule:#2B2B2A;
+    --rule-2:#3F3F3D;
+    --ok:#C2C2BF;
+    --gap:#FF56B0;
+    --gap-bg:#351026;
+    --focus:#FF56B0;
+    --danger:#FF56B0;
+    --lift:0 1px 1px rgba(0,0,0,.4), 0 12px 30px -16px rgba(0,0,0,.8);
+    --lift-sm:0 1px 1px rgba(0,0,0,.4), 0 5px 12px -7px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --desk:#0D0D0D;
+  --well:#161616;
+  --sheet:#1E1E1D;
+  --ink:#F2F2F0;
+  --ink-h:#FFFFFF;
+  --ink-2:#9C9C99;
+  --ink-3:#7E7E7B;
+  --rule:#2B2B2A;
+  --rule-2:#3F3F3D;
+  --ok:#C2C2BF;
+  --gap:#FF56B0;
+  --gap-bg:#351026;
+  --focus:#FF56B0;
+  --danger:#FF56B0;
+  --lift:0 1px 1px rgba(0,0,0,.4), 0 12px 30px -16px rgba(0,0,0,.8);
+  --lift-sm:0 1px 1px rgba(0,0,0,.4), 0 5px 12px -7px rgba(0,0,0,.7);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--desk);color:var(--ink);font:400 16px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:inherit}
+input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:3px}
+h1,h2,h3,p,ul,ol,dl{margin:0}
+.shell{max-width:1240px;margin:0 auto;padding:0 24px}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.small{font-size:.84rem}
+.muted{color:var(--ink-2)}
+
+/* ---------- Bandeau ---------- */
+.site{position:sticky;top:0;z-index:40;background:var(--desk);border-bottom:1px solid var(--rule)}
+.site-in{max-width:1240px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.word{display:flex;align-items:center;gap:10px;font-weight:600;font-size:1.04rem;letter-spacing:-.012em}
+.word svg{width:16px;height:20px;flex:none;display:block}
+.word-sep{width:1px;height:15px;background:var(--rule-2)}
+.word-sub{font-weight:400;color:var(--ink-2);font-size:.92rem}
+.theme{display:flex;gap:2px;padding:2px;border:1px solid var(--rule);border-radius:999px;background:var(--well)}
+.theme button{width:32px;height:26px;border-radius:999px;display:grid;place-items:center;color:var(--ink-3)}
+.theme button svg{width:15px;height:15px;display:block}
+.theme button[aria-pressed="false"]:hover{color:var(--ink)}
+.theme button[aria-pressed="true"]{background:var(--ink);color:var(--desk)}
+
+/* ---------- Ouverture ---------- */
+.hero{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,.75fr);gap:48px;align-items:end;padding:46px 0 24px}
+.hero h1{font-size:clamp(1.95rem,3.3vw,2.75rem);font-weight:600;letter-spacing:-.03em;line-height:1.04;max-width:15ch;text-wrap:balance;margin-bottom:14px}
+.lede{font-size:1.06rem;color:var(--ink-2);max-width:50ch}
+.aside{color:var(--ink-2);font-size:.94rem;max-width:42ch;padding-left:20px;border-left:1px solid var(--rule-2)}
+
+/* ---------- Rail des écrans ---------- */
+.rail{display:flex;gap:2px;margin:30px 0 20px;overflow-x:auto}
+.rail-i{flex:1 1 0;min-width:134px;padding:11px 14px 0 0;border-top:2px solid var(--rule);color:var(--ink-2);display:flex;gap:9px;align-items:baseline}
+.rail-i:hover{border-top-color:var(--rule-2);color:var(--ink)}
+.rail-i[aria-current="true"]{border-top-color:var(--ink);color:var(--ink)}
+.rail-n{font-size:.76rem;font-variant-numeric:tabular-nums;color:var(--ink-3)}
+.rail-i[aria-current="true"] .rail-n{color:var(--ink)}
+.rail-t{font-size:.9rem;font-weight:500;line-height:1.3}
+
+/* ---------- Cadre du prototype ---------- */
+.frame{border:1px solid var(--rule);border-radius:12px;background:var(--sheet);overflow:hidden;box-shadow:var(--lift);margin-bottom:60px}
+.chrome{display:flex;align-items:center;gap:14px;padding:9px 14px;background:var(--well);border-bottom:1px solid var(--rule)}
+.dots{display:flex;gap:5px}
+.dots i{width:8px;height:8px;border-radius:50%;background:var(--rule-2);display:block}
+.url{font-family:var(--mono);font-size:.75rem;color:var(--ink-2);background:var(--sheet);border:1px solid var(--rule);border-radius:999px;padding:3px 13px;max-width:330px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app{min-height:calc(var(--stage) + 53px);position:relative}
+
+/* ---------- Chrome de l'application ---------- */
+.appbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 24px;border-bottom:1px solid var(--rule)}
+.applogo{display:flex;align-items:center;gap:9px;font-weight:600;font-size:1rem;letter-spacing:-.012em}
+.applogo svg{width:14px;height:18px;display:block}
+.appbar-r{display:flex;align-items:center;gap:16px}
+.applink{color:var(--ink-2);font-size:.92rem}
+.applink:hover{color:var(--ink)}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--well);border:1px solid var(--rule);display:grid;place-items:center;font-size:.72rem;font-weight:600;color:var(--ink-2)}
+
+/* ---------- Blocs communs ---------- */
+.view{padding:30px 34px}
+.view.well{background:var(--well);min-height:var(--stage)}
+.narrow{max-width:756px}
+.vhead{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;margin-bottom:26px}
+.h{font-size:1.34rem;font-weight:600;letter-spacing:-.02em;line-height:1.2;margin-bottom:5px}
+.h:focus{outline:none}
+.sub{color:var(--ink-2);font-size:.95rem}
+.cap{font-size:.82rem;font-weight:600;color:var(--ink-2)}
+
+.btn{background:var(--ink);color:var(--desk);border:1px solid var(--ink);border-radius:7px;padding:9px 17px;font-size:.94rem;font-weight:500;white-space:nowrap}
+.btn:hover{background:var(--ink-h);border-color:var(--ink-h)}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--rule-2)}
+.btn.ghost:hover{background:var(--well);border-color:var(--ink)}
+.btn.sm{padding:7px 13px;font-size:.88rem}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:26px}
+.actions.end{justify-content:flex-end}
+
+.label{display:block;font-size:.9rem;font-weight:500;margin-bottom:7px}
+.input{width:100%;border:1px solid var(--rule-2);border-radius:7px;padding:10px 12px;background:var(--sheet);color:var(--ink);font-size:.95rem}
+.input::placeholder{color:var(--ink-3)}
+.input:disabled{opacity:.45}
+.input.bad{border-color:var(--danger)}
+textarea.input{resize:vertical;line-height:1.55}
+.input.write{font-family:var(--serif);font-size:1.06rem;line-height:1.66;padding:20px 22px;border-color:var(--rule);border-radius:2px;box-shadow:var(--lift-sm)}
+.hint{margin-top:7px;font-size:.82rem;color:var(--ink-3)}
+.err{margin-top:7px;font-size:.85rem;color:var(--danger)}
+.check{display:inline-flex;gap:8px;align-items:center;font-size:.87rem;color:var(--ink-2);margin-top:9px;cursor:pointer}
+.check input{accent-color:var(--ok);width:15px;height:15px}
+.q{margin-bottom:20px}
+.note{background:var(--well);border-left:2px solid var(--rule-2);padding:11px 15px;font-size:.9rem;color:var(--ink-2);margin-bottom:22px;max-width:62ch}
+
+.meter{display:block;height:4px;border-radius:2px;background:var(--rule);overflow:hidden}
+.meter i{display:block;height:100%;background:var(--ok)}
+.tag{display:inline-block;font-size:.73rem;font-weight:600;padding:2px 10px;border-radius:999px;border:1px solid var(--rule-2);color:var(--ink-2)}
+.tag.done{color:var(--ok);border-color:var(--ok)}
+.doc{display:inline-block;font-size:.68rem;font-weight:600;border:1px solid var(--rule-2);color:var(--ink-3);border-radius:3px;padding:1px 5px;white-space:nowrap;line-height:1.45}
+
+.stepper{display:flex;flex-wrap:wrap;margin-bottom:28px;font-size:.88rem;color:var(--ink-3)}
+.stepper span{display:flex;align-items:center;gap:9px;padding-right:20px;margin-right:20px;border-right:1px solid var(--rule)}
+.stepper span:last-child{border-right:0;padding-right:0;margin-right:0}
+.stepper em{font-style:normal;width:21px;height:21px;border-radius:50%;border:1px solid var(--rule-2);display:grid;place-items:center;font-size:.72rem;font-variant-numeric:tabular-nums}
+.stepper .on{color:var(--ink);font-weight:600}
+.stepper .on em{background:var(--ink);color:var(--desk);border-color:var(--ink)}
+.stepper .past{color:var(--ink-2)}
+.stepper .past em{color:var(--ok);border-color:var(--ok)}
+
+.steps{list-style:none;padding:0;margin-top:28px;display:grid;gap:15px;max-width:52ch}
+.steps li{display:flex;gap:13px;align-items:center;color:var(--ink-3)}
+.steps li.ok,.steps li.run{color:var(--ink)}
+.steps .ic{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--rule-2);flex:none;position:relative}
+.steps li.ok .ic{background:var(--ok);border-color:var(--ok)}
+.steps li.ok .ic::after{content:"";position:absolute;left:5px;top:2.5px;width:3px;height:7px;border:solid var(--sheet);border-width:0 1.6px 1.6px 0;transform:rotate(45deg)}
+.steps li.run .ic{border-color:var(--ink);border-right-color:transparent;border-top-color:transparent}
+
+/* ---------- Tableau de bord ---------- */
+.projects{border-top:1px solid var(--rule)}
+.proj{display:grid;grid-template-columns:minmax(0,1.5fr) 176px 148px;gap:22px;align-items:center;width:100%;padding:17px 6px;border-bottom:1px solid var(--rule)}
+.proj:hover{background:var(--well)}
+.proj-n{display:block;font-size:1.06rem;font-weight:600;letter-spacing:-.015em}
+.proj-d{display:block;color:var(--ink-2);font-size:.9rem;margin-top:1px}
+.proj-c{display:block;font-size:.8rem;color:var(--ink-3);font-variant-numeric:tabular-nums;margin-top:7px}
+.proj-r{text-align:right}
+.proj-m{display:block;font-size:.8rem;color:var(--ink-3);margin-top:7px}
+
+/* ---------- Choix des documents ---------- */
+.picks{border-top:1px solid var(--rule);margin-top:24px}
+.pick{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:15px;width:100%;padding:17px 6px;border-bottom:1px solid var(--rule);align-items:start}
+.pick:hover{background:var(--well)}
+.pick[aria-pressed="true"]{background:var(--well)}
+.pick-m{width:15px;height:15px;border-radius:50%;border:1.5px solid var(--rule-2);margin-top:4px}
+.pick[aria-pressed="true"] .pick-m{border:4.5px solid var(--ink)}
+.pick b{display:block;font-size:1.02rem;font-weight:600;letter-spacing:-.01em}
+.pick-p{display:block;margin-top:3px;color:var(--ink-2);font-size:.92rem;max-width:54ch}
+.pick-c{color:var(--ink-3);font-size:.82rem;font-variant-numeric:tabular-nums;white-space:nowrap;padding-top:3px}
+
+/* ---------- Plan de travail ---------- */
+.ws{display:grid;grid-template-columns:248px minmax(0,1fr) 264px;height:var(--stage)}
+.pane{padding:20px 17px;min-width:0;min-height:0;overflow:auto}
+.pane.left{background:var(--well);border-right:1px solid var(--rule)}
+.pane.right{background:var(--well);border-left:1px solid var(--rule)}
+.pane.mid{background:var(--desk);padding:28px 32px}
+.plan{list-style:none;padding:0;margin-top:16px}
+.plan li{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:10px;align-items:start;padding:5px 0;font-size:.83rem;line-height:1.35;color:var(--ink-3)}
+.plan li.ok{color:var(--ink-2)}
+.plan li.now{color:var(--ink);font-weight:600}
+.plan .st{width:11px;height:11px;border-radius:50%;border:1.5px solid var(--rule-2);margin-top:4px;position:relative}
+.plan li.ok .st{background:var(--ok);border-color:var(--ok)}
+.plan li.now .st{border:3.5px solid var(--ink)}
+.plan .doc{margin-top:1px}
+
+.sechead{display:flex;gap:11px;align-items:center;margin-bottom:9px}
+.status{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+.pulse{width:8px;height:8px;border-radius:50%;background:var(--ok);display:block;flex:none}
+.score{display:inline-flex;align-items:center;gap:10px;font-size:.84rem;color:var(--ink-2)}
+.score-t{display:flex;gap:2px}
+.score-t i{width:3px;height:11px;border-radius:1px;background:var(--rule-2);display:block}
+.score-t i.on{background:var(--ok)}
+
+.paper{background:var(--sheet);border:1px solid var(--rule);border-radius:2px;padding:32px 36px;font-family:var(--serif);font-size:1.03rem;line-height:1.68;max-width:64ch;box-shadow:var(--lift)}
+.paper p{margin-bottom:15px}
+.paper p:last-child{margin-bottom:0}
+.paper table{border-collapse:collapse;width:100%;font-family:var(--sans);font-size:.85rem;margin:8px 0 17px;font-variant-numeric:tabular-nums}
+.paper th,.paper td{border-bottom:1px solid var(--rule);padding:7px 9px;text-align:right;white-space:nowrap}
+.paper th:first-child,.paper td:first-child{text-align:left}
+.paper th{font-weight:600;color:var(--ink-2);font-size:.78rem}
+.tablewrap{overflow-x:auto}
+.paper mark{background:none;color:var(--gap);font-family:var(--sans);font-size:.84em;font-weight:500;border-bottom:1px dotted currentColor;padding-bottom:1px}
+.caret{display:inline-block;width:7px;height:1.02em;background:var(--ink);vertical-align:-2px;margin-left:2px}
+.done-box{max-width:52ch;padding-top:26px}
+.done-box p{margin:8px 0 22px;color:var(--ink-2)}
+
+/* ---------- Mémoire du projet ---------- */
+.legend{display:flex;gap:13px;flex-wrap:wrap;margin-top:12px;font-size:.76rem;color:var(--ink-3)}
+.legend span{display:inline-flex;gap:7px;align-items:center}
+.facts{margin-top:14px;border-top:1px solid var(--rule)}
+.fact{padding:10px 4px;border-bottom:1px solid var(--rule)}
+.fact-l{display:flex;gap:8px;align-items:center;font-size:.76rem;color:var(--ink-3);margin-bottom:3px}
+.fact-v{display:block;font-size:.87rem;line-height:1.4}
+.fact.unknown .fact-v{color:var(--ink-3);font-style:italic}
+.fact.fresh{background:var(--gap-bg)}
+.src{width:10px;height:10px;border-radius:50%;flex:none;display:block;border:1.5px solid var(--ink-3)}
+.src.user{background:var(--ink);border-color:var(--ink)}
+.src.inferred{border-color:var(--gap);background:linear-gradient(90deg,var(--gap) 50%,transparent 50%)}
+.src.unknown{background:transparent}
+
+/* ---------- Cohérence ---------- */
+.conf{padding:22px 0;border-top:1px solid var(--rule)}
+.conf-t{font-size:1.04rem;font-weight:600;letter-spacing:-.012em;margin-bottom:14px}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-bottom:16px;max-width:56ch}
+.vs-c{padding-left:16px;border-left:2px solid var(--rule-2)}
+.vs-v{display:block;font-size:1.3rem;font-weight:600;letter-spacing:-.025em;line-height:1.2}
+.vs-d{display:block;font-size:.79rem;color:var(--ink-3);margin-top:4px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--rule-2);border-radius:7px;padding:7px 14px;font-size:.9rem}
+.chip:hover{border-color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--desk);border-color:var(--ink)}
+
+/* ---------- Exports ---------- */
+.docs{display:grid;grid-template-columns:repeat(auto-fit,minmax(282px,1fr));gap:30px}
+.docc{display:flex;gap:20px;align-items:flex-start}
+.mini{width:58px;height:78px;background:var(--sheet);border:1px solid var(--rule);box-shadow:var(--lift-sm);padding:10px 8px;display:flex;flex-direction:column;gap:5px;flex:none}
+.mini i{display:block;height:2px;border-radius:1px;background:var(--rule-2)}
+.mini i:first-child{width:60%;height:3px;background:var(--ink-3);margin-bottom:3px}
+.mini i:nth-child(4){width:82%}
+.mini i:last-child{width:44%}
+.docc b{display:block;font-size:1.04rem;font-weight:600;letter-spacing:-.012em}
+.docc .sub{margin-top:1px}
+.docc .actions{margin-top:14px}
+.split{display:grid;grid-template-columns:repeat(auto-fit,minmax(262px,1fr));gap:36px;margin-top:36px;padding-top:28px;border-top:1px solid var(--rule)}
+.list{list-style:none;padding:0;margin-top:12px}
+.list li{padding:11px 0;border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:3px}
+.list b{font-weight:600;font-size:.95rem}
+.gapname{align-self:flex-start;color:var(--gap);font-weight:500;font-size:.94rem;border-bottom:1px dotted currentColor;padding-bottom:1px}
+
+.toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--desk);padding:10px 18px;border-radius:8px;font-size:.9rem;max-width:88%;box-shadow:var(--lift);z-index:5}
+
+@media (prefers-reduced-motion:no-preference){
+  .appear{animation:up .42s ease both}
+  @keyframes up{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+  .frame{animation:up .55s ease both}
+  .pulse,.caret{animation:blink 1.1s ease-in-out infinite}
+  @keyframes blink{50%{opacity:.18}}
+  .steps li.run .ic{animation:spin .85s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .fact{transition:background-color 1.3s ease}
+}
+
+@media (max-width:1120px){
+  .ws{grid-template-columns:216px minmax(0,1fr)}
+  .ws{height:auto}
+  .pane{overflow:visible}
+  .pane.left,.pane.right{max-height:300px;overflow:auto}
+  .pane.right{grid-column:1/-1;border-left:0;border-top:1px solid var(--rule)}
+}
+@media (max-width:980px){
+  .hero{grid-template-columns:1fr;gap:26px;padding:34px 0 20px}
+  .aside{padding-left:0;border-left:0;border-top:1px solid var(--rule-2);padding-top:15px;max-width:58ch}
+  .proj{grid-template-columns:1fr;gap:11px}
+  .proj-r{text-align:left}
+}
+@media (max-width:780px){
+  .shell{padding:0 16px}
+  .site-in{padding:12px 16px}
+  .ws{grid-template-columns:1fr}
+  .pane.left{border-right:0;border-bottom:1px solid var(--rule);max-height:230px}
+  .pane.mid{padding:22px 18px}
+  .view{padding:22px 18px}
+  .paper{padding:22px 22px}
+  .vs{grid-template-columns:1fr;gap:16px}
+  .app{min-height:0}
+  .view.well{min-height:0}
+  .frame{margin-bottom:40px}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-sheet" viewBox="0 0 16 20"><rect x="1" y="1" width="14" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4.4 6.6h7.2M4.4 10h7.2M4.4 13.4h4.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+<symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.1" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 .9v2M8 13.1v2M15.1 8h-2M2.9 8h-2M13 3l-1.4 1.4M4.4 11.6 3 13M13 13l-1.4-1.4M4.4 4.4 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+<symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.4 9.6A5.9 5.9 0 0 1 6.4 2.6a5.9 5.9 0 1 0 7 7Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+</defs></svg>
+
+<header class="site">
+  <div class="site-in">
+    <span class="word"><svg aria-hidden="true"><use href="#i-sheet"/></svg>Esquisse<span class="word-sep" aria-hidden="true"></span><span class="word-sub">Maquette</span></span>
+    <div class="theme" role="group" aria-label="Thème de la page">
+      <button type="button" data-set="light" aria-pressed="false" title="Mode clair"><svg aria-hidden="true"><use href="#i-sun"/></svg><span class="sr">Mode clair</span></button>
+      <button type="button" data-set="dark" aria-pressed="false" title="Mode sombre"><svg aria-hidden="true"><use href="#i-moon"/></svg><span class="sr">Mode sombre</span></button>
+    </div>
+  </div>
+</header>
+
+<main class="shell">
+  <div class="hero">
+    <div>
+      <h1>Le parcours, écran par écran</h1>
+      <p class="lede">Un prototype cliquable d'Esquisse, de la liste des projets jusqu'aux exports Word et PDF. Les données sont fictives et rien n'est envoyé.</p>
+    </div>
+    <p class="aside">Cliquez dans l'application pour avancer, ou ouvrez un écran directement ci-dessous. « Nouveau projet » démarre du début ; CoachDom ouvre une rédaction déjà avancée.</p>
+  </div>
+
+  <nav class="rail" id="rail" aria-label="Écrans du parcours"></nav>
+
+  <div class="frame">
+    <div class="chrome"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="url" id="url"></span></div>
+    <div class="app" id="app"></div>
+  </div>
+</main>
+
+<script>
+/* ---------- Thème ---------- */
+(function(){
+  var root = document.documentElement, btns = [].slice.call(document.querySelectorAll(".theme button"));
+  var mq = matchMedia("(prefers-color-scheme: dark)");
+  function current(){ return root.getAttribute("data-theme") || (mq.matches ? "dark" : "light"); }
+  function sync(){ var c = current(); btns.forEach(function(b){ b.setAttribute("aria-pressed", String(b.dataset.set === c)); }); }
+  btns.forEach(function(b){ b.addEventListener("click", function(){
+    root.setAttribute("data-theme", b.dataset.set);
+    try{ localStorage.setItem("esquisse-theme", b.dataset.set); }catch(e){}
+    sync();
+  }); });
+  mq.addEventListener("change", sync);
+  sync();
+})();
+
+/* ---------- Prototype ---------- */
+(function(){
+const el = id => document.getElementById(id);
+const esc = t => String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const nb = s => String(s).replace(/[\u202f\u2009]/g, "\u00a0");
+const eur = n => nb(Math.round(n).toLocaleString("fr-FR")) + "\u00a0€";
+const SHEET = '<svg aria-hidden="true"><use href="#i-sheet"/></svg>';
+
+const PLAN = [["BP","Problème, solution et proposition de valeur"],["BP","Porteurs de projet et équipe"],["CDC","Contexte et objectifs"],["CDC","Parties prenantes et utilisateurs"],["BP","Étude de marché"],["BP","Modèle économique"],["BP","Analyse concurrentielle"],["BP","Stratégie marketing et commerciale"],["BP","Plan opérationnel et jalons"],["CDC","Périmètre du projet"],["CDC","Exigences fonctionnelles"],["CDC","Exigences non fonctionnelles"],["CDC","Contraintes techniques et architecture"],["BP","Prévisionnel financier"],["BP","Besoin et plan de financement"],["BP","Risques et plan de mitigation"],["CDC","Livrables, planning et jalons"],["CDC","Budget et modalités"],["CDC","Recette et critères d'acceptation"],["CDC","Risques et points d'attention"],["BP","Résumé exécutif"]];
+const DOCNAME = {BP:"Business plan", CDC:"Cahier des charges"};
+
+const IDEA = "Une application qui met en relation des coachs sportifs indépendants et des particuliers pour des séances à domicile, avec réservation, paiement intégré et une commission sur chaque séance.";
+
+function financial(pct){
+  const seances = [24000, 36000, 54000];
+  const rows = seances.map((s,i) => `<tr><td>Année ${i+1}</td><td>${nb(s.toLocaleString("fr-FR"))}</td><td>${eur(s*45)}</td><td>${eur(s*45*pct/100)}</td></tr>`).join("");
+  return [
+    `<p>Le modèle repose sur une commission de ${pct} % prélevée sur chaque séance réservée, au prix moyen de 45 €. Avec 24 000 séances la première année et une croissance de 50 % par an, le chiffre d'affaires passe de ${eur(seances[0]*45*pct/100)} à ${eur(seances[2]*45*pct/100)} en trois ans.</p>`,
+    `<div class="tablewrap"><table><thead><tr><th></th><th>Séances</th><th>Volume d'affaires</th><th>Chiffre d'affaires</th></tr></thead><tbody>${rows}</tbody></table></div>`,
+    `<p>La masse salariale est estimée à 90 000 € la première année <mark>[Hypothèse]</mark>, faute d'information fournie. Le besoin de trésorerie maximal dépend de <mark>[Donnée à compléter : apport initial des fondateurs]</mark>.</p>`
+  ];
+}
+
+const SCENES = [
+  {plan:0, title:"Problème, solution et proposition de valeur", score:8, revise:"Ajoute un exemple concret de client type.",
+   questions:[
+     {label:"Problème adressé", q:"Quel problème concret votre projet résout-il, et pour qui ?", kind:"input", value:"Trouver un coach fiable et disponible à domicile prend du temps, et les coachs indépendants peinent à remplir leur agenda."},
+     {label:"Proposition de valeur", q:"Pourquoi un client choisirait-il votre application plutôt que de chercher un coach lui-même ?", kind:"input", value:"Coachs vérifiés, réservation en deux minutes, paiement sécurisé."},
+     {label:"Solution", q:"J'ai compris que la solution est une application de mise en relation avec réservation et paiement intégrés. C'est bien ça ?", kind:"confirm", value:"Application de mise en relation avec réservation et paiement intégrés"}
+   ],
+   draft:() => [
+     `<p>Trouver un coach sportif fiable et disponible pour des séances à domicile reste compliqué : les particuliers passent par le bouche-à-oreille ou par des annonces peu vérifiées, et les coachs indépendants peinent à remplir leur agenda.</p>`,
+     `<p>CoachDom réunit ces deux publics dans une application unique. Les coachs sont vérifiés, la réservation prend deux minutes et le paiement est sécurisé, avec une commission prélevée sur chaque séance.</p>`
+   ],
+   draft2:() => [
+     `<p>Trouver un coach sportif fiable et disponible pour des séances à domicile reste compliqué : les particuliers passent par le bouche-à-oreille ou par des annonces peu vérifiées, et les coachs indépendants peinent à remplir leur agenda.</p>`,
+     `<p>Exemple : Claire, 38 ans, veut reprendre le sport sans dépendre des horaires d'une salle. Elle réserve le mardi soir une séance avec une coach certifiée qui habite à dix minutes de chez elle.</p>`,
+     `<p>CoachDom réunit ces deux publics dans une application unique. Les coachs sont vérifiés, la réservation prend deux minutes et le paiement est sécurisé, avec une commission prélevée sur chaque séance.</p>`
+   ]},
+  {plan:2, title:"Contexte et objectifs", score:9, revise:"Précise comment les objectifs seront suivis.",
+   note:"Le problème et la solution sont déjà connus grâce au business plan : une seule question pour cette section.",
+   questions:[
+     {label:"Indicateurs de succès", q:"Quels indicateurs mesureront le succès du projet à 6 et 12 mois ?", kind:"input", value:"500 séances réservées par mois à 6 mois, 60 coachs actifs à 12 mois."}
+   ],
+   draft:() => [
+     `<p>Le projet consiste à concevoir une application web et mobile de mise en relation entre coachs sportifs indépendants et particuliers pour des séances à domicile, avec réservation et paiement intégrés.</p>`,
+     `<p>Objectifs à 6 mois : 500 séances réservées par mois. Objectifs à 12 mois : 60 coachs actifs et une note de satisfaction moyenne supérieure à 4,5 sur 5 <mark>[Hypothèse]</mark>.</p>`
+   ],
+   draft2:() => [
+     `<p>Le projet consiste à concevoir une application web et mobile de mise en relation entre coachs sportifs indépendants et particuliers pour des séances à domicile, avec réservation et paiement intégrés.</p>`,
+     `<p>Objectifs à 6 mois : 500 séances réservées par mois. Objectifs à 12 mois : 60 coachs actifs et une note de satisfaction moyenne supérieure à 4,5 sur 5 <mark>[Hypothèse]</mark>.</p>`,
+     `<p>Ces indicateurs seront suivis chaque mois dans le tableau de bord d'administration, à partir des réservations et des avis laissés après chaque séance.</p>`
+   ]},
+  {plan:13, title:"Prévisionnel financier", score:8, revise:"Passe la commission à 15 % et recalcule.",
+   questions:[
+     {label:"Prix moyen par séance", q:"Quel prix moyen par séance envisagez-vous ?", kind:"input", value:"45 €"},
+     {label:"Commission", q:"J'ai compris que la commission est de 20 % par séance. C'est bien ça ?", kind:"confirm", value:"20 % par séance"},
+     {label:"Masse salariale", q:"Quelle masse salariale prévoyez-vous la première année ?", kind:"unknown", value:"", unknown:true}
+   ],
+   draft:() => financial(20), draft2:() => financial(15)}
+];
+
+const CONFLICTS = [
+  {t:"Date de lancement",
+   a:{v:"4 mois", doc:"Cahier des charges", sec:"Livrables, planning et jalons"},
+   b:{v:"6 mois", doc:"Business plan", sec:"Plan opérationnel et jalons"},
+   o:["Aligner sur 6 mois","Aligner sur 4 mois","Ignorer"]},
+  {t:"Budget de développement",
+   a:{v:"80 000 €", doc:"Cahier des charges", sec:"Budget et modalités"},
+   b:{v:"60 000 €", doc:"Business plan", sec:"Besoin et plan de financement"},
+   o:["Retenir 80 000 €","Retenir 60 000 €","Ignorer"]}
+];
+
+const mk = arr => arr.map(([label,value,src]) => ({label, value, src, fresh:false}));
+const FACTS_IDEA = [["Solution","Application de mise en relation entre coachs indépendants et particuliers","inferred"],["Cibles","Particuliers et coachs sportifs indépendants","inferred"],["Modèle de revenus","Commission sur chaque séance","inferred"],["Fonctionnalités clés","Réservation et paiement intégré","inferred"]];
+const FACTS_COACHDOM = [["Problème adressé","Trouver un coach fiable à domicile prend du temps","user"],["Solution","Application de mise en relation avec réservation et paiement","user"],["Cibles","Particuliers et coachs sportifs indépendants","user"],["Proposition de valeur","Coachs vérifiés, réservation en deux minutes","user"],["Indicateurs de succès","500 séances par mois à 6 mois","user"],["Marché géographique","Lyon, puis les grandes villes françaises","user"],["Modèle de revenus","Commission sur chaque séance","user"],["Concurrents","Annonces en ligne, salles de sport, coaching vidéo","user"],["Budget projet","60 000 €","user"]];
+const SRC = {user:"Vous", inferred:"Déduit", unknown:"Inconnu"};
+const URLS = {dashboard:"/projets", choose:"/projets/nouveau", idea:"/projets/nouveau/idee", analyzing:"/projets/nouveau/analyse", workspace:"/projets/coachdom", coherence:"/projets/coachdom/coherence", exporting:"/projets/coachdom/exports", exports:"/projets/coachdom/exports"};
+const RAIL = [["dashboard","Tableau de bord"],["choose","Documents"],["idea","Idée"],["workspace","Rédaction"],["coherence","Cohérence"],["exports","Exports"]];
+const RAIL_OF = {analyzing:"idea", exporting:"exports"};
+
+const S = {screen:"dashboard", doc:2, idea:IDEA, scene:0, phase:"questions", version:1, revising:false, facts:[], conflicts:[null,null], errs:{}, blocks:0, an:0, ex:0, toast:""};
+let timers = [];
+const clearTimers = () => { timers.forEach(t => { clearTimeout(t); clearInterval(t); }); timers = []; };
+const err = key => S.errs[key] ? `<p class="err" id="err-${key}">${S.errs[key]}</p>` : "";
+const bad = key => S.errs[key] ? " bad" : "";
+
+function appbar(){
+  return `<div class="appbar"><button class="applogo" data-a="dashboard">${SHEET}Esquisse</button><div class="appbar-r"><button class="applink" data-a="dashboard">Mes projets</button><span class="avatar" title="Compte de démonstration">LR</span></div></div>`;
+}
+function stepper(n){
+  return `<div class="stepper">${["Documents","Idée","Rédaction"].map((s,i) => `<span class="${i+1===n?"on":i+1<n?"past":""}"><em>${i+1}</em>${s}</span>`).join("")}</div>`;
+}
+function scoreMeter(n){
+  return `<span class="score"><span class="score-t" aria-hidden="true">${Array.from({length:10},(_,i)=>`<i class="${i<n?"on":""}"></i>`).join("")}</span>Auto-critique ${n} sur 10</span>`;
+}
+
+const SCREENS = {
+  dashboard: () => `<div class="view">
+    <div class="vhead"><div><h2 class="h">Mes projets</h2><p class="sub">3 projets, dont 2 en cours de rédaction</p></div><button class="btn" data-a="new">Nouveau projet</button></div>
+    <div class="projects">
+      ${[["coachdom","CoachDom","Cahier des charges et business plan","En cours","",67,"14 sections validées sur 21","Modifié il y a 2 heures"],
+         ["exports","Vrac et Compagnie","Business plan","Terminé","done",100,"11 sections validées sur 11","Exporté le 2 septembre"],
+         ["demo-toast","Covoit'Campus","Cahier des charges","En cours","",40,"4 sections validées sur 10","Modifié hier"]]
+        .map(p => `<button class="proj" data-a="${p[0]}">
+          <span><span class="proj-n">${p[1]}</span><span class="proj-d">${p[2]}</span></span>
+          <span><span class="meter"><i style="width:${p[5]}%"></i></span><span class="proj-c">${p[6]}</span></span>
+          <span class="proj-r"><span class="tag ${p[4]}">${p[3]}</span><span class="proj-m">${p[7]}</span></span>
+        </button>`).join("")}
+    </div></div>`,
+
+  choose: () => `<div class="view narrow">${stepper(1)}
+    <h2 class="h">Quels documents voulez-vous générer ?</h2>
+    <p class="sub">Les informations communes aux deux documents ne vous seront demandées qu'une seule fois.</p>
+    <div class="picks">${[["Cahier des charges","10 sections","Besoins, exigences, contraintes, planning et budget pour cadrer la réalisation."],["Business plan","11 sections","Marché, modèle économique, stratégie et prévisionnel financier sur trois ans."],["Les deux","21 sections","Les deux documents rédigés en cohérence, avec un contrôle croisé à la fin."]]
+      .map((t,i) => `<button class="pick" data-a="doc:${i}" aria-pressed="${S.doc===i}"><span class="pick-m"></span><span><b>${t[0]}</b><span class="pick-p">${t[2]}</span></span><span class="pick-c">${t[1]}</span></button>`).join("")}</div>
+    <div class="actions end"><button class="btn ghost" data-a="dashboard">Annuler</button><button class="btn" data-a="to-idea">Continuer</button></div></div>`,
+
+  idea: () => `<div class="view well"><div class="narrow">${stepper(2)}
+    <h2 class="h">Décrivez votre projet</h2>
+    <p class="sub">Quelques phrases suffisent : le problème, pour qui, et comment vous le résolvez.</p>
+    <div style="margin-top:22px"><label class="label" for="f-idea">Votre idée</label><textarea id="f-idea" class="input write${bad("idea")}" rows="5">${esc(S.idea)}</textarea>${err("idea")}</div>
+    <div class="actions end"><button class="btn ghost" data-a="choose">Retour</button><button class="btn" data-a="analyze">Analyser mon idée</button></div></div></div>`,
+
+  analyzing: () => `<div class="view narrow">${stepper(2)}
+    <h2 class="h">Analyse de votre idée</h2><p class="sub">L'agent prépare votre plan de rédaction.</p>
+    <ul class="steps">${["Lecture de votre idée","4 informations extraites, dont 1 à confirmer","Plan de rédaction construit : 21 sections"].map((s,i) => `<li class="${i<S.an?"ok":i===S.an?"run":""}"><span class="ic"></span>${s}</li>`).join("")}</ul></div>`,
+
+  workspace: () => {
+    const sc = SCENES[S.scene];
+    const idx = S.phase === "done" ? 21 : sc.plan;
+    const plan = PLAN.map((p,i) => `<li class="${i<idx?"ok":i===idx?"now":""}"><span class="st"></span><span>${p[1]}</span><span class="doc">${p[0]}</span></li>`).join("");
+    const facts = S.facts.length
+      ? S.facts.map(f => `<div class="fact ${f.src}${f.fresh?" fresh":""}"><span class="fact-l"><span class="src ${f.src}" title="${SRC[f.src]}"></span>${f.label}</span><span class="fact-v">${esc(f.value)}</span></div>`).join("")
+      : `<p class="sub small" style="margin-top:14px">Les informations apparaîtront ici au fil de vos réponses.</p>`;
+    return `<div class="ws">
+      <aside class="pane left"><p class="cap">Ordre de rédaction</p><p class="sub small" style="margin-bottom:10px">${idx} sections validées sur 21</p><span class="meter"><i style="width:${idx/21*100}%"></i></span><ol class="plan">${plan}</ol></aside>
+      <div class="pane mid">${center(sc, idx)}</div>
+      <aside class="pane right"><p class="cap">Mémoire du projet</p><p class="sub small">Partagée entre le cahier des charges et le business plan.</p>
+        <div class="legend"><span><span class="src user"></span>Vous</span><span><span class="src inferred"></span>Déduit</span><span><span class="src unknown"></span>Inconnu</span></div>
+        <div class="facts">${facts}</div></aside>
+    </div>`;
+  },
+
+  coherence: () => `<div class="view narrow">
+    <h2 class="h">2 incohérences entre vos deux documents</h2>
+    <p class="sub" style="margin-bottom:6px">Choisissez quelle valeur retenir. Les sections concernées seront réécrites avant l'export.</p>
+    ${CONFLICTS.map((c,i) => `<div class="conf"><h3 class="conf-t">${c.t}</h3>
+      <div class="vs">
+        <span class="vs-c"><span class="vs-v">${c.a.v}</span><span class="vs-d">${c.a.doc}<br>${c.a.sec}</span></span>
+        <span class="vs-c"><span class="vs-v">${c.b.v}</span><span class="vs-d">${c.b.doc}<br>${c.b.sec}</span></span>
+      </div>
+      <div class="chips">${c.o.map((o,j) => `<button class="chip" data-a="cf:${i}:${j}" aria-pressed="${S.conflicts[i]===j}">${o}</button>`).join("")}</div></div>`).join("")}
+    ${err("cf")}
+    <div class="actions end"><button class="btn ghost" data-a="back-done">Retour à la rédaction</button><button class="btn" data-a="generate">Générer les documents</button></div></div>`,
+
+  exporting: () => `<div class="view narrow">
+    <h2 class="h">Génération des documents</h2><p class="sub">Cela prend généralement moins d'une minute.</p>
+    <ul class="steps">${["Mise à jour des sections concernées","Rendu Word avec le modèle à la charte","Conversion PDF avec Gotenberg","Enregistrement dans Supabase Storage"].map((s,i) => `<li class="${i<S.ex?"ok":i===S.ex?"run":""}"><span class="ic"></span>${s}</li>`).join("")}</ul></div>`,
+
+  exports: () => `<div class="view">
+    <div class="vhead"><div><h2 class="h">Vos documents sont prêts</h2><p class="sub">CoachDom, version 2, générée aujourd'hui</p></div><button class="btn ghost" data-a="reopen">Rouvrir une section</button></div>
+    <div class="docs">${[["Cahier des charges","10 sections, 24 pages"],["Business plan","11 sections, 31 pages"]].map(d => `<div class="docc"><span class="mini" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span><div><b>${d[0]}</b><p class="sub small">${d[1]}</p><div class="actions"><button class="btn sm" data-a="dl">Télécharger le Word</button><button class="btn sm ghost" data-a="dl">Télécharger le PDF</button></div></div></div>`).join("")}</div>
+    <div class="split">
+      <div><p class="cap">Données à compléter avant diffusion</p><ul class="list">
+        ${[["Apport initial des fondateurs","Business plan, Besoin et plan de financement"],["Nombre de coachs indépendants à Lyon","Business plan, Étude de marché"],["Coût de l'assurance des coachs","Cahier des charges, Budget et modalités"]]
+          .map(g => `<li><span class="gapname">${g[0]}</span><span class="sub small">${g[1]}</span></li>`).join("")}
+      </ul></div>
+      <div><p class="cap">Historique des versions</p><ul class="list">
+        <li><b>Version 2</b><span class="sub small">Aujourd'hui, après arbitrage des incohérences</span></li>
+        <li><b>Version 1</b><span class="sub small">Hier, première génération complète</span></li>
+      </ul></div>
+    </div></div>`
+};
+
+function center(sc, idx){
+  if (S.phase === "done"){
+    return `<div class="done-box"><h2 class="h">Rédaction terminée</h2><p>Dans la maquette, les sections restantes sont considérées comme validées. L'agent va maintenant comparer le cahier des charges et le business plan.</p><button class="btn" data-a="coherence">Lancer le contrôle de cohérence</button></div>`;
+  }
+  const head = `<div class="sechead"><span class="doc">${DOCNAME[PLAN[idx][0]]}</span><span class="sub small">Section ${idx+1} sur 21</span></div><h2 class="h">${sc.title}</h2>`;
+  if (S.phase === "questions"){
+    const qs = sc.questions.map((q,i) => {
+      let field = `<input class="input${bad("q"+i)}" id="f-q${i}" value="${esc(q.value)}">`;
+      if (q.kind === "confirm") field += `<p class="hint">Hypothèse déduite de votre idée : corrigez-la si elle est inexacte.</p>`;
+      if (q.kind === "unknown") field = `<input class="input${bad("q"+i)}" id="f-q${i}" placeholder="Montant annuel en euros" value="${esc(q.value)}"${q.unknown?" disabled":""}><label class="check"><input type="checkbox" id="f-u${i}"${q.unknown?" checked":""}> Je ne sais pas</label>`;
+      return `<div class="q"><label class="label" for="f-q${i}">${q.q}</label>${field}${err("q"+i)}</div>`;
+    }).join("");
+    return `${head}<p class="sub" style="margin:0 0 18px">${sc.questions.length===1?"Une information manque":"Quelques informations manquent"} pour rédiger cette section.</p>${sc.note?`<p class="note">${sc.note}</p>`:""}<div style="max-width:52ch">${qs}</div><div class="actions"><button class="btn" data-a="answer">Envoyer les réponses</button></div>`;
+  }
+  const blocks = (S.version === 1 ? sc.draft : sc.draft2)();
+  const shown = S.phase === "drafting" ? blocks.slice(0, S.blocks) : blocks;
+  const paper = `<div class="paper">${shown.map((b,i) => S.phase==="drafting" && i===S.blocks-1 ? `<div class="appear">${b}</div>` : b).join("")}${S.phase==="drafting"?`<span class="caret" aria-hidden="true"></span>`:""}</div>`;
+  if (S.phase === "drafting"){
+    return `${head}<div class="status"><span class="pulse" aria-hidden="true"></span><span class="sub small">Rédaction en cours, version ${S.version}</span></div>${paper}`;
+  }
+  const actions = S.revising
+    ? `<div style="margin-top:22px;max-width:52ch"><label class="label" for="f-fb">Que faut-il changer ?</label><textarea id="f-fb" class="input${bad("fb")}" rows="3">${esc(sc.revise)}</textarea>${err("fb")}<div class="actions"><button class="btn" data-a="rerun">Relancer la rédaction</button><button class="btn ghost" data-a="revise-cancel">Annuler</button></div></div>`
+    : `<div class="actions"><button class="btn" data-a="approve">Approuver</button><button class="btn ghost" data-a="revise">Demander une révision</button><button class="btn ghost" data-a="skip">Passer la section</button></div>`;
+  return `${head}<div class="status">${scoreMeter(sc.score)}<span class="sub small">Version ${S.version}, prête à relire</span></div>${paper}${actions}`;
+}
+
+function render(){
+  el("url").textContent = "esquisse.vercel.app" + URLS[S.screen];
+  const active = RAIL_OF[S.screen] || S.screen;
+  el("rail").innerHTML = RAIL.map((r,i) => `<button class="rail-i" data-r="${r[0]}" aria-current="${r[0]===active}"><span class="rail-n">${i+1}</span><span class="rail-t">${r[1]}</span></button>`).join("");
+  el("app").innerHTML = appbar() + SCREENS[S.screen]() + (S.toast ? `<div class="toast" role="status">${S.toast}</div>` : "");
+}
+
+function go(screen, focus = true){
+  clearTimers();
+  S.screen = screen; S.errs = {}; S.toast = "";
+  render();
+  if (focus){ const h = el("app").querySelector(".h"); if (h){ h.setAttribute("tabindex","-1"); h.focus({preventScroll:true}); } }
+  if (screen === "analyzing") runAnalyze();
+  if (screen === "exporting") runExport();
+}
+function openCoachdom(phase = "questions", version = 1){
+  S.scene = 2; S.phase = phase; S.version = version; S.revising = false; S.blocks = 99;
+  S.facts = mk(FACTS_COACHDOM);
+  go("workspace");
+}
+function startNew(){ S.doc = 2; S.idea = IDEA; S.facts = []; S.scene = 0; go("choose"); }
+
+function runAnalyze(){
+  S.an = 0; render();
+  const step = reduce ? 350 : 900;
+  [1,2,3].forEach(n => timers.push(setTimeout(() => { S.an = n; render(); }, step*n)));
+  timers.push(setTimeout(() => {
+    S.facts = mk(FACTS_IDEA); S.scene = 0; S.phase = "questions"; S.version = 1; S.revising = false;
+    go("workspace");
+  }, step*3 + 500));
+}
+function runExport(){
+  S.ex = 0; render();
+  const step = reduce ? 300 : 800;
+  [1,2,3,4].forEach(n => timers.push(setTimeout(() => { S.ex = n; render(); }, step*n)));
+  timers.push(setTimeout(() => go("exports"), step*4 + 400));
+}
+function runDraft(){
+  clearTimers();
+  S.phase = "drafting"; S.blocks = 1; render();
+  const total = (S.version === 1 ? SCENES[S.scene].draft : SCENES[S.scene].draft2)().length;
+  const t = setInterval(() => {
+    if (S.blocks >= total){ clearInterval(t); S.phase = "review"; S.facts.forEach(f => f.fresh = false); render(); return; }
+    S.blocks++; render();
+  }, reduce ? 250 : 900);
+  timers.push(t);
+}
+function syncInputs(){
+  if (S.screen !== "workspace" || S.phase !== "questions") return;
+  SCENES[S.scene].questions.forEach((q,i) => {
+    const inp = el("f-q"+i); if (inp) q.value = inp.value;
+    const u = el("f-u"+i); if (u) q.unknown = u.checked;
+  });
+}
+function setFact(label, value, src){
+  const f = S.facts.find(x => x.label === label);
+  if (f){ f.value = value; f.src = src; f.fresh = true; }
+  else S.facts.push({label, value, src, fresh:true});
+}
+function toast(msg){
+  S.toast = msg; render();
+  timers.push(setTimeout(() => { S.toast = ""; render(); }, 2600));
+}
+
+el("rail").addEventListener("click", e => {
+  const b = e.target.closest("[data-r]"); if (!b) return;
+  const r = b.dataset.r;
+  if (r === "choose") startNew();
+  else if (r === "idea"){ S.idea = IDEA; go("idea"); }
+  else if (r === "workspace") openCoachdom();
+  else if (r === "coherence"){ S.conflicts = [null,null]; go("coherence"); }
+  else go(r);
+});
+
+el("app").addEventListener("change", e => {
+  const m = e.target.id && e.target.id.match(/^f-u(\d+)$/);
+  if (m){
+    const inp = el("f-q"+m[1]);
+    if (inp){ inp.disabled = e.target.checked; if (!e.target.checked) inp.focus(); }
+    const er = el("err-q"+m[1]); if (er){ er.remove(); delete S.errs["q"+m[1]]; }
+  }
+});
+el("app").addEventListener("input", e => {
+  if (e.target.id === "f-idea"){ S.idea = e.target.value; e.target.classList.remove("bad"); const er = el("err-idea"); if (er){ er.remove(); delete S.errs.idea; } }
+  const m = e.target.id && e.target.id.match(/^f-q(\d+)$/);
+  if (m){ e.target.classList.remove("bad"); const er = el("err-q"+m[1]); if (er){ er.remove(); delete S.errs["q"+m[1]]; } }
+  if (e.target.id === "f-fb"){ e.target.classList.remove("bad"); const er = el("err-fb"); if (er){ er.remove(); delete S.errs.fb; } }
+});
+
+el("app").addEventListener("click", e => {
+  const b = e.target.closest("[data-a]"); if (!b) return;
+  const a = b.dataset.a;
+  syncInputs();
+  if (a === "dashboard") return go("dashboard");
+  if (a === "new") return startNew();
+  if (a === "coachdom") return openCoachdom();
+  if (a === "exports") return go("exports");
+  if (a === "demo-toast") return toast("Dans la maquette, seul le projet CoachDom est ouvert en rédaction.");
+  if (a.startsWith("doc:")){ S.doc = +a.split(":")[1]; return render(); }
+  if (a === "choose") return go("choose");
+  if (a === "to-idea") return go("idea");
+  if (a === "analyze"){
+    if (S.idea.trim().length < 20){ S.errs.idea = "Décrivez votre projet en une ou deux phrases au minimum."; render(); el("f-idea").focus(); return; }
+    return go("analyzing");
+  }
+  if (a === "answer"){
+    const sc = SCENES[S.scene]; S.errs = {};
+    sc.questions.forEach((q,i) => {
+      if (q.kind === "unknown" && q.unknown) return;
+      if (!q.value.trim()) S.errs["q"+i] = q.kind === "unknown" ? "Indiquez un montant ou cochez « Je ne sais pas »." : "Répondez à cette question pour continuer.";
+    });
+    if (Object.keys(S.errs).length){ render(); const first = el("f-q"+Object.keys(S.errs)[0].slice(1)); if (first) first.focus(); return; }
+    S.facts.forEach(f => f.fresh = false);
+    sc.questions.forEach(q => q.kind === "unknown" && q.unknown ? setFact(q.label, "Non renseigné, rédigé comme hypothèse", "unknown") : setFact(q.label, q.value.trim(), "user"));
+    S.version = 1; S.revising = false;
+    return runDraft();
+  }
+  if (a === "approve" || a === "skip"){
+    S.revising = false; S.version = 1;
+    if (S.scene < SCENES.length - 1){ S.scene++; S.phase = "questions"; }
+    else S.phase = "done";
+    return go("workspace");
+  }
+  if (a === "revise"){ S.revising = true; render(); const fb = el("f-fb"); if (fb) fb.focus(); return; }
+  if (a === "revise-cancel"){ S.revising = false; return render(); }
+  if (a === "rerun"){
+    const fb = el("f-fb");
+    if (!fb || !fb.value.trim()){ S.errs.fb = "Indiquez ce qu'il faut modifier."; render(); el("f-fb").focus(); return; }
+    SCENES[S.scene].revise = fb.value; S.revising = false; S.version = 2;
+    if (S.scene === 2){ S.facts.forEach(f => f.fresh = false); setFact("Commission", "15 % par séance", "user"); }
+    return runDraft();
+  }
+  if (a === "coherence"){ S.conflicts = [null,null]; return go("coherence"); }
+  if (a.startsWith("cf:")){ const p = a.split(":"); S.conflicts[+p[1]] = +p[2]; delete S.errs.cf; return render(); }
+  if (a === "back-done"){ S.phase = "done"; return go("workspace"); }
+  if (a === "generate"){
+    if (S.conflicts.some(c => c === null)){ S.errs.cf = "Choisissez une option pour chaque incohérence avant de générer les documents."; return render(); }
+    return go("exporting");
+  }
+  if (a === "dl") return toast("Téléchargement simulé : aucun fichier n'est généré dans la maquette.");
+  if (a === "reopen") return openCoachdom("review", 2);
+});
+
+go("dashboard", false);
+})();
+</script>
+</body>
+</html>

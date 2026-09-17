@@ -1,0 +1,447 @@
+# Template du cahier des charges — Esquisse
+#
+# Croisement de la tradition normative (NF X50-151, remplacée par NF EN 16271)
+# et de la tradition praticienne des projets web et logiciels.
+# Voir docs/analyse-cdc-bp.md pour les sources et le raisonnement.
+#
+# Deux profils, choisis au début du parcours :
+#   consultation  le document part chez des prestataires pour obtenir des devis
+#                 comparables. Il doit être opposable : niveaux d'exigence,
+#                 modalités de contrôle, cadre de réponse.
+#   cadrage       document interne, pour mettre au clair ce qu'on veut.
+#                 Pas de cadre de réponse, pas de modalités de consultation.
+#
+# Champs : voir bp.yaml, ils sont identiques.
+#
+# Statut : brouillon du 17 septembre 2026, à retravailler section par section.
+
+version: 0.1
+statut: brouillon
+
+# Seuil de relecture : sous cette note, la section s'arrête pour relecture.
+# Au-dessus, elle est validée sans arrêt et signalée comme telle dans le plan.
+seuil_relecture: 8
+document: cdc
+profils_disponibles:
+  consultation: "Envoyé à des prestataires pour devis. Document opposable."
+  cadrage: "Document interne de mise au clair."
+
+sections:
+
+  - id: contexte_objectifs
+    titre: "Contexte et objectifs"
+    ordre: 1
+    ordre_lecture: 1
+    profils: [consultation, cadrage]
+    validation: toujours
+    objectif: >
+      Faire comprendre à quelqu'un qui ne connaît pas l'organisation pourquoi ce
+      projet existe et à quoi on saura qu'il a réussi.
+    depend_de: []
+    longueur_cible: 400-700 mots
+    faits_requis: [nom_projet, organisation_commanditaire, probleme_resolu, objectifs_mesurables]
+    faits_utiles: [situation_existante, limites_existant, solution_proposee, type_projet, benefice_mesurable]
+    consignes: |
+      Ouvrir en désignant les parties une fois pour toutes : comment le commanditaire
+      est nommé dans la suite du document, comment le prestataire l'est. Les cahiers
+      des charges réels commencent par là, et le vocabulaire tient ensuite tout le texte.
+      Énoncer l'objet en une liste de missions, chacune avec sa durée quand elle est connue :
+      c'est ce découpage que le prestataire chiffrera, pas un paragraphe d'intention.
+      Présenter l'organisation avec des chiffres : activité, taille, volumes.
+      Chaque objectif doit être mesurable. Un objectif non mesurable est reformulé
+      ou marqué [Donnée à compléter : indicateur], jamais laissé tel quel.
+      Ne décrire aucune solution technique ici : le besoin, seulement.
+      Profil consultation : ajouter le retour attendu sur l'investissement s'il est connu.
+    grille:
+      - "Les parties sont désignées et nommées de façon constante dans tout le document"
+      - "L'objet est découpé en missions distinctes, chiffrables séparément"
+      - "L'organisation est présentée avec des chiffres, pas seulement des adjectifs"
+      - "Chaque objectif porte un indicateur et une cible chiffrée, ou un marqueur à compléter"
+      - "Aucune solution technique n'est imposée dans cette section"
+      - "Aucun chiffre orphelin"
+
+  - id: existant_reprise
+    titre: "Existant et reprise de données"
+    ordre: 2
+    ordre_lecture: 2
+    profils: [consultation, cadrage]
+    validation: si_note_basse
+    objectif: >
+      Décrire ce qui tourne aujourd'hui et ce qu'il faudra en récupérer.
+    depend_de: [contexte_objectifs]
+    longueur_cible: 300-500 mots
+    faits_requis: [situation_existante, donnees_a_migrer]
+    faits_utiles: [limites_existant, integrations_externes]
+    consignes: |
+      Nommer les outils en service, même artisanaux : un tableur partagé est un existant.
+      Pour la reprise, préciser volume, format et ancienneté quand ils sont connus ;
+      sinon marquer [Donnée à compléter], car c'est un poste qui fait dériver les budgets.
+      Distinguer ce qui est remplacé de ce qui continue d'exister à côté.
+      Si aucun existant n'est fourni, l'écrire explicitement plutôt que d'omettre la section.
+    grille:
+      - "Les outils en service sont nommés, y compris les solutions de fortune"
+      - "La reprise de données précise volume et format, ou les marque à compléter"
+      - "Ce qui est remplacé est distingué de ce qui subsiste"
+      - "L'absence d'existant, si c'est le cas, est écrite explicitement"
+
+  - id: parties_prenantes
+    titre: "Parties prenantes et utilisateurs"
+    ordre: 3
+    ordre_lecture: 3
+    profils: [consultation, cadrage]
+    validation: si_note_basse
+    objectif: >
+      Dire qui utilise, qui décide et qui valide.
+    depend_de: [contexte_objectifs]
+    longueur_cible: 300-500 mots
+    faits_requis: [profils_utilisateurs]
+    faits_utiles: [organisation_commanditaire, porteurs, volumetrie_utilisateurs, responsable_recette, cible_principale]
+    consignes: |
+      Décrire chaque profil par ce qu'il vient faire dans l'outil, pas par son titre.
+      Séparer nettement trois rôles : utilisateur, décideur, valideur. Ils sont souvent confondus,
+      et c'est une source de blocage en fin de projet.
+      Donner la volumétrie attendue par profil quand elle est connue : elle conditionne
+      les exigences de performance.
+    grille:
+      - "Chaque profil est décrit par une tâche, pas seulement par un intitulé"
+      - "Utilisateur, décideur et valideur sont distingués"
+      - "La volumétrie est donnée ou marquée à compléter"
+      - "Un interlocuteur unique est identifié pour le projet"
+
+  - id: gouvernance_projet
+    titre: "Moyens humains, organisation et suivi"
+    ordre: 4
+    ordre_lecture: 4
+    profils: [consultation, cadrage]
+    validation: si_note_basse
+    objectif: >
+      Dire qui pilote le projet de chaque côté, à quel rythme on se voit et
+      où circulent les documents.
+    depend_de: [parties_prenantes]
+    longueur_cible: 250-400 mots
+    faits_requis: [equipe_projet_client, rythme_suivi]
+    faits_utiles: [porteurs, responsable_recette, organisation_commanditaire]
+    consignes: |
+      Nommer les moyens attendus des deux côtés : quel profil le prestataire doit affecter
+      au projet, et qui, chez le commanditaire, sera disponible et à quelle fréquence.
+      Les cahiers des charges réels consacrent une rubrique à cela, parce qu'un projet
+      qui dérape dérape presque toujours par indisponibilité côté client.
+      Fixer le rythme des points d'avancement et ce qui en sort : un compte rendu, par qui,
+      sous quel délai.
+      Dire où vivent les documents et les échanges, et qui y a accès.
+      Profil cadrage : cette section se limite à qui décide et à quel rythme on fait le point.
+    grille:
+      - "Les moyens attendus sont nommés des deux côtés, pas seulement chez le prestataire"
+      - "La disponibilité du commanditaire est chiffrée, en jours ou en fréquence"
+      - "Le rythme des points et le compte rendu qui en découle sont précisés"
+      - "L'espace de travail et les droits d'accès sont nommés"
+
+  - id: perimetre
+    titre: "Périmètre du projet"
+    ordre: 5
+    ordre_lecture: 5
+    profils: [consultation, cadrage]
+    validation: toujours
+    objectif: >
+      Tracer la frontière : ce qui est demandé, et ce qui ne l'est pas.
+    depend_de: [contexte_objectifs, parties_prenantes]
+    longueur_cible: 300-500 mots
+    faits_requis: [perimetre_inclus, perimetre_exclu]
+    faits_utiles: [modules_fonctionnels, solution_proposee, type_projet, evolutions_prevues]
+    consignes: |
+      Le hors-périmètre est aussi important que le périmètre : s'il n'est pas fourni,
+      le déduire de ce qui a été dit et le proposer explicitement à la validation.
+      Renvoyer les évolutions envisagées vers la section maintenance plutôt que de les
+      mélanger au périmètre de la première version.
+      Présenter en deux listes face à face, pas en prose.
+    grille:
+      - "Le hors-périmètre est écrit noir sur blanc, pas seulement suggéré"
+      - "Les évolutions futures ne sont pas mêlées au périmètre initial"
+      - "Le périmètre est présenté en listes, pas en paragraphes"
+      - "Chaque élément est assez précis pour être chiffré par un prestataire"
+
+  - id: exigences_fonctionnelles
+    titre: "Exigences fonctionnelles"
+    ordre: 6
+    ordre_lecture: 6
+    profils: [consultation, cadrage]
+    validation: toujours
+    objectif: >
+      Énoncer ce que le produit doit permettre de faire, avec pour chaque exigence
+      un critère vérifiable et un niveau.
+    depend_de: [perimetre, parties_prenantes]
+    longueur_cible: 800-1500 mots
+    faits_requis: [perimetre_inclus, profils_utilisateurs]
+    faits_utiles: [modules_fonctionnels, integrations_externes, solution_proposee]
+    consignes: |
+      Grouper par fonctionnalité, jamais en liste plate. Chaque fonctionnalité se décrit
+      en deux temps, comme dans les cahiers des charges réels : ce que l'administrateur
+      gère, puis ce que l'utilisateur voit et fait.
+      Écrire au futur simple, qui est en français le temps de l'obligation contractuelle :
+      « le moteur de recherche renverra les résultats classés par date », et non
+      « il faudrait un moteur de recherche » ni « ajouter un champ de recherche ».
+      Décrire des situations, pas des capacités abstraites : « dès lors qu'une recherche
+      n'aboutira à aucun résultat, un module proposera de créer une alerte ». C'est sous
+      cette forme qu'un prestataire sait quoi chiffrer et qu'un recetteur sait quoi tester.
+      Numéroter malgré tout (EF-01, EF-02) : c'est ce qui permet à la recette d'y renvoyer.
+      Chaque exigence porte un critère vérifiable et un niveau, indispensable ou souhaité.
+      Une exigence invérifiable est reformulée ; si elle ne peut pas l'être, elle est marquée
+      [Donnée à compléter : critère].
+    grille:
+      - "Chaque exigence est numérotée et rattachée à un module"
+      - "Chaque exigence est écrite au futur simple, jamais au conditionnel"
+      - "Chaque exigence décrit une situation et son comportement attendu"
+      - "Chaque exigence est formulée en besoin utilisateur, pas en solution technique"
+      - "Chaque exigence porte un critère vérifiable et un niveau indispensable ou souhaité"
+      - "Aucune formulation invérifiable du type moderne, intuitif, ergonomique"
+      - "Le tableau est produit en bloc structuré"
+
+  - id: exigences_non_fonctionnelles
+    titre: "Exigences non fonctionnelles"
+    ordre: 7
+    ordre_lecture: 7
+    profils: [consultation, cadrage]
+    validation: si_note_basse
+    objectif: >
+      Fixer ce qui ne se voit pas mais se mesure : performance, sécurité, accessibilité,
+      disponibilité.
+    depend_de: [exigences_fonctionnelles]
+    longueur_cible: 400-700 mots
+    faits_requis: [contraintes_performance, contraintes_securite_rgpd]
+    faits_utiles: [contraintes_accessibilite, volumetrie_utilisateurs]
+    consignes: |
+      Chaque exigence est un nombre assorti d'une méthode de mesure. Sans nombre,
+      écrire [Donnée à compléter : seuil].
+      Traiter systématiquement : temps de réponse, charge simultanée, disponibilité,
+      sauvegarde et restauration, données personnelles et RGPD, accessibilité.
+      Sur le RGPD, s'en tenir aux obligations de l'outil (minimisation, durée de conservation,
+      droit à l'effacement) sans jamais donner d'avis juridique.
+      Numéroter ENF-01, ENF-02.
+    grille:
+      - "Chaque exigence porte un nombre et une méthode de mesure"
+      - "Performance, disponibilité, sécurité et accessibilité sont toutes traitées"
+      - "Le traitement des données personnelles est abordé sans avis juridique"
+      - "Aucune exigence formulée en adjectif"
+
+  - id: charte_graphique
+    titre: "Charte graphique et identité"
+    ordre: 8
+    ordre_lecture: 8
+    profils: [consultation, cadrage]
+    validation: si_note_basse
+    objectif: >
+      Dire ce qui existe déjà en matière d'identité, ce qui est fourni, ce qui est attendu.
+    depend_de: [perimetre]
+    longueur_cible: 200-400 mots
+    faits_requis: [charte_existante]
+    faits_utiles: [elements_identite, references_appreciees]
+    consignes: |
+      Si une charte existe, lister ce qui sera transmis et sous quel format.
+      Si elle n'existe pas, dire explicitement si sa création entre dans le périmètre
+      ou non : c'est une ambiguïté fréquente et coûteuse.
+      Les références appréciées sont accompagnées de ce qui plaît précisément,
+      sinon elles n'aident personne.
+    grille:
+      - "On sait si une charte existe et ce qui sera fourni"
+      - "La création de l'identité est explicitement incluse ou exclue du périmètre"
+      - "Chaque référence citée est accompagnée de la raison qui la motive"
+      - "Aucun jugement esthétique non justifié"
+
+  - id: contraintes_techniques
+    titre: "Contraintes techniques et architecture"
+    ordre: 9
+    ordre_lecture: 9
+    profils: [consultation, cadrage]
+    validation: si_note_basse
+    objectif: >
+      Énoncer les contraintes imposées par l'environnement, sans imposer de solution.
+    depend_de: [exigences_non_fonctionnelles, existant_reprise]
+    longueur_cible: 400-700 mots
+    faits_requis: [hebergement_souhaite]
+    faits_utiles: [integrations_externes, contraintes_securite_rgpd, donnees_a_migrer]
+    consignes: |
+      Distinguer ce qui est imposé de ce qui est préféré : un prestataire doit savoir
+      où il a le droit de proposer autre chose.
+      Pour chaque intégration, préciser le sens des échanges et la fréquence si connus.
+      Ne pas imposer de langage ni de framework sans raison explicite : si l'équipe interne
+      doit reprendre la maintenance, le dire, c'est cela la vraie contrainte.
+      Profil cadrage : cette section peut rester courte et se limiter aux vraies contraintes.
+    grille:
+      - "Ce qui est imposé est distingué de ce qui est préféré"
+      - "Chaque contrainte technique est justifiée par un besoin, pas par une habitude"
+      - "Chaque intégration précise le sens et la fréquence des échanges, ou les marque à compléter"
+      - "Aucune technologie imposée sans motif écrit"
+
+  - id: livrables_planning
+    titre: "Livrables, planning et jalons"
+    ordre: 10
+    ordre_lecture: 10
+    profils: [consultation, cadrage]
+    validation: si_note_basse
+    objectif: >
+      Lister ce qui sera remis, quand, et à quelles étapes de validation.
+    depend_de: [perimetre, exigences_fonctionnelles]
+    longueur_cible: 300-500 mots
+    faits_requis: [date_livraison_souhaitee]
+    faits_utiles: [jalons_operationnels, contraintes_calendaires, modules_fonctionnels, date_lancement_visee]
+    consignes: |
+      Distinguer les livrables logiciels des livrables documentaires : code, environnements,
+      documentation d'exploitation, documentation utilisateur, formation des administrateurs.
+      La formation est un livrable à part entière, avec un public, une durée et un support :
+      les cahiers des charges réels lui consacrent une rubrique, pas une demi-phrase.
+      Terminer par un récapitulatif de tous les livrables attendus, en tableau, repris des
+      sections précédentes. C'est la page que le prestataire relit avant de chiffrer.
+      Chaque jalon porte une date et une condition de franchissement.
+      Si un business plan est produit en parallèle, la date de mise en service doit coïncider
+      avec la date de lancement qu'il annonce : ne pas produire un second calendrier.
+      Signaler les contraintes calendaires imposées de l'extérieur.
+    grille:
+      - "Les livrables documentaires et la formation sont listés au même titre que le logiciel"
+      - "Un récapitulatif final rassemble tous les livrables en un tableau"
+      - "Chaque jalon porte une date et une condition de franchissement"
+      - "Le calendrier concorde avec la date de lancement du business plan, s'il existe"
+      - "Aucune date inventée"
+
+  - id: budget_modalites
+    titre: "Budget et modalités"
+    ordre: 11
+    ordre_lecture: 11
+    profils: [consultation, cadrage]
+    validation: toujours
+    objectif: >
+      Donner l'enveloppe et la façon dont elle sera engagée.
+    depend_de: [livrables_planning, perimetre]
+    longueur_cible: 250-450 mots
+    faits_requis: [budget_developpement]
+    faits_utiles: [modalites_paiement, maintenance_attendue, donnees_a_migrer, perimetre_inclus]
+    consignes: |
+      Annoncer une enveloppe plutôt qu'un montant au centime : cela permet des propositions
+      comparables sans brider les prestataires.
+      Le montant doit être exactement celui repris dans les investissements du business plan,
+      s'il existe. Ne jamais produire ici un second chiffre.
+      Préciser si la maintenance de la première année est incluse dans l'enveloppe ou non.
+      Profil cadrage : les modalités de paiement peuvent être omises.
+    grille:
+      - "L'enveloppe est cohérente avec le budget de développement du business plan"
+      - "L'inclusion ou non de la maintenance est explicite"
+      - "Les modalités de règlement sont énoncées, ou la section dit qu'elles restent à définir"
+      - "Aucun montant qui ne vienne d'un fait fourni"
+
+  - id: recette_acceptation
+    titre: "Recette et critères d'acceptation"
+    ordre: 12
+    ordre_lecture: 12
+    profils: [consultation, cadrage]
+    validation: si_note_basse
+    objectif: >
+      Dire comment on vérifiera, exigence par exigence, que le produit est conforme.
+    depend_de: [exigences_fonctionnelles, exigences_non_fonctionnelles, livrables_planning]
+    longueur_cible: 400-700 mots
+    faits_requis: [responsable_recette]
+    faits_utiles: [objectifs_mesurables, contraintes_performance, contraintes_accessibilite]
+    consignes: |
+      Produire d'abord un tableau de contrôles par phase, croisant les vérifications
+      (accessibilité, performance, conformité des données personnelles, compatibilité
+      des navigateurs, standards du web) avec les moments du projet où elles ont lieu :
+      maquettes, charte graphique, développement, pré-production, production. Les cahiers
+      des charges réels vérifient tout au long du projet, pas seulement à la fin, et c'est
+      ce qui évite de découvrir un défaut structurel la veille de la livraison.
+      Dire qui réalise ces contrôles et qui en produit les rapports. Un contrôle sans
+      rapport nommé n'est pas un contrôle.
+      Reprendre ensuite les numéros d'exigences EF et ENF : chaque critère d'acceptation
+      renvoie à une exigence précise. Une exigence sans critère est signalée comme telle.
+      Décrire enfin la recette finale : qui teste, sur quel environnement, combien de temps,
+      et ce qui distingue une anomalie bloquante d'une anomalie mineure.
+    grille:
+      - "Un tableau croise les contrôles et les phases du projet où ils ont lieu"
+      - "Chaque contrôle nomme qui le réalise et quel rapport il produit"
+      - "Chaque critère renvoie à une exigence numérotée"
+      - "Les exigences sans critère vérifiable sont signalées"
+      - "Le déroulement de la recette finale est décrit : qui, où, combien de temps"
+      - "Anomalie bloquante et anomalie mineure sont définies"
+
+  - id: maintenance_evolution
+    titre: "Maintenance et vie du produit"
+    ordre: 13
+    ordre_lecture: 13
+    profils: [consultation, cadrage]
+    validation: si_note_basse
+    objectif: >
+      Traiter ce qui se passe après la mise en service, qui en est responsable et à quel coût.
+    depend_de: [livrables_planning, budget_modalites]
+    longueur_cible: 300-500 mots
+    faits_requis: [maintenance_attendue]
+    faits_utiles: [delais_correction_attendus, evolutions_prevues, perimetre_exclu, hebergement_souhaite]
+    consignes: |
+      Distinguer trois choses que les cahiers des charges réels séparent toujours :
+      la garantie qui suit la recette, la maintenance corrective et de sécurité
+      (le produit continue de fonctionner), et les évolutions fonctionnelles
+      (le produit change), ces dernières commandées à l'unité et non forfaitisées.
+      Produire un tableau des gravités d'incident. Trois niveaux suffisent — bloquant
+      quand le service est interrompu, majeur quand une fonction indispensable à un groupe
+      d'utilisateurs est indisponible, mineur pour le reste — et chaque niveau porte trois
+      délais : prise en compte, contournement, correction définitive. Ce sont des heures
+      et des jours ouvrés, pas des adjectifs. Si le commanditaire n'a pas d'exigence,
+      écrire [Donnée à compléter : délai] plutôt que d'omettre la ligne.
+      Exiger que le produit et ses composants soient à jour au moment de la mise en ligne,
+      avant que la garantie ne commence à courir.
+      Dire qui détient le code et les accès à la fin du projet : c'est la question
+      qu'on oublie et qui coûte le plus cher ensuite.
+      Reprendre ici les évolutions écartées du périmètre initial.
+    grille:
+      - "Garantie, maintenance corrective et évolutions sont trois rubriques distinctes"
+      - "Un tableau donne trois niveaux de gravité et trois délais chiffrés pour chacun"
+      - "La mise à jour du produit avant le démarrage de la garantie est exigée"
+      - "La propriété du code et des accès est traitée"
+      - "Les évolutions écartées du périmètre sont reprises ici"
+
+  - id: risques_cdc
+    titre: "Risques et points d'attention"
+    ordre: 14
+    ordre_lecture: 14
+    profils: [consultation, cadrage]
+    validation: si_note_basse
+    objectif: >
+      Signaler ce qui peut faire dériver le projet et ce qui est prévu pour l'éviter.
+    depend_de: [perimetre, livrables_planning, budget_modalites, existant_reprise]
+    longueur_cible: 300-500 mots
+    faits_requis: []
+    faits_utiles: [contraintes_calendaires, donnees_a_migrer, integrations_externes, competences_manquantes]
+    consignes: |
+      Tirer les risques de ce que le document a montré : une reprise de données mal connue,
+      une intégration dépendante d'un tiers, une date imposée, un valideur non identifié.
+      Associer une parade concrète à chaque risque, et un responsable.
+      Présenter en tableau : risque, probabilité, impact, parade, responsable.
+      Ne pas produire de risque générique.
+    grille:
+      - "Chaque risque renvoie à un élément précis du cahier des charges"
+      - "Chaque risque porte une parade et un responsable"
+      - "Aucun risque générique sans lien avec ce projet"
+      - "Le tableau est produit en bloc structuré"
+
+  - id: cadre_reponse
+    titre: "Cadre de réponse"
+    ordre: 15
+    ordre_lecture: 15
+    profils: [consultation]
+    validation: si_note_basse
+    objectif: >
+      Imposer une forme de réponse identique à tous les prestataires, pour que
+      les propositions soient comparables.
+    depend_de: [exigences_fonctionnelles, livrables_planning, budget_modalites, maintenance_evolution]
+    longueur_cible: 300-500 mots
+    faits_requis: []
+    faits_utiles: [modules_fonctionnels, modalites_paiement, date_livraison_souhaitee, maintenance_attendue, elements_identite]
+    consignes: |
+      Reprise directe de la partie 3 de la norme.
+      Demander, pour chaque exigence : la solution proposée, le niveau atteint,
+      les modalités de contrôle, et la part de coût correspondante.
+      Demander pour l'ensemble : prix global, options et variantes chiffrées séparément,
+      moyens de mise en place et de maintenance, engagements de fiabilité.
+      Préciser la date limite de réponse, le format attendu et l'interlocuteur.
+      Rappeler que les variantes sont bienvenues si elles sont chiffrées à part.
+    grille:
+      - "La réponse attendue est décomposée exigence par exigence"
+      - "Le niveau atteint et les modalités de contrôle sont demandés pour chaque exigence"
+      - "Options et variantes doivent être chiffrées séparément du prix global"
+      - "Date limite, format et interlocuteur sont précisés ou marqués à compléter"

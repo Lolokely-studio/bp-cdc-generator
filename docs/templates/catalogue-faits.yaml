@@ -1,0 +1,591 @@
+# Catalogue de faits — Esquisse
+#
+# Un fait est la plus petite information qu'il faut détenir pour qu'une section
+# devienne rédigeable. Un fait n'est demandé qu'une seule fois, même s'il sert
+# les deux documents : c'est « utilise_par » qui porte cette garantie.
+#
+# Champs
+#   id           identifiant technique, jamais affiché
+#   libelle      nom court, affiché dans la mémoire du projet
+#   type         texte_court | texte_long | nombre | montant | pourcentage
+#                | date | duree | liste | choix | booleen
+#   unite        pour nombre et duree (séances, mois, utilisateurs…)
+#   options      pour choix
+#   question     formulation par défaut, que le modèle adapte au projet
+#   exemple      montré sous le champ, jamais pré-rempli
+#   deductible   true : extractible de l'idée saisie, à confirmer par oui/non
+#                false : ne peut qu'être demandé
+#   utilise_par  sections qui le consomment, en requis comme en utile. Champ
+#                DÉRIVÉ : il est l'inverse exact de ce que déclarent les
+#                sections, à régénérer dès qu'une section change. Il alimente
+#                l'analyse des manques et décide des sections à rouvrir
+#                quand le fait change.
+#
+# Un fait est soit REQUIS par une section — la section ne peut pas être écrite
+# sans lui, il est donc toujours demandé —, soit UTILE — il est demandé si le
+# lot de questions de la section n'est pas déjà plein, et n'a jamais bloqué
+# personne. Dans les deux cas « Je ne sais pas » est une réponse valable :
+# le fait devient alors une hypothèse déclarée dans le texte.
+#
+# Statut : brouillon du 17 septembre 2026, à retravailler section par section.
+
+version: 0.1
+statut: brouillon
+
+faits:
+
+  # ── Idée et valeur ───────────────────────────────────────────────────────
+  - id: nom_projet
+    libelle: "Nom du projet"
+    type: texte_court
+    question: "Comment s'appelle votre projet ?"
+    exemple: "CoachDom"
+    deductible: true
+    utilise_par: [bp.probleme_solution, cdc.contexte_objectifs]
+
+  - id: type_projet
+    libelle: "Type de projet"
+    type: choix
+    options: [plateforme, service, produit_physique, logiciel_interne, commerce, autre]
+    question: "De quel type de projet s'agit-il ?"
+    deductible: true
+    utilise_par: [bp.probleme_solution, cdc.contexte_objectifs, cdc.perimetre]
+
+  - id: probleme_resolu
+    libelle: "Le problème résolu"
+    type: texte_long
+    question: "Quel problème concret rencontrent les personnes à qui vous vous adressez ?"
+    exemple: "Trouver un coach sportif à domicile se fait au bouche-à-oreille, sans garantie sur son niveau."
+    deductible: true
+    utilise_par: [bp.probleme_solution, cdc.contexte_objectifs]
+
+  - id: cible_principale
+    libelle: "Cible principale"
+    type: texte_court
+    question: "À qui vous adressez-vous en priorité ?"
+    exemple: "Des actifs urbains de 30 à 45 ans qui n'ont pas le temps d'aller en salle."
+    deductible: true
+    utilise_par: [bp.probleme_solution, bp.etude_marche, bp.strategie_commerciale, cdc.parties_prenantes]
+
+  - id: solution_proposee
+    libelle: "Solution proposée"
+    type: texte_long
+    question: "Comment résolvez-vous ce problème ?"
+    deductible: true
+    utilise_par: [bp.probleme_solution, cdc.contexte_objectifs, cdc.perimetre, cdc.exigences_fonctionnelles]
+
+  - id: benefice_mesurable
+    libelle: "Le bénéfice, chiffré"
+    type: texte_court
+    question: "Qu'est-ce que votre solution fait gagner ? Un temps, un coût, un risque évité."
+    exemple: "Un coach vérifié réservé en moins de 5 minutes, contre plusieurs jours de recherche."
+    deductible: false
+    utilise_par: [bp.probleme_solution, cdc.contexte_objectifs]
+
+  - id: alternatives_actuelles
+    libelle: "Ce que la cible fait aujourd'hui"
+    type: texte_long
+    question: "Comment vos futurs clients se débrouillent-ils aujourd'hui, faute de mieux ?"
+    deductible: false
+    utilise_par: [bp.probleme_solution, bp.analyse_concurrentielle]
+
+  - id: origine_idee
+    libelle: "Genèse de l'idée"
+    type: texte_long
+    question: "D'où vous est venue cette idée ?"
+    deductible: false
+    utilise_par: [bp.probleme_solution, bp.porteurs_equipe]
+
+  # ── Équipe ───────────────────────────────────────────────────────────────
+  - id: porteurs
+    libelle: "Porteurs du projet"
+    type: liste
+    question: "Qui porte le projet ? Un nom et un rôle par ligne."
+    deductible: false
+    utilise_par: [bp.porteurs_equipe, bp.juridique, cdc.parties_prenantes, cdc.gouvernance_projet]
+
+  - id: experience_porteurs
+    libelle: "Expérience utile"
+    type: texte_long
+    question: "Quelle expérience rend cette équipe légitime sur ce projet ?"
+    deductible: false
+    utilise_par: [bp.porteurs_equipe]
+
+  - id: competences_manquantes
+    libelle: "Compétences manquantes"
+    type: liste
+    question: "Quelles compétences vous manquent aujourd'hui ?"
+    deductible: false
+    utilise_par: [bp.porteurs_equipe, bp.plan_operationnel, bp.risques_bp, cdc.risques_cdc]
+
+  # ── Marché ───────────────────────────────────────────────────────────────
+  - id: segments_clients
+    libelle: "Segments de clientèle"
+    type: liste
+    question: "Quels segments de clients visez-vous ? Le plus prometteur en premier."
+    deductible: false
+    utilise_par: [bp.etude_marche, bp.strategie_commerciale]
+
+  - id: taille_marche_tam
+    libelle: "Marché total (TAM)"
+    type: montant
+    question: "Quelle est la taille du marché total, en euros par an ?"
+    deductible: false
+    utilise_par: [bp.etude_marche]
+
+  - id: taille_marche_sam
+    libelle: "Marché accessible (SAM)"
+    type: montant
+    question: "Quelle part de ce marché pouvez-vous réellement adresser ?"
+    deductible: false
+    utilise_par: [bp.etude_marche]
+
+  - id: taille_marche_som
+    libelle: "Marché visé (SOM)"
+    type: montant
+    question: "Quelle part comptez-vous capter dans les trois ans ?"
+    deductible: false
+    utilise_par: [bp.etude_marche]
+
+  - id: source_donnees_marche
+    libelle: "Source des données de marché"
+    type: texte_court
+    question: "D'où viennent ces chiffres ? Une étude, un rapport, un organisme."
+    exemple: "INSEE, étude 2025 sur les services à la personne."
+    deductible: false
+    utilise_par: [bp.etude_marche]
+
+  - id: tendances_marche
+    libelle: "Tendances du marché"
+    type: texte_long
+    question: "Qu'est-ce qui pousse ou freine ce marché en ce moment ?"
+    deductible: false
+    utilise_par: [bp.etude_marche, bp.risques_bp]
+
+  # ── Concurrence ──────────────────────────────────────────────────────────
+  - id: concurrents_directs
+    libelle: "Concurrents directs"
+    type: liste
+    question: "Qui fait déjà la même chose ? Un par ligne, avec ce qui le caractérise."
+    deductible: false
+    utilise_par: [bp.analyse_concurrentielle, bp.strategie_commerciale]
+
+  - id: avantage_differenciant
+    libelle: "Ce qui vous distingue"
+    type: texte_long
+    question: "Pourquoi vous choisirait-on plutôt qu'eux ?"
+    deductible: false
+    utilise_par: [bp.probleme_solution, bp.analyse_concurrentielle]
+
+  - id: barrieres_entree
+    libelle: "Barrières à l'entrée"
+    type: texte_long
+    question: "Qu'est-ce qui empêcherait quelqu'un de vous copier dans six mois ?"
+    deductible: false
+    utilise_par: [bp.analyse_concurrentielle, bp.risques_bp]
+
+  # ── Modèle économique ────────────────────────────────────────────────────
+  - id: sources_revenus
+    libelle: "Sources de revenus"
+    type: liste
+    question: "Comment gagnez-vous de l'argent ? Une source par ligne."
+    deductible: true
+    utilise_par: [bp.modele_economique, bp.compte_resultat]
+
+  - id: unite_vendue
+    libelle: "Ce qui est vendu"
+    type: texte_court
+    question: "Quelle est votre unité de vente ? Une séance, un abonnement, une commande."
+    deductible: true
+    utilise_par: [bp.modele_economique, bp.compte_resultat, bp.seuil_rentabilite]
+
+  - id: prix_moyen_unite
+    libelle: "Prix moyen par unité"
+    type: montant
+    question: "Quel prix moyen envisagez-vous par unité vendue ?"
+    exemple: "45 € la séance"
+    deductible: false
+    utilise_par: [bp.modele_economique, bp.strategie_commerciale, bp.compte_resultat, bp.seuil_rentabilite]
+
+  - id: taux_commission
+    libelle: "Taux de commission"
+    type: pourcentage
+    question: "Quelle commission prenez-vous sur chaque transaction ?"
+    deductible: true
+    utilise_par: [bp.modele_economique, bp.compte_resultat, bp.seuil_rentabilite]
+
+  - id: cout_variable_unitaire
+    libelle: "Coût variable par unité"
+    type: montant
+    question: "Combien vous coûte chaque unité vendue, hors charges fixes ?"
+    deductible: false
+    utilise_par: [bp.modele_economique, bp.compte_resultat, bp.seuil_rentabilite]
+
+  - id: volume_ventes_an1
+    libelle: "Volume de ventes, année 1"
+    type: nombre
+    unite: "unités par an"
+    question: "Combien d'unités pensez-vous vendre la première année ?"
+    deductible: false
+    utilise_par: [bp.etude_marche, bp.compte_resultat, bp.plan_tresorerie, bp.seuil_rentabilite]
+
+  - id: recurrence_revenus
+    libelle: "Récurrence"
+    type: choix
+    options: [ponctuel, abonnement_mensuel, abonnement_annuel, mixte]
+    question: "Vos revenus sont-ils ponctuels ou récurrents ?"
+    deductible: true
+    utilise_par: [bp.modele_economique, bp.plan_tresorerie]
+
+  - id: delai_paiement_clients
+    libelle: "Délai de paiement client"
+    type: duree
+    unite: jours
+    question: "Sous combien de jours vos clients paient-ils ?"
+    deductible: false
+    utilise_par: [bp.plan_tresorerie, bp.besoin_financement]
+
+  # ── Stratégie commerciale ────────────────────────────────────────────────
+  - id: canaux_acquisition
+    libelle: "Canaux d'acquisition"
+    type: liste
+    question: "Par quels canaux comptez-vous trouver vos clients ?"
+    deductible: false
+    utilise_par: [bp.strategie_commerciale]
+
+  - id: cout_acquisition_client
+    libelle: "Coût d'acquisition d'un client"
+    type: montant
+    question: "Combien vous coûte l'acquisition d'un client ?"
+    deductible: false
+    utilise_par: [bp.strategie_commerciale, bp.compte_resultat, bp.seuil_rentabilite]
+
+  - id: positionnement_prix
+    libelle: "Positionnement tarifaire"
+    type: choix
+    options: [entree_de_gamme, milieu_de_gamme, premium]
+    question: "Où vous situez-vous par rapport aux prix du marché ?"
+    deductible: true
+    utilise_par: [bp.analyse_concurrentielle, bp.modele_economique, bp.strategie_commerciale]
+
+  # ── Opérationnel ─────────────────────────────────────────────────────────
+  - id: date_lancement_visee
+    libelle: "Date de lancement visée"
+    type: date
+    question: "Quand voulez-vous lancer ?"
+    deductible: false
+    pivot: true
+    utilise_par: [bp.plan_operationnel, bp.plan_tresorerie, cdc.livrables_planning]
+
+  - id: jalons_operationnels
+    libelle: "Jalons"
+    type: liste
+    question: "Quelles sont les grandes étapes avant le lancement ?"
+    deductible: false
+    utilise_par: [bp.plan_operationnel, cdc.livrables_planning]
+
+  - id: moyens_humains_an1
+    libelle: "Moyens humains, année 1"
+    type: texte_long
+    question: "De combien de personnes avez-vous besoin la première année, et pour quoi faire ?"
+    deductible: false
+    utilise_par: [bp.plan_operationnel, bp.moyens_investissements]
+
+  - id: masse_salariale_an1
+    libelle: "Masse salariale, année 1"
+    type: montant
+    question: "Quelle masse salariale prévoyez-vous la première année, charges comprises ?"
+    deductible: false
+    utilise_par: [bp.compte_resultat, bp.plan_tresorerie, bp.seuil_rentabilite]
+
+  - id: locaux_equipements
+    libelle: "Locaux et équipements"
+    type: texte_long
+    question: "De quels locaux et équipements avez-vous besoin ?"
+    deductible: false
+    utilise_par: [bp.plan_operationnel, bp.moyens_investissements]
+
+  # ── Financier ────────────────────────────────────────────────────────────
+  - id: budget_developpement
+    libelle: "Budget de développement"
+    type: montant
+    question: "Quel budget consacrez-vous à la réalisation technique du projet ?"
+    deductible: false
+    pivot: true
+    utilise_par: [bp.moyens_investissements, bp.besoin_financement, cdc.budget_modalites]
+
+  - id: investissements_initiaux
+    libelle: "Investissements initiaux, hors développement"
+    type: montant
+    question: "Que devez-vous acheter au démarrage, en dehors du développement ?"
+    deductible: false
+    utilise_par: [bp.moyens_investissements, bp.besoin_financement]
+
+  - id: charges_fixes_mensuelles
+    libelle: "Charges fixes mensuelles"
+    type: montant
+    question: "Quelles charges payez-vous chaque mois, quel que soit le volume vendu ?"
+    deductible: false
+    utilise_par: [bp.compte_resultat, bp.plan_tresorerie, bp.seuil_rentabilite]
+
+  - id: apport_fondateurs
+    libelle: "Apport des fondateurs"
+    type: montant
+    question: "Combien les fondateurs apportent-ils ?"
+    deductible: false
+    utilise_par: [bp.besoin_financement, bp.juridique]
+
+  - id: emprunt_montant
+    libelle: "Emprunt envisagé"
+    type: montant
+    question: "Quel montant comptez-vous emprunter ?"
+    deductible: false
+    utilise_par: [bp.compte_resultat, bp.plan_tresorerie, bp.besoin_financement]
+
+  - id: emprunt_duree
+    libelle: "Durée de l'emprunt"
+    type: duree
+    unite: mois
+    question: "Sur combien de temps ?"
+    deductible: false
+    utilise_par: [bp.plan_tresorerie, bp.besoin_financement]
+
+  - id: aides_subventions
+    libelle: "Aides et subventions"
+    type: montant
+    question: "Quelles aides ou subventions attendez-vous ?"
+    deductible: false
+    utilise_par: [bp.plan_tresorerie, bp.besoin_financement]
+
+  - id: tresorerie_securite
+    libelle: "Trésorerie de sécurité"
+    type: montant
+    question: "Quelle réserve de trésorerie voulez-vous garder ?"
+    deductible: false
+    utilise_par: [bp.plan_tresorerie, bp.besoin_financement]
+
+  - id: hypothese_croissance
+    libelle: "Croissance annuelle attendue"
+    type: pourcentage
+    question: "De combien vos ventes progressent-elles chaque année, selon vous ?"
+    deductible: false
+    utilise_par: [bp.compte_resultat, bp.besoin_financement]
+
+  # ── Juridique ────────────────────────────────────────────────────────────
+  - id: forme_juridique
+    libelle: "Forme juridique"
+    type: choix
+    options: [SAS, SASU, SARL, EURL, micro_entreprise, association, indecis]
+    question: "Quelle forme juridique avez-vous choisie ?"
+    deductible: false
+    utilise_par: [bp.compte_resultat, bp.juridique]
+
+  - id: repartition_capital
+    libelle: "Répartition du capital"
+    type: texte_long
+    question: "Comment le capital est-il réparti entre les associés ?"
+    deductible: false
+    utilise_par: [bp.juridique]
+
+  # ── CDC : contexte et existant ───────────────────────────────────────────
+  - id: organisation_commanditaire
+    libelle: "Organisation commanditaire"
+    type: texte_court
+    question: "Qui commande le projet ? Nom, activité, taille."
+    deductible: false
+    utilise_par: [cdc.contexte_objectifs, cdc.parties_prenantes, cdc.gouvernance_projet]
+
+  - id: situation_existante
+    libelle: "Situation actuelle"
+    type: texte_long
+    question: "Comment faites-vous aujourd'hui ? Outils, procédures, personnes."
+    deductible: false
+    utilise_par: [cdc.contexte_objectifs, cdc.existant_reprise]
+
+  - id: limites_existant
+    libelle: "Limites de l'existant"
+    type: texte_long
+    question: "Qu'est-ce qui ne va pas dans la situation actuelle ?"
+    deductible: false
+    utilise_par: [cdc.contexte_objectifs, cdc.existant_reprise]
+
+  - id: donnees_a_migrer
+    libelle: "Données à reprendre"
+    type: texte_long
+    question: "Quelles données existantes faudra-t-il reprendre ? Volume et format si vous les connaissez."
+    deductible: false
+    utilise_par: [cdc.existant_reprise, cdc.contraintes_techniques, cdc.budget_modalites, cdc.risques_cdc]
+
+  - id: objectifs_mesurables
+    libelle: "Objectifs mesurables"
+    type: liste
+    question: "À quoi verrez-vous que le projet est réussi ? Des objectifs chiffrés."
+    exemple: "Diviser par deux le temps de traitement d'une commande."
+    deductible: false
+    utilise_par: [cdc.contexte_objectifs, cdc.recette_acceptation]
+
+  - id: equipe_projet_client
+    libelle: "Vos moyens sur le projet"
+    type: texte_long
+    question: "Qui suivra le projet chez vous, et combien de temps pourra-t-il y consacrer ?"
+    exemple: "La responsable communication, environ une journée par semaine."
+    deductible: false
+    utilise_par: [cdc.gouvernance_projet]
+
+  - id: rythme_suivi
+    libelle: "Rythme des points d'avancement"
+    type: choix
+    options: [hebdomadaire, tous_les_quinze_jours, mensuel, aux_jalons]
+    question: "À quel rythme voulez-vous faire le point avec le prestataire ?"
+    deductible: false
+    utilise_par: [cdc.gouvernance_projet]
+
+  - id: delais_correction_attendus
+    libelle: "Délais de correction attendus"
+    type: texte_long
+    question: "En cas de panne bloquante, sous quel délai attendez-vous une prise en compte, puis une correction ?"
+    exemple: "Prise en compte sous 2 heures, contournement dans la journée, correction sous 2 jours ouvrés."
+    deductible: false
+    utilise_par: [cdc.maintenance_evolution]
+
+  # ── CDC : utilisateurs et périmètre ──────────────────────────────────────
+  - id: profils_utilisateurs
+    libelle: "Profils d'utilisateurs"
+    type: liste
+    question: "Qui utilisera l'outil ? Un profil par ligne, avec ce qu'il vient y faire."
+    deductible: false
+    utilise_par: [cdc.parties_prenantes, cdc.exigences_fonctionnelles]
+
+  - id: volumetrie_utilisateurs
+    libelle: "Nombre d'utilisateurs attendus"
+    type: nombre
+    unite: utilisateurs
+    question: "Combien d'utilisateurs attendez-vous la première année ?"
+    deductible: false
+    utilise_par: [cdc.parties_prenantes, cdc.exigences_non_fonctionnelles]
+
+  - id: perimetre_inclus
+    libelle: "Ce qui est dans le périmètre"
+    type: liste
+    question: "Qu'est-ce que le projet doit couvrir ?"
+    deductible: true
+    pivot: true
+    utilise_par: [bp.plan_operationnel, cdc.perimetre, cdc.exigences_fonctionnelles, cdc.budget_modalites]
+
+  - id: perimetre_exclu
+    libelle: "Ce qui en est exclu"
+    type: liste
+    question: "Qu'est-ce qui est explicitement hors périmètre, pour cette fois ?"
+    deductible: false
+    utilise_par: [cdc.perimetre, cdc.maintenance_evolution]
+
+  - id: modules_fonctionnels
+    libelle: "Modules fonctionnels"
+    type: liste
+    question: "En quels grands blocs le produit se découpe-t-il ?"
+    deductible: true
+    utilise_par: [cdc.perimetre, cdc.exigences_fonctionnelles, cdc.livrables_planning, cdc.cadre_reponse]
+
+  # ── CDC : exigences ──────────────────────────────────────────────────────
+  - id: contraintes_performance
+    libelle: "Exigences de performance"
+    type: texte_court
+    question: "Quelles exigences de rapidité ou de charge ? Utilisateurs simultanés, temps de réponse."
+    exemple: "Moins de 2 secondes de chargement, 200 utilisateurs simultanés."
+    deductible: false
+    utilise_par: [cdc.exigences_non_fonctionnelles, cdc.recette_acceptation]
+
+  - id: contraintes_securite_rgpd
+    libelle: "Sécurité et données personnelles"
+    type: texte_long
+    question: "Quelles données personnelles ou sensibles l'outil manipule-t-il ?"
+    deductible: false
+    utilise_par: [cdc.exigences_non_fonctionnelles, cdc.contraintes_techniques]
+
+  - id: contraintes_accessibilite
+    libelle: "Accessibilité"
+    type: choix
+    options: [rgaa_complet, rgaa_partiel, bonnes_pratiques, non_traite]
+    question: "Quel niveau d'accessibilité visez-vous ?"
+    deductible: false
+    utilise_par: [cdc.exigences_non_fonctionnelles, cdc.recette_acceptation]
+
+  - id: integrations_externes
+    libelle: "Intégrations"
+    type: liste
+    question: "Avec quels outils existants faut-il que ça communique ?"
+    deductible: false
+    utilise_par: [cdc.existant_reprise, cdc.exigences_fonctionnelles, cdc.contraintes_techniques, cdc.risques_cdc]
+
+  - id: hebergement_souhaite
+    libelle: "Hébergement"
+    type: choix
+    options: [cloud_public, cloud_souverain_ue, on_premise, au_choix_du_prestataire]
+    question: "Où l'outil doit-il être hébergé ?"
+    deductible: false
+    utilise_par: [cdc.contraintes_techniques, cdc.maintenance_evolution]
+
+  # ── CDC : identité ───────────────────────────────────────────────────────
+  - id: charte_existante
+    libelle: "Charte graphique existante"
+    type: booleen
+    question: "Avez-vous déjà une charte graphique ?"
+    deductible: false
+    utilise_par: [cdc.charte_graphique]
+
+  - id: elements_identite
+    libelle: "Éléments d'identité fournis"
+    type: texte_long
+    question: "Que fournissez-vous ? Logo, couleurs, polices, ton."
+    deductible: false
+    utilise_par: [cdc.charte_graphique, cdc.cadre_reponse]
+
+  - id: references_appreciees
+    libelle: "Références appréciées"
+    type: liste
+    question: "Quels sites ou applications aimez-vous, et pourquoi ?"
+    deductible: false
+    utilise_par: [cdc.charte_graphique]
+
+  # ── CDC : planning, budget, recette, maintenance ─────────────────────────
+  - id: date_livraison_souhaitee
+    libelle: "Date de livraison souhaitée"
+    type: date
+    question: "Pour quand le produit doit-il être livré ?"
+    deductible: false
+    utilise_par: [cdc.livrables_planning, cdc.cadre_reponse]
+
+  - id: contraintes_calendaires
+    libelle: "Contraintes de calendrier"
+    type: texte_long
+    question: "Y a-t-il une date imposée par autre chose ? Un salon, une saison, une obligation."
+    deductible: false
+    utilise_par: [bp.risques_bp, cdc.livrables_planning, cdc.risques_cdc]
+
+  - id: modalites_paiement
+    libelle: "Modalités de paiement"
+    type: texte_long
+    question: "Comment comptez-vous payer ? Acompte, échéances, à la livraison."
+    deductible: false
+    utilise_par: [cdc.budget_modalites, cdc.cadre_reponse]
+
+  - id: responsable_recette
+    libelle: "Qui valide la livraison"
+    type: texte_court
+    question: "Qui, chez vous, prononcera la recette ?"
+    deductible: false
+    utilise_par: [cdc.parties_prenantes, cdc.gouvernance_projet, cdc.recette_acceptation]
+
+  - id: maintenance_attendue
+    libelle: "Maintenance attendue"
+    type: texte_long
+    question: "Qui s'occupera du produit après la livraison, et pour quel niveau de service ?"
+    deductible: false
+    utilise_par: [cdc.budget_modalites, cdc.maintenance_evolution, cdc.cadre_reponse]
+
+  - id: evolutions_prevues
+    libelle: "Évolutions envisagées"
+    type: liste
+    question: "Qu'aimeriez-vous ajouter plus tard, une fois la première version en service ?"
+    deductible: false
+    utilise_par: [cdc.perimetre, cdc.maintenance_evolution]
