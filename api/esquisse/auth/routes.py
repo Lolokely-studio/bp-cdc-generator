@@ -3,6 +3,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 
 from esquisse.auth import repository
+from esquisse.auth.bearer import bearer_token
 from esquisse.config import settings
 from esquisse.db import connection
 from esquisse.security import hash_password, new_token, token_hash, verify_password
@@ -76,18 +77,9 @@ async def login(demande: LoginRequest) -> LoginResponse:
     return LoginResponse(jeton=plaintext)
 
 
-def _jeton_du_header(authorization: str) -> str:
-    """Le schéma est insensible à la casse d'après la norme HTTP. Comparer
-    « Bearer » au caractère près ferait qu'un client envoyant « bearer »
-    recevrait un 204 sans que sa session soit révoquée : il se croirait
-    déconnecté alors que son jeton reste valable."""
-    schema, _, valeur = authorization.partition(" ")
-    return valeur.strip() if schema.lower() == "bearer" else ""
-
-
 @router.post("/logout", status_code=204)
 async def logout(authorization: str = Header(default="")) -> None:
-    jeton = _jeton_du_header(authorization)
+    jeton = bearer_token(authorization)
     if jeton:
         async with connection() as conn:
             await repository.revoke_session(conn, token_hash(jeton))
