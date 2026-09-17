@@ -1,5 +1,5 @@
 import anyio
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
 
 from esquisse.auth import repository
@@ -7,10 +7,29 @@ from esquisse.auth.bearer import bearer_token
 from esquisse.auth.dependencies import active_user
 from esquisse.config import settings
 from esquisse.db import connection
+from esquisse.rate_limit import SlidingWindowCounter
 from esquisse.security import hash_password, new_token, token_hash, verify_password
 
 router = APIRouter(prefix="/auth", tags=["comptes"])
 me_router = APIRouter(tags=["comptes"])
+
+_account_limiter = SlidingWindowCounter(maximum=10, window_seconds=900)
+
+
+def _check_rate_limit(requete: Request) -> None:
+    """Limite par adresse d'appelant.
+
+    Attention à une dépendance invisible en local : en production, le service
+    est derrière le routeur de l'hébergeur, et `request.client.host` renvoie
+    alors l'adresse de ce routeur, identique pour tout le monde. Sans les
+    options `--proxy-headers --forwarded-allow-ips` passées à uvicorn
+    (voir le conteneur, tâche 11), tous les utilisateurs partageraient donc
+    un seul compteur : dix tentatives de n'importe qui bloqueraient tout le
+    monde pendant un quart d'heure. Ce serait un déni de service offert.
+    """
+    ip = requete.client.host if requete.client else "adresse_inconnue"
+    if not _account_limiter.allow(ip):
+        raise HTTPException(status_code=429, detail="trop_de_tentatives")
 
 
 class RegisterRequest(BaseModel):
@@ -27,7 +46,8 @@ class RegisterResponse(BaseModel):
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(demande: RegisterRequest) -> RegisterResponse:
+async def register(requete: Request, demande: RegisterRequest) -> RegisterResponse:
+    _check_rate_limit(requete)
     # Hachage hors de la boucle d'événements et AVANT d'ouvrir la connexion :
     # argon2 coûte des dizaines de millisecondes, pendant lesquelles il
     # bloquerait tout le serveur et retiendrait une des cinq connexions du pool.
@@ -53,7 +73,8 @@ class LoginResponse(BaseModel):
 
 
 @router.post("/login")
-async def login(demande: LoginRequest) -> LoginResponse:
+async def login(requete: Request, demande: LoginRequest) -> LoginResponse:
+    _check_rate_limit(requete)
     async with connection() as conn:
         user = await repository.user_by_email(conn, demande.email)
 

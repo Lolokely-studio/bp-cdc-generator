@@ -61,3 +61,12 @@ async def client():
     transport = httpx.ASGITransport(app=create_app())
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limit():
+    """Le compteur vit dans le processus : sans remise à zéro, un test
+    qui consomme la limite fait échouer le suivant."""
+    from esquisse.auth import routes
+    routes._account_limiter.reset()
+    yield
