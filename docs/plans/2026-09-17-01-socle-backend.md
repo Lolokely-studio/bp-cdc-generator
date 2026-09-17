@@ -891,6 +891,11 @@ Attendu : ÉCHEC, fixture `client` introuvable
 Ajouter à `api/tests/conftest.py` :
 
 ```python
+# Les imports de `esquisse` viennent APRÈS les affectations ci-dessus. Aujourd'hui
+# `settings()` est paresseux et mémoïsé, donc l'ordre ne change rien — mais il
+# suffirait qu'un module appelle `settings()` à l'import pour que la configuration
+# se fige sur le `.env` de production. On ne fait pas reposer sur la chance ce que
+# l'ordre garantit.
 import httpx
 import pytest_asyncio
 from esquisse.app import create_app
@@ -946,6 +951,7 @@ async def user_by_email(conn, email: str) -> dict | None:
 `api/esquisse/auth/routes.py` :
 
 ```python
+import anyio
 from fastapi import APIRouter, status
 from pydantic import BaseModel, EmailStr, Field
 
@@ -958,7 +964,10 @@ router = APIRouter(prefix="/auth", tags=["comptes"])
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    mot_de_passe: str = Field(min_length=10)
+    # Le maximum n'est pas cosmétique : sans lui, un client peut envoyer un
+    # mot de passe de plusieurs mégaoctets qu'argon2 mettrait très longtemps à
+    # hacher. 128 caractères laissent place à n'importe quelle phrase de passe.
+    mot_de_passe: str = Field(min_length=10, max_length=128)
 
 
 class RegisterResponse(BaseModel):
@@ -968,8 +977,15 @@ class RegisterResponse(BaseModel):
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(demande: RegisterRequest) -> RegisterResponse:
+    # Hachage hors de la boucle d'événements et AVANT d'ouvrir la connexion :
+    # argon2 coûte des dizaines de millisecondes, pendant lesquelles il
+    # bloquerait tout le serveur et retiendrait une des cinq connexions du pool.
+    digest = await anyio.to_thread.run_sync(hash_password, demande.mot_de_passe)
     async with connection() as conn:
-        await repository.create_user(conn, demande.email, hash_password(demande.mot_de_passe))
+        # La valeur de retour est volontairement ignorée, et ne doit jamais
+        # être testée dans un chemin de réponse : c'est ce qui garantit qu'une
+        # adresse déjà prise réponde exactement comme une inscription réussie.
+        await repository.create_user(conn, demande.email, digest)
     return RegisterResponse(
         compte_actif=False,
         message="Compte créé. Il sera utilisable une fois activé.",
@@ -1128,7 +1144,7 @@ from esquisse.security import new_token, verify_password, token_hash
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    mot_de_passe: str
+    mot_de_passe: str = Field(max_length=128)
 
 
 class LoginResponse(BaseModel):
@@ -1139,15 +1155,27 @@ class LoginResponse(BaseModel):
 async def login(demande: LoginRequest) -> LoginResponse:
     async with connection() as conn:
         user = await repository.user_by_email(conn, demande.email)
-        if not user or not verify_password(demande.mot_de_passe, user["password_hash"]):
-            raise HTTPException(status_code=401, detail="identifiants_invalides")
-        if not user["is_active"]:
-            raise HTTPException(status_code=403, detail="compte_inactif")
-        clair, token_digest = new_token()
+
+    # Hors de la connexion et hors de la boucle d'événements, pour la même
+    # raison qu'à l'inscription. `verify_password` rend False sur une empreinte
+    # absente : on le fait donc tourner même quand l'utilisateur est
+    # introuvable, de sorte que les deux cas coûtent le même temps et qu'on
+    # ne révèle pas quels comptes existent.
+    stored = user["password_hash"] if user else None
+    valide = await anyio.to_thread.run_sync(
+        verify_password, demande.mot_de_passe, stored
+    )
+    if not user or not valide:
+        raise HTTPException(status_code=401, detail="identifiants_invalides")
+    if not user["is_active"]:
+        raise HTTPException(status_code=403, detail="compte_inactif")
+
+    plaintext, token_digest = new_token()
+    async with connection() as conn:
         await repository.open_session(
             conn, user["id"], token_digest, settings().session_ttl_hours
         )
-    return LoginResponse(jeton=clair)
+    return LoginResponse(jeton=plaintext)
 
 
 @router.post("/logout", status_code=204)
