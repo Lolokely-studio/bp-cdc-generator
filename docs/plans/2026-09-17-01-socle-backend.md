@@ -182,8 +182,8 @@ git commit -m "feat(api): squelette FastAPI et sonde de santé"
 **Interfaces :**
 - Consomme : rien.
 - Produit :
-  - `esquisse.config.Reglages` (pydantic-settings) avec `dsn: str`, `session_ttl_heures: int`, `fake_llm: bool`
-  - `esquisse.config.settings() -> Reglages`, mémoïsé
+  - `esquisse.config.Settings` (pydantic-settings) avec `dsn: str`, `session_ttl_hours: int`, `fake_llm: bool`
+  - `esquisse.config.settings() -> Settings`, mémoïsé
   - `esquisse.db.pool() -> AsyncConnectionPool`
   - `esquisse.db.connection()` — gestionnaire de contexte asynchrone qui rend une connexion du pool
   - Toutes les tâches suivantes obtiennent leurs connexions par `connection()`.
@@ -249,11 +249,19 @@ Attendu : ÉCHEC, `ModuleNotFoundError: No module named 'esquisse.db'`
 
 ```python
 from functools import lru_cache
+from pathlib import Path
+
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Ancré sur l'emplacement du module : le `.env` documenté vit à la racine du
+# dépôt, alors que les commandes se lancent depuis `api/`. Un chemin relatif
+# viserait `api/.env` et ne trouverait jamais le fichier.
+_RACINE_DEPOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_RACINE_DEPOT / ".env", extra="ignore")
 
     supabase_db_host: str = "localhost"
     supabase_db_port: int = 5433
@@ -261,8 +269,11 @@ class Settings(BaseSettings):
     supabase_db_password: str = "esquisse"
     supabase_db_name: str = "esquisse_test"
 
-    session_ttl_heures: int = 24 * 14
-    esquisse_fake_llm: bool = False
+    session_ttl_hours: int = 24 * 14
+    # pydantic-settings dérive le nom de la variable d'environnement du nom du
+    # champ. L'alias garde `ESQUISSE_FAKE_LLM`, documenté au §11 de la spec,
+    # sans imposer ce préfixe au nom Python.
+    fake_llm: bool = Field(default=False, validation_alias="ESQUISSE_FAKE_LLM")
 
     @property
     def dsn(self) -> str:
@@ -305,7 +316,7 @@ def pool() -> AsyncConnectionPool:
     )
 
 
-_ouvert = False
+_opened = False
 
 
 @asynccontextmanager
@@ -313,11 +324,14 @@ async def connection():
     """Ouvre le pool au premier usage. On ne s'appuie pas sur `pool.closed`,
     dont la valeur avant la première ouverture prête à confusion : un drapeau
     explicite est plus court à lire et ne dépend pas de la version."""
-    global _ouvert
+    global _opened
     p = pool()
-    if not _ouvert:
-        await p.open()
-        _ouvert = True
+    if not _opened:
+        # `wait=True` : sans lui, `open()` rend la main avant la fin du
+        # remplissage initial et entre en course avec la demande de connexion
+        # juste en dessous — mesuré à plus d'un blocage sur deux.
+        await p.open(wait=True)
+        _opened = True
     async with p.connection() as conn:
         yield conn
 ```
@@ -959,14 +973,14 @@ class LoginResponse(BaseModel):
 @routeur.post("/login")
 async def login(demande: LoginRequest) -> LoginResponse:
     async with connection() as conn:
-        utilisateur = await repository.user_by_email(conn, demande.email)
-        if not utilisateur or not verify_password(demande.mot_de_passe, utilisateur["password_hash"]):
+        user = await repository.user_by_email(conn, demande.email)
+        if not user or not verify_password(demande.mot_de_passe, user["password_hash"]):
             raise HTTPException(status_code=401, detail="identifiants_invalides")
-        if not utilisateur["is_active"]:
+        if not user["is_active"]:
             raise HTTPException(status_code=403, detail="compte_inactif")
         clair, token_digest = new_token()
         await repository.open_session(
-            conn, utilisateur["id"], token_digest, settings().session_ttl_heures
+            conn, user["id"], token_digest, settings().session_ttl_hours
         )
     return LoginResponse(jeton=clair)
 
