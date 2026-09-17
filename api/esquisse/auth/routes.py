@@ -1,14 +1,16 @@
 import anyio
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 
 from esquisse.auth import repository
 from esquisse.auth.bearer import bearer_token
+from esquisse.auth.dependencies import active_user
 from esquisse.config import settings
 from esquisse.db import connection
 from esquisse.security import hash_password, new_token, token_hash, verify_password
 
 router = APIRouter(prefix="/auth", tags=["comptes"])
+me_router = APIRouter(tags=["comptes"])
 
 
 class RegisterRequest(BaseModel):
@@ -83,3 +85,8 @@ async def logout(authorization: str = Header(default="")) -> None:
     if jeton:
         async with connection() as conn:
             await repository.revoke_session(conn, token_hash(jeton))
+
+
+@me_router.get("/me")
+async def me(utilisateur: dict = Depends(active_user)) -> dict:
+    return {"email": utilisateur["email"], "compte_actif": True}

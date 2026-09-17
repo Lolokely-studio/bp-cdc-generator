@@ -16,6 +16,9 @@ def create_app() -> FastAPI:
     from esquisse.auth.routes import router as auth_router
     app.include_router(auth_router)
 
+    from esquisse.auth.routes import me_router
+    app.include_router(me_router)
+
     return app
 
 
