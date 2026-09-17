@@ -1838,7 +1838,17 @@ _account_limiter = SlidingWindowCounter(maximum=10, window_seconds=900)
 
 
 def _check_rate_limit(requete: Request) -> None:
-    ip = requete.client.host if requete.client else "inconnue"
+    """Limite par adresse d'appelant.
+
+    Attention à une dépendance invisible en local : en production, le service
+    est derrière le routeur de l'hébergeur, et `request.client.host` renvoie
+    alors l'adresse de ce routeur, identique pour tout le monde. Sans les
+    options `--proxy-headers --forwarded-allow-ips` passées à uvicorn
+    (voir le conteneur, tâche 11), tous les utilisateurs partageraient donc
+    un seul compteur : dix tentatives de n'importe qui bloqueraient tout le
+    monde pendant un quart d'heure. Ce serait un déni de service offert.
+    """
+    ip = requete.client.host if requete.client else "adresse_inconnue"
     if not _account_limiter.allow(ip):
         raise HTTPException(status_code=429, detail="trop_de_tentatives")
 ```
@@ -2026,7 +2036,12 @@ COPY . .
 RUN uv sync --frozen --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"
-CMD ["sh", "-c", "alembic upgrade head && uvicorn esquisse.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# `--proxy-headers` fait lire X-Forwarded-For à uvicorn, sans quoi
+# `request.client.host` vaut l'adresse du routeur de l'hébergeur pour toutes
+# les requêtes et la limitation de débit devient un compteur unique partagé
+# par tous les utilisateurs. `--forwarded-allow-ips` vaut `*` parce que le
+# service n'est joignable qu'à travers ce routeur.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn esquisse.app:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
 ```
 
 `api/.dockerignore` :
@@ -2037,6 +2052,18 @@ __pycache__
 tests
 .pytest_cache
 ```
+
+- [ ] **Étape 1b : vérifier que les options de proxy sont bien là**
+
+Lancer : `grep -c "proxy-headers" api/Dockerfile`
+Attendu : `1`.
+
+Ce n'est pas une vérification de forme. Sans cette option, `request.client.host`
+vaut l'adresse du routeur de l'hébergeur pour toutes les requêtes, la
+limitation de débit de la tâche 9 devient un compteur unique partagé, et dix
+tentatives de connexion suffisent à bloquer tous les utilisateurs pendant un
+quart d'heure. Le défaut est invisible en développement, où il n'y a pas de
+routeur intermédiaire.
 
 - [ ] **Étape 2 : vérifier que l'image se construit et démarre**
 
