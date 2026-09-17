@@ -1988,6 +1988,11 @@ encore cette colonne dans ce plan. Le schéma aurait divergé en silence.
   `session_invalide`, `trop_de_tentatives`).
 - Les commentaires et les docstrings, qui restent en français.
 - Les noms de variables d'environnement.
+- **Les paramètres de `create_project` qui portent le nom d'une colonne** :
+  `nom`, `documents`, `profil_cdc`, `profil_bp`. Ce sont des paramètres nommés
+  obligatoires, donc écrits tels quels aux points d'appel, et ils reflètent
+  délibérément les colonnes du schéma. Les angliciser créerait un écart entre
+  le nom de l'argument et celui de la colonne qu'il remplit.
 
 - [ ] **Étape 1 : établir la liste avant de toucher quoi que ce soit**
 
@@ -1999,7 +2004,9 @@ import re
 from pathlib import Path
 mots = ["jeton","ligne","utilisateur","entetes","demande","valide","clair","empreinte",
         "reponse","premiere","seconde","actif","schema","valeur","debut","erreur",
-        "retour","expire","fichier","racine","coupables","autorise"]
+        "retour","expire","fichier","racine","coupables","autorise","requete","champs",
+        "colonne","cle","maintenant","passages","projet","proprietaire","intrus",
+        "extrait","entete","attendu","compteur","cout_reel","cout_absent","reglages_"]
 for f in sorted(list(Path('esquisse').rglob('*.py')) + list(Path('tests').rglob('*.py'))):
     # `migrations/` est volontairement absent de cette liste.
     code = re.sub(r'""".*?"""', '', re.sub(r'#.*', '', f.read_text(encoding='utf-8')), flags=re.S)
@@ -2040,6 +2047,22 @@ docstring, une chaîne de caractères ou un nom de colonne.
 | `racine` | `root` | |
 | `coupables` | `offenders` | |
 | `autorise` | `allowed` | |
+| `requete` | `request` | |
+| `champs` | `columns` | liste des noms de colonnes lue du curseur |
+| `colonne` | `column` | |
+| `cle` | `key` | |
+| `maintenant` | `now` | |
+| `passages` | `hits` | |
+| `projet` | `project` | |
+| `proprietaire` | `owner` | |
+| `intrus` | `intruder` | |
+| `extrait` | `snippet` | |
+| `entete` | `header` | |
+| `attendu` | `expected` | |
+| `compteur` | `counter` | |
+| `clair_a` / `clair_b` | `plaintext_a` / `plaintext_b` | |
+| `cout_reel` / `cout_absent` | `cost_with_digest` / `cost_without_digest` | |
+| `reglages_sans_variable` / `reglages_avec_variable` | `settings_without_env` / `settings_with_env` | |
 
 - [ ] **Étape 3 : vérifier qu'il ne reste rien**
 
