@@ -1,5 +1,6 @@
 from alembic import context
 from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 
 from esquisse.config import settings
 from esquisse.safety import ensure_migration_target_allowed
@@ -11,7 +12,9 @@ def run_migrations_online() -> None:
     par le pooler en mode transaction."""
     ensure_migration_target_allowed(settings().dsn)
     dsn = settings().dsn.replace("postgresql://", "postgresql+psycopg://")
-    engine = create_engine(dsn, poolclass=None)
+    # NullPool : une seule connexion, le processus se termine juste après.
+    # `poolclass=None` ne désactive rien, contrairement à ce que son nom suggère.
+    engine = create_engine(dsn, poolclass=NullPool)
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=None)
         with context.begin_transaction():

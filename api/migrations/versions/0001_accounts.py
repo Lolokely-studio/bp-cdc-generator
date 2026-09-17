@@ -35,5 +35,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Les extensions ne sont volontairement pas désinstallées.
+
+    `drop extension` sur une base gérée peut casser des objets sans rapport
+    avec ce projet, et sur Supabase les extensions relèvent de la plateforme.
+    Une migration inverse qui désinstalle une extension partagée est plus
+    dangereuse que l'asymétrie qu'elle corrigerait. `create extension if not
+    exists` rend de toute façon la remontée idempotente."""
     op.execute("drop table if exists sessions")
     op.execute("drop table if exists users")

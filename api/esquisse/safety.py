@@ -1,8 +1,8 @@
 import os
 from urllib.parse import urlparse
 
-_HOTES_LOCAUX = {"localhost", "127.0.0.1", "::1"}
-_AUTORISATION = "ESQUISSE_ALLOW_REMOTE_MIGRATIONS"
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+_OPT_IN = "ESQUISSE_ALLOW_REMOTE_MIGRATIONS"
 
 
 class RemoteMigrationRefused(RuntimeError):
@@ -17,12 +17,12 @@ def ensure_migration_target_allowed(dsn: str) -> None:
     retombe sur le `.env` de la racine — celui qui porte les identifiants de
     production. Une frappe de trop et `alembic upgrade head` migre la base
     réelle. Le refus par défaut rend ce geste volontaire."""
-    hote = urlparse(dsn).hostname or ""
-    if hote in _HOTES_LOCAUX:
+    host = urlparse(dsn).hostname or ""
+    if host in _LOCAL_HOSTS:
         return
-    if os.environ.get(_AUTORISATION) == "1":
+    if os.environ.get(_OPT_IN) == "1":
         return
     raise RemoteMigrationRefused(
-        f"Cible de migration non locale : {hote}. "
-        f"Pour l'accepter, relancez avec {_AUTORISATION}=1."
+        f"Cible de migration non locale : {host}. "
+        f"Pour l'accepter, relancez avec {_OPT_IN}=1."
     )
