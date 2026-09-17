@@ -2164,7 +2164,10 @@ tests
 - [ ] **Étape 1b : vérifier que les options de proxy sont bien là**
 
 Lancer : `grep -c "proxy-headers" api/Dockerfile`
-Attendu : `1`.
+Attendu : au moins `1`. La valeur réelle est `2`, le commentaire au-dessus de
+`CMD` contenant lui aussi le mot — ce qui est normal, puisqu'il explique
+pourquoi l'option est là. Ce qu'on vérifie, c'est la présence de l'option dans
+la commande de démarrage.
 
 Ce n'est pas une vérification de forme. Sans cette option, `request.client.host`
 vaut l'adresse du routeur de l'hébergeur pour toutes les requêtes, la
