@@ -23,6 +23,15 @@ def test_same_password_hashes_differ():
     assert hash_password("identique") != hash_password("identique")
 
 
+def test_verify_refuses_none_instead_of_crashing():
+    """Un appelant qui normalise le temps de réponse sur « utilisateur
+    inconnu » passe naturellement None comme empreinte. Ce module doit
+    répondre « non », jamais lever : une exception ici devient une 500."""
+    assert verify_password("motdepasse", None) is False
+    assert verify_password(None, hash_password("motdepasse")) is False
+    assert verify_password("", "") is False
+
+
 def test_new_token_is_unpredictable_and_digest_stable():
     clair_a, h_a = new_token()
     clair_b, h_b = new_token()
