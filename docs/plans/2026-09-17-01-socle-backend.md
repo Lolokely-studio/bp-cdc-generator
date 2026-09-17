@@ -699,6 +699,8 @@ cd api && uv add "argon2-cffi>=23.1"
 `api/tests/test_security.py` :
 
 ```python
+import time
+
 from esquisse.security import hash_password, verify_password, new_token, token_hash
 
 
@@ -722,6 +724,25 @@ def test_same_password_hashes_differ():
     """Le sel rend chaque empreinte unique : deux comptes avec le même
     mot de passe n'ont pas la même ligne en base."""
     assert hash_password("identique") != hash_password("identique")
+
+
+def test_verify_pays_the_same_cost_when_digest_is_absent():
+    """Une garde qui rend False sans appeler argon2 répondrait en
+    microsecondes pour un compte inconnu, contre des dizaines de
+    millisecondes pour un mauvais mot de passe. L'écart révélerait quels
+    comptes existent. Le rapport toléré est large : sans la correction, il
+    est de plusieurs ordres de grandeur."""
+    reference = hash_password("motdepasse")
+
+    debut = time.perf_counter()
+    verify_password("mauvais", reference)
+    cout_reel = time.perf_counter() - debut
+
+    debut = time.perf_counter()
+    verify_password("mauvais", None)
+    cout_absent = time.perf_counter() - debut
+
+    assert cout_absent > cout_reel / 3
 
 
 def test_verify_refuses_none_instead_of_crashing():
@@ -760,6 +781,10 @@ from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHas
 
 _hasher = PasswordHasher()
 
+# Empreinte factice, calculée une fois au chargement du module. Elle sert
+# uniquement à payer le coût d'argon2 quand aucune empreinte réelle n'existe.
+_DUMMY_HASH = _hasher.hash("empreinte factice pour egaliser le temps de reponse")
+
 
 def hash_password(password: str) -> str:
     return _hasher.hash(password)
@@ -769,16 +794,25 @@ def verify_password(password: str | None, stored_hash: str | None) -> bool:
     """Rend toujours un booléen, jamais une exception.
 
     Le cas `None` n'est pas théorique : pour ne pas révéler quels comptes
-    existent, un appelant peut vouloir vérifier même quand l'utilisateur est
-    introuvable, et passe alors une empreinte absente. argon2 lèverait un
-    `AttributeError` avant même d'atteindre ses propres exceptions, qui
-    remonterait en erreur serveur."""
-    if not password or not stored_hash:
+    existent, un appelant vérifie même quand l'utilisateur est introuvable, et
+    passe alors une empreinte absente. argon2 lèverait un `AttributeError`
+    avant d'atteindre ses propres exceptions, qui remonterait en erreur serveur.
+
+    Mais rendre `False` tout de suite ne suffit pas : le chemin « compte
+    inconnu » répondrait en microsecondes là où « mauvais mot de passe » paie
+    les dizaines de millisecondes d'argon2, et cet écart révélerait
+    précisément ce qu'on cherche à cacher. On vérifie donc contre une
+    empreinte factice pour payer le même coût."""
+    if not password:
         return False
+    target = stored_hash if stored_hash else _DUMMY_HASH
     try:
-        return _hasher.verify(stored_hash, password)
+        valid = _hasher.verify(target, password)
     except (VerifyMismatchError, VerificationError, InvalidHashError):
         return False
+    # Une empreinte absente ne vaut jamais un succès, même dans le cas
+    # improbable où le mot de passe correspondrait à l'empreinte factice.
+    return valid and stored_hash is not None
 
 
 def new_token() -> tuple[str, bytes]:
@@ -1045,7 +1079,8 @@ git commit -m "feat(api): inscription, compte inactif par défaut"
 `api/tests/test_login.py` :
 
 ```python
-import pytest
+import hashlib
+
 from esquisse.db import connection
 
 
@@ -1090,6 +1125,30 @@ async def test_unknown_account_rejected_without_leak(client, migrated_db):
         "/auth/login", json={"email": "jamais@exemple.fr", "mot_de_passe": "motdepasse123"}
     )
     assert reponse.status_code == 401
+
+
+async def test_logout_accepts_any_case_of_the_scheme(client, migrated_db):
+    """Un 204 sans révocation serait pire qu'une erreur : l'utilisateur se
+    croirait déconnecté alors que son jeton resterait valable."""
+    await _register_and_activate(client, "casse@exemple.fr", actif=True)
+    r = await client.post(
+        "/auth/login", json={"email": "casse@exemple.fr", "mot_de_passe": "motdepasse123"}
+    )
+    jeton = r.json()["jeton"]
+    assert (await client.post("/auth/logout", headers={"Authorization": f"bearer {jeton}"})).status_code == 204
+
+    async with connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "select revoked_at from sessions where token_hash = %s",
+                (hashlib.sha256(jeton.encode()).digest(),),
+            )
+            assert (await cur.fetchone())[0] is not None
+
+
+async def test_logout_without_header_is_harmless(client, migrated_db):
+    assert (await client.post("/auth/logout")).status_code == 204
+    assert (await client.post("/auth/logout", headers={"Authorization": "n importe quoi"})).status_code == 204
 
 
 async def test_plaintext_token_not_stored(client, migrated_db):
@@ -1182,9 +1241,18 @@ async def login(demande: LoginRequest) -> LoginResponse:
     return LoginResponse(jeton=plaintext)
 
 
+def _jeton_du_header(authorization: str) -> str:
+    """Le schéma est insensible à la casse d'après la norme HTTP. Comparer
+    « Bearer » au caractère près ferait qu'un client envoyant « bearer »
+    recevrait un 204 sans que sa session soit révoquée : il se croirait
+    déconnecté alors que son jeton reste valable."""
+    schema, _, valeur = authorization.partition(" ")
+    return valeur.strip() if schema.lower() == "bearer" else ""
+
+
 @router.post("/logout", status_code=204)
 async def logout(authorization: str = Header(default="")) -> None:
-    jeton = authorization.removeprefix("Bearer ").strip()
+    jeton = _jeton_du_header(authorization)
     if jeton:
         async with connection() as conn:
             await repository.revoke_session(conn, token_hash(jeton))
