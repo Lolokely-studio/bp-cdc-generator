@@ -13,6 +13,9 @@ def create_app() -> FastAPI:
         d'attente le temps du redémarrage."""
         return {"statut": "ok"}
 
+    from esquisse.auth.routes import router as auth_router
+    app.include_router(auth_router)
+
     return app
 
 

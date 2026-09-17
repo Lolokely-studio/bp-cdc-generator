@@ -2,7 +2,11 @@ import os
 import subprocess
 from pathlib import Path
 
+import httpx
 import pytest
+import pytest_asyncio
+
+from esquisse.app import create_app
 
 # Affectation ferme (et non `setdefault`) : le `.env` à la racine du dépôt
 # contient les identifiants de la base Supabase de production, et un
@@ -45,3 +49,10 @@ def migrated_db():
 
     subprocess.run(["uv", "run", "alembic", "upgrade", "head"], cwd=api_root, check=True)
     return True
+
+
+@pytest_asyncio.fixture
+async def client():
+    transport = httpx.ASGITransport(app=create_app())
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
