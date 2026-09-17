@@ -26,7 +26,7 @@ def test_window_slides():
 async def test_login_is_rate_limited(client, migrated_db):
     for _ in range(10):
         await client.post("/auth/login", json={"email": "x@exemple.fr", "mot_de_passe": "motdepasse123"})
-    reponse = await client.post(
+    response = await client.post(
         "/auth/login", json={"email": "x@exemple.fr", "mot_de_passe": "motdepasse123"}
     )
-    assert reponse.status_code == 429
+    assert response.status_code == 429

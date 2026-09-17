@@ -9,8 +9,8 @@ async def active_user(authorization: str = Header(default="")) -> dict:
     """Une requête par appel, indexée sur la clé primaire de sessions.
     C'est le prix de la révocation instantanée, et il est négligeable
     aux volumes visés."""
-    jeton = bearer_token(authorization)
-    if not jeton:
+    token = bearer_token(authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="jeton_absent")
 
     async with connection() as conn:
@@ -23,12 +23,12 @@ async def active_user(authorization: str = Header(default="")) -> dict:
                   and s.revoked_at is null
                   and s.expires_at > now()
                 """,
-                (token_hash(jeton),),
+                (token_hash(token),),
             )
-            ligne = await cur.fetchone()
+            row = await cur.fetchone()
 
-    if not ligne:
+    if not row:
         raise HTTPException(status_code=401, detail="session_invalide")
-    if not ligne[2]:
+    if not row[2]:
         raise HTTPException(status_code=403, detail="compte_inactif")
-    return {"id": ligne[0], "email": ligne[1]}
+    return {"id": row[0], "email": row[1]}

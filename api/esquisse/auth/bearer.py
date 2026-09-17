@@ -6,5 +6,5 @@ def bearer_token(authorization: str) -> str:
     l'accès sans raison visible — ou, à la déconnexion, recevrait un 204 sans
     que sa session soit révoquée : il se croirait déconnecté alors que son
     jeton reste valable."""
-    schema, _, valeur = authorization.partition(" ")
-    return valeur.strip() if schema.lower() == "bearer" else ""
+    scheme, _, value = authorization.partition(" ")
+    return value.strip() if scheme.lower() == "bearer" else ""

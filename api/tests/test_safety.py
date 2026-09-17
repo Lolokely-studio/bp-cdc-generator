@@ -15,9 +15,9 @@ def test_remote_target_is_refused_by_default(monkeypatch):
     """Sans ce refus, la commande d'installation du README migrerait la
     base de production."""
     monkeypatch.delenv("ESQUISSE_ALLOW_REMOTE_MIGRATIONS", raising=False)
-    with pytest.raises(RemoteMigrationRefused) as erreur:
+    with pytest.raises(RemoteMigrationRefused) as error:
         ensure_migration_target_allowed(DISTANT)
-    assert "pooler.supabase.com" in str(erreur.value)
+    assert "pooler.supabase.com" in str(error.value)
 
 
 def test_remote_target_is_allowed_when_opted_in(monkeypatch):

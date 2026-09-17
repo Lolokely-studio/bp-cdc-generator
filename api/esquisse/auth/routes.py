@@ -46,17 +46,17 @@ class RegisterResponse(BaseModel):
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(requete: Request, demande: RegisterRequest) -> RegisterResponse:
+async def register(requete: Request, payload: RegisterRequest) -> RegisterResponse:
     _check_rate_limit(requete)
     # Hachage hors de la boucle d'événements et AVANT d'ouvrir la connexion :
     # argon2 coûte des dizaines de millisecondes, pendant lesquelles il
     # bloquerait tout le serveur et retiendrait une des cinq connexions du pool.
-    digest = await anyio.to_thread.run_sync(hash_password, demande.mot_de_passe)
+    digest = await anyio.to_thread.run_sync(hash_password, payload.mot_de_passe)
     async with connection() as conn:
         # La valeur de retour est volontairement ignorée, et ne doit jamais
         # être testée dans un chemin de réponse : c'est ce qui garantit qu'une
         # adresse déjà prise réponde exactement comme une inscription réussie.
-        await repository.create_user(conn, demande.email, digest)
+        await repository.create_user(conn, payload.email, digest)
     return RegisterResponse(
         compte_actif=False,
         message="Compte créé. Il sera utilisable une fois activé.",
@@ -73,10 +73,10 @@ class LoginResponse(BaseModel):
 
 
 @router.post("/login")
-async def login(requete: Request, demande: LoginRequest) -> LoginResponse:
+async def login(requete: Request, payload: LoginRequest) -> LoginResponse:
     _check_rate_limit(requete)
     async with connection() as conn:
-        user = await repository.user_by_email(conn, demande.email)
+        user = await repository.user_by_email(conn, payload.email)
 
     # Hors de la connexion et hors de la boucle d'événements, pour la même
     # raison qu'à l'inscription. `verify_password` rend False sur une empreinte
@@ -84,10 +84,10 @@ async def login(requete: Request, demande: LoginRequest) -> LoginResponse:
     # introuvable, de sorte que les deux cas coûtent le même temps et qu'on
     # ne révèle pas quels comptes existent.
     stored = user["password_hash"] if user else None
-    valide = await anyio.to_thread.run_sync(
-        verify_password, demande.mot_de_passe, stored
+    valid = await anyio.to_thread.run_sync(
+        verify_password, payload.mot_de_passe, stored
     )
-    if not user or not valide:
+    if not user or not valid:
         raise HTTPException(status_code=401, detail="identifiants_invalides")
     if not user["is_active"]:
         raise HTTPException(status_code=403, detail="compte_inactif")
@@ -102,12 +102,12 @@ async def login(requete: Request, demande: LoginRequest) -> LoginResponse:
 
 @router.post("/logout", status_code=204)
 async def logout(authorization: str = Header(default="")) -> None:
-    jeton = bearer_token(authorization)
-    if jeton:
+    token = bearer_token(authorization)
+    if token:
         async with connection() as conn:
-            await repository.revoke_session(conn, token_hash(jeton))
+            await repository.revoke_session(conn, token_hash(token))
 
 
 @me_router.get("/me")
-async def me(utilisateur: dict = Depends(active_user)) -> dict:
-    return {"email": utilisateur["email"], "compte_actif": True}
+async def me(user: dict = Depends(active_user)) -> dict:
+    return {"email": user["email"], "compte_actif": True}

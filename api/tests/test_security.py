@@ -33,13 +33,13 @@ def test_verify_pays_the_same_cost_when_digest_is_absent():
     est de plusieurs ordres de grandeur."""
     reference = hash_password("motdepasse")
 
-    debut = time.perf_counter()
+    start = time.perf_counter()
     verify_password("mauvais", reference)
-    cout_reel = time.perf_counter() - debut
+    cout_reel = time.perf_counter() - start
 
-    debut = time.perf_counter()
+    start = time.perf_counter()
     verify_password("mauvais", None)
-    cout_absent = time.perf_counter() - debut
+    cout_absent = time.perf_counter() - start
 
     assert cout_absent > cout_reel / 3
 

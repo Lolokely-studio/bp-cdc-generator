@@ -42,14 +42,14 @@ def migrated_db():
     # état partiel par une exécution interrompue produirait au tour suivant une
     # erreur peu diagnostique, voire des tests verts sur un schéma périmé. On
     # distingue donc « rien à annuler » d'« annulation en échec ».
-    retour = subprocess.run(
+    result = subprocess.run(
         ["uv", "run", "alembic", "downgrade", "base"],
         cwd=api_root, check=False, capture_output=True, text=True,
     )
-    if retour.returncode != 0 and "Can't locate revision" not in retour.stderr:
+    if result.returncode != 0 and "Can't locate revision" not in result.stderr:
         raise RuntimeError(
             "Le retour arrière des migrations a échoué, la base de test est "
-            f"peut-être dans un état partiel :\n{retour.stderr}"
+            f"peut-être dans un état partiel :\n{result.stderr}"
         )
 
     subprocess.run(["uv", "run", "alembic", "upgrade", "head"], cwd=api_root, check=True)

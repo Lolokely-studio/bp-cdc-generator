@@ -51,12 +51,12 @@ async def project_for_user(conn, project_id: UUID, user_id: UUID) -> dict:
             """,
             (project_id, user_id),
         )
-        ligne = await cur.fetchone()
-        if not ligne:
+        row = await cur.fetchone()
+        if not row:
             raise ProjectNotFound
         # Les noms de colonnes viennent du curseur, jamais d'une liste tenue à
         # la main en parallèle du SELECT : deux listes finissent par diverger,
         # et `zip` ne dit rien — il tronque en silence ou attache les valeurs
         # aux mauvaises clés.
         champs = [colonne.name for colonne in cur.description]
-    return dict(zip(champs, ligne))
+    return dict(zip(champs, row))

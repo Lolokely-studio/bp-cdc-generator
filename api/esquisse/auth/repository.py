@@ -14,8 +14,8 @@ async def create_user(conn, email: str, password_digest: str) -> UUID | None:
             """,
             (email, password_digest),
         )
-        ligne = await cur.fetchone()
-    return ligne[0] if ligne else None
+        row = await cur.fetchone()
+    return row[0] if row else None
 
 
 async def user_by_email(conn, email: str) -> dict | None:
@@ -24,18 +24,18 @@ async def user_by_email(conn, email: str) -> dict | None:
             "select id, email, password_hash, is_active from users where email = %s",
             (email,),
         )
-        ligne = await cur.fetchone()
-    if not ligne:
+        row = await cur.fetchone()
+    if not row:
         return None
-    return {"id": ligne[0], "email": ligne[1], "password_hash": ligne[2], "is_active": ligne[3]}
+    return {"id": row[0], "email": row[1], "password_hash": row[2], "is_active": row[3]}
 
 
 async def open_session(conn, user_id: UUID, token_digest: bytes, ttl_hours: int) -> None:
-    expire = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
     async with conn.cursor() as cur:
         await cur.execute(
             "insert into sessions (token_hash, user_id, expires_at) values (%s, %s, %s)",
-            (token_digest, user_id, expire),
+            (token_digest, user_id, expires_at),
         )
         await cur.execute("update users set last_login_at = now() where id = %s", (user_id,))
 
