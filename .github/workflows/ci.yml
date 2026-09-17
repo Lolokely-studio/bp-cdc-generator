@@ -1,0 +1,35 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: esquisse
+          POSTGRES_USER: esquisse
+          POSTGRES_DB: esquisse_test
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - name: Installer les dépendances
+        working-directory: api
+        # --frozen : le verrou fait foi. Une dépendance qui dérive fait
+        # échouer la construction au lieu d'être résolue autrement.
+        run: uv sync --frozen
+      - name: Tests
+        working-directory: api
+        env:
+          SUPABASE_DB_HOST: localhost
+          SUPABASE_DB_PORT: "5433"
+          SUPABASE_DB_USER: esquisse
+          SUPABASE_DB_PASSWORD: esquisse
+          SUPABASE_DB_NAME: esquisse_test
+        run: uv run pytest -v

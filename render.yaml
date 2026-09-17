@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: esquisse-api
+    runtime: docker
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: ./api
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: SUPABASE_DB_HOST
+        sync: false
+      - key: SUPABASE_DB_PORT
+        sync: false
+      - key: SUPABASE_DB_USER
+        sync: false
+      - key: SUPABASE_DB_PASSWORD
+        sync: false
+      - key: SUPABASE_DB_NAME
+        sync: false
+
+  # Image officielle épinglée. Un service déployé depuis une image
+  # pré-construite ne se redéploie pas tout seul : c'est voulu ici.
+  # Il dort pendant toute la rédaction et n'est réveillé qu'à l'export,
+  # parce que les 750 heures d'instance mensuelles sont partagées
+  # entre tous les services de l'espace de travail.
+  - type: web
+    name: esquisse-gotenberg
+    runtime: image
+    image:
+      url: docker.io/gotenberg/gotenberg:8
+    plan: free
