@@ -1,10 +1,11 @@
 import anyio
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 
 from esquisse.auth import repository
+from esquisse.config import settings
 from esquisse.db import connection
-from esquisse.security import hash_password
+from esquisse.security import hash_password, new_token, token_hash, verify_password
 
 router = APIRouter(prefix="/auth", tags=["comptes"])
 
@@ -37,3 +38,47 @@ async def register(demande: RegisterRequest) -> RegisterResponse:
         compte_actif=False,
         message="Compte créé. Il sera utilisable une fois activé.",
     )
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    mot_de_passe: str = Field(max_length=128)
+
+
+class LoginResponse(BaseModel):
+    jeton: str
+
+
+@router.post("/login")
+async def login(demande: LoginRequest) -> LoginResponse:
+    async with connection() as conn:
+        user = await repository.user_by_email(conn, demande.email)
+
+    # Hors de la connexion et hors de la boucle d'événements, pour la même
+    # raison qu'à l'inscription. `verify_password` rend False sur une empreinte
+    # absente : on le fait donc tourner même quand l'utilisateur est
+    # introuvable, de sorte que les deux cas coûtent le même temps et qu'on
+    # ne révèle pas quels comptes existent.
+    stored = user["password_hash"] if user else None
+    valide = await anyio.to_thread.run_sync(
+        verify_password, demande.mot_de_passe, stored
+    )
+    if not user or not valide:
+        raise HTTPException(status_code=401, detail="identifiants_invalides")
+    if not user["is_active"]:
+        raise HTTPException(status_code=403, detail="compte_inactif")
+
+    plaintext, token_digest = new_token()
+    async with connection() as conn:
+        await repository.open_session(
+            conn, user["id"], token_digest, settings().session_ttl_hours
+        )
+    return LoginResponse(jeton=plaintext)
+
+
+@router.post("/logout", status_code=204)
+async def logout(authorization: str = Header(default="")) -> None:
+    jeton = authorization.removeprefix("Bearer ").strip()
+    if jeton:
+        async with connection() as conn:
+            await repository.revoke_session(conn, token_hash(jeton))

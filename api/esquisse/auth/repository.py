@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 
@@ -27,3 +28,21 @@ async def user_by_email(conn, email: str) -> dict | None:
     if not ligne:
         return None
     return {"id": ligne[0], "email": ligne[1], "password_hash": ligne[2], "is_active": ligne[3]}
+
+
+async def open_session(conn, user_id: UUID, token_digest: bytes, ttl_heures: int) -> None:
+    expire = datetime.now(timezone.utc) + timedelta(hours=ttl_heures)
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "insert into sessions (token_hash, user_id, expires_at) values (%s, %s, %s)",
+            (token_digest, user_id, expire),
+        )
+        await cur.execute("update users set last_login_at = now() where id = %s", (user_id,))
+
+
+async def revoke_session(conn, token_digest: bytes) -> None:
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "update sessions set revoked_at = now() where token_hash = %s and revoked_at is null",
+            (token_digest,),
+        )
