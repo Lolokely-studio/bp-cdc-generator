@@ -2,12 +2,14 @@ from alembic import context
 from sqlalchemy import create_engine
 
 from esquisse.config import settings
+from esquisse.safety import ensure_migration_target_allowed
 
 
 def run_migrations_online() -> None:
     """Moteur synchrone : les migrations ne sont pas un chemin chaud et
     le pilote asynchrone n'apporte rien ici. Le DDL passe sans problème
     par le pooler en mode transaction."""
+    ensure_migration_target_allowed(settings().dsn)
     dsn = settings().dsn.replace("postgresql://", "postgresql+psycopg://")
     engine = create_engine(dsn, poolclass=None)
     with engine.connect() as connection:
