@@ -2425,6 +2425,176 @@ git commit -m "docs: README du dépôt et exemple de configuration"
 
 ---
 
+## Corrections issues de la relecture finale
+
+Trois corrections trouvées par la relecture de branche, là où les relectures par
+tâche n'avaient pas de siège : la couture entre la tâche 3, qui a construit le
+garde-fou des migrations, et la tâche 11, qui a écrit la commande qui le
+déclenche.
+
+### C1 — le conteneur ne démarrait jamais
+
+`CMD` lançait `alembic upgrade head && uvicorn`. Or `env.py` appelle le
+garde-fou, qui refuse toute cible non locale, et `ESQUISSE_ALLOW_REMOTE_MIGRATIONS`
+n'est posé nulle part — ni dans `render.yaml`, ni dans le `Dockerfile`, ni dans
+l'environnement. Alembic sort en erreur, le `&&` court-circuite, uvicorn ne
+démarre pas. Le déploiement échoue au premier démarrage, et à chaque réveil.
+
+La correction n'est pas d'ajouter la variable : la poser en permanence dans
+l'environnement de l'hébergeur annulerait le garde-fou, dont toute la raison
+d'être est qu'une migration distante soit un geste délibéré. **Les migrations
+sortent de la commande de démarrage.** Elles se lancent à la main, depuis le
+poste du développeur, avant un déploiement qui change le schéma.
+
+`api/Dockerfile`, dernière ligne :
+
+```dockerfile
+CMD ["sh", "-c", "uvicorn esquisse.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
+```
+
+Et dans le README, sous « Démarrer », une section de déploiement :
+
+````markdown
+### Déployer
+
+Les migrations ne tournent pas au démarrage du conteneur : appliquer un schéma
+sur la base réelle est un geste délibéré, pas un effet de bord d'un réveil.
+Avant un déploiement qui change le schéma, depuis votre poste :
+
+```bash
+cd api && ESQUISSE_ALLOW_REMOTE_MIGRATIONS=1 uv run alembic upgrade head
+```
+
+Sans cette variable, la commande refuse de s'exécuter contre autre chose qu'une
+base locale, et nomme l'hôte qu'elle a refusé.
+````
+
+### C2 — la limitation de débit était contournable
+
+Le `Dockerfile` passait `--proxy-headers --forwarded-allow-ips='*'` à uvicorn.
+Avec `*`, uvicorn retient la **première** entrée de `X-Forwarded-For` — celle
+que l'appelant a écrite lui-même. La clé de limitation devenait donc choisie
+par l'attaquant : une adresse différente à chaque requête, et plus aucune
+limite. C'est le seul contrôle d'abus du service.
+
+Aucun test ne pouvait le voir : le transport ASGI de httpx n'exécute jamais
+l'intergiciel de proxy d'uvicorn, donc `request.client` est une valeur fixe
+dans les 57 tests.
+
+La correction analyse l'en-tête nous-mêmes, ce qui rend la règle testable.
+Dans `api/esquisse/auth/routes.py`, remplacer la lecture de l'adresse :
+
+```python
+def _caller_address(request: Request) -> str:
+    """Adresse de l'appelant telle que l'a vue le routeur de l'hébergeur.
+
+    On analyse `X-Forwarded-For` plutôt que de laisser uvicorn le faire : avec
+    `--forwarded-allow-ips='*'`, uvicorn retient la PREMIÈRE entrée, qui est
+    écrite par l'appelant. N'importe qui pourrait alors choisir sa propre clé
+    de limitation et envoyer autant de tentatives qu'il veut.
+
+    Chaque routeur ajoute à la fin l'adresse qu'il a constatée. La dernière
+    entrée est donc celle vue par le routeur de l'hébergeur, la seule que
+    l'appelant ne contrôle pas."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.rsplit(",", 1)[-1].strip()
+    return request.client.host if request.client else "adresse_inconnue"
+
+
+def _check_rate_limit(request: Request) -> None:
+    if not _account_limiter.allow(_caller_address(request)):
+        raise HTTPException(status_code=429, detail="trop_de_tentatives")
+```
+
+Le `Dockerfile` perd les deux options, devenues inutiles et nuisibles — voir C1
+pour la ligne `CMD` complète.
+
+Deux tests dans `api/tests/test_rate_limit.py` :
+
+```python
+async def test_rate_limit_ignores_the_caller_supplied_prefix(client, migrated_db):
+    """La première entrée de X-Forwarded-For est écrite par l'appelant. Si la
+    limite s'y accrochait, il suffirait d'en changer à chaque requête pour ne
+    jamais être limité."""
+    corps = {"email": "x@exemple.fr", "mot_de_passe": "motdepasse123"}
+    for i in range(10):
+        await client.post(
+            "/auth/login", json=corps,
+            headers={"X-Forwarded-For": f"10.0.0.{i}, 9.9.9.9"},
+        )
+    bloque = await client.post(
+        "/auth/login", json=corps,
+        headers={"X-Forwarded-For": "10.0.0.99, 9.9.9.9"},
+    )
+    assert bloque.status_code == 429
+
+
+async def test_rate_limit_separates_distinct_forwarded_addresses(client, migrated_db):
+    corps = {"email": "x@exemple.fr", "mot_de_passe": "motdepasse123"}
+    for _ in range(10):
+        await client.post(
+            "/auth/login", json=corps, headers={"X-Forwarded-For": "1.1.1.1"}
+        )
+    autre = await client.post(
+        "/auth/login", json=corps, headers={"X-Forwarded-For": "2.2.2.2"}
+    )
+    assert autre.status_code != 429
+```
+
+### C3 — pas de cycle de vie d'application
+
+`create_app` n'a aucun point d'accroche au démarrage ni à l'arrêt. Le pool
+s'ouvrait paresseusement à la première requête, sous un drapeau de module, ce
+qui fait payer l'établissement de la connexion au premier utilisateur après
+chaque réveil de l'hébergeur. Et le §9.3 de la spec réclame une purge des points
+de reprise « au démarrage de l'application » : il n'y a nulle part où la mettre.
+
+`api/esquisse/app.py` :
+
+```python
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from esquisse.db import pool
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Ouvre le pool au démarrage, le referme à l'arrêt.
+
+    C'est aussi le point d'accroche que réclamera la purge des points de reprise
+    du §9.3 de la spec."""
+    connection_pool = pool()
+    await connection_pool.open(wait=True)
+    try:
+        yield
+    finally:
+        await connection_pool.close()
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="Esquisse", version="0.1.0", lifespan=lifespan)
+    ...
+```
+
+`api/esquisse/db.py` perd son drapeau de module :
+
+```python
+@asynccontextmanager
+async def connection():
+    """`open` est idempotent et prend un verrou interne : l'appeler ici garde la
+    fonction autonome, y compris dans les tests, où le transport ASGI de httpx
+    n'exécute pas le cycle de vie."""
+    connection_pool = pool()
+    await connection_pool.open(wait=True)
+    async with connection_pool.connection() as conn:
+        yield conn
+```
+
+---
+
 ## Ce que ce plan ne fait pas
 
 Aucune route de projet exposée en HTTP : la tâche 8 crée les tables et le dépôt, pas les routes. Elles arrivent au plan 4, quand l'agent qu'elles pilotent existe.
