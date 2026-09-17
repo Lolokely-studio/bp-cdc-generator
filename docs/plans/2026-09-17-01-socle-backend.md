@@ -20,7 +20,7 @@
 - **Aucune variable de session PostgreSQL.** Le pooler est en mode transaction : ce qui doit valoir pour une requête se pose en `SET LOCAL`, dans la transaction. Une variable posée hors transaction disparaît sans erreur.
 - **Aucun test ne joint un vrai fournisseur de modèle ni la base de production.** Les tests utilisent une base PostgreSQL locale jetable.
 - **Un projet qui n'appartient pas à l'utilisateur répond `404`, jamais `403`.** On ne révèle pas l'existence de ce qu'on ne possède pas.
-- **Les identifiants du code sont en anglais** : noms de fonctions, de classes, de fixtures, de modules et de fichiers. **Les commentaires, les docstrings et la documentation restent en français.** Les noms de colonnes SQL restent tels qu'ils sont définis au §2.1 de la spec, et les codes d'erreur d'API (`compte_inactif`, `identifiants_invalides`) aussi : ce sont des valeurs de contrat que l'interface lit.
+- **Les identifiants du code sont en anglais** : fonctions, classes, fixtures, modules, fichiers, mais aussi variables et constantes. **Les commentaires, les docstrings et la documentation restent en français.** Les noms de colonnes SQL restent tels qu'ils sont définis au §2.1 de la spec, et les codes d'erreur d'API (`compte_inactif`, `identifiants_invalides`) aussi : ce sont des valeurs de contrat que l'interface lit.
 
 ---
 
@@ -479,8 +479,8 @@ Remplacer le contenu de `api/migrations/env.py` par :
 import os
 from urllib.parse import urlparse
 
-_HOTES_LOCAUX = {"localhost", "127.0.0.1", "::1"}
-_AUTORISATION = "ESQUISSE_ALLOW_REMOTE_MIGRATIONS"
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+_OPT_IN = "ESQUISSE_ALLOW_REMOTE_MIGRATIONS"
 
 
 class RemoteMigrationRefused(RuntimeError):
@@ -495,14 +495,14 @@ def ensure_migration_target_allowed(dsn: str) -> None:
     retombe sur le `.env` de la racine — celui qui porte les identifiants de
     production. Une frappe de trop et `alembic upgrade head` migre la base
     réelle. Le refus par défaut rend ce geste volontaire."""
-    hote = urlparse(dsn).hostname or ""
-    if hote in _HOTES_LOCAUX:
+    host = urlparse(dsn).hostname or ""
+    if host in _LOCAL_HOSTS:
         return
-    if os.environ.get(_AUTORISATION) == "1":
+    if os.environ.get(_OPT_IN) == "1":
         return
     raise RemoteMigrationRefused(
-        f"Cible de migration non locale : {hote}. "
-        f"Pour l'accepter, relancez avec {_AUTORISATION}=1."
+        f"Cible de migration non locale : {host}. "
+        f"Pour l'accepter, relancez avec {_OPT_IN}=1."
     )
 ```
 
@@ -511,6 +511,7 @@ def ensure_migration_target_allowed(dsn: str) -> None:
 ```python
 from alembic import context
 from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 
 from esquisse.config import settings
 from esquisse.safety import ensure_migration_target_allowed
@@ -522,7 +523,9 @@ def run_migrations_online() -> None:
     par le pooler en mode transaction."""
     ensure_migration_target_allowed(settings().dsn)
     dsn = settings().dsn.replace("postgresql://", "postgresql+psycopg://")
-    engine = create_engine(dsn, poolclass=None)
+    # NullPool : une seule connexion, le processus se termine juste après.
+    # `poolclass=None` ne désactive rien, contrairement à ce que son nom suggère.
+    engine = create_engine(dsn, poolclass=NullPool)
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=None)
         with context.begin_transaction():
@@ -576,6 +579,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Les extensions ne sont volontairement pas désinstallées.
+
+    `drop extension` sur une base gérée peut casser des objets sans rapport
+    avec ce projet, et sur Supabase les extensions relèvent de la plateforme.
+    Une migration inverse qui désinstalle une extension partagée est plus
+    dangereuse que l'asymétrie qu'elle corrigerait. `create extension if not
+    exists` rend de toute façon la remontée idempotente."""
     op.execute("drop table if exists sessions")
     op.execute("drop table if exists users")
 ```
@@ -596,7 +606,21 @@ def migrated_db():
     """Applique les migrations sur la base jetable avant la suite de tests.
     Même chemin qu'en production : si une migration casse, les tests cassent."""
     api_root = Path(__file__).resolve().parents[1]
-    subprocess.run(["uv", "run", "alembic", "downgrade", "base"], cwd=api_root, check=False)
+
+    # `check=False` seul masquerait un vrai échec : une base laissée dans un
+    # état partiel par une exécution interrompue produirait au tour suivant une
+    # erreur peu diagnostique, voire des tests verts sur un schéma périmé. On
+    # distingue donc « rien à annuler » d'« annulation en échec ».
+    retour = subprocess.run(
+        ["uv", "run", "alembic", "downgrade", "base"],
+        cwd=api_root, check=False, capture_output=True, text=True,
+    )
+    if retour.returncode != 0 and "Can't locate revision" not in retour.stderr:
+        raise RuntimeError(
+            "Le retour arrière des migrations a échoué, la base de test est "
+            f"peut-être dans un état partiel :\n{retour.stderr}"
+        )
+
     subprocess.run(["uv", "run", "alembic", "upgrade", "head"], cwd=api_root, check=True)
     return True
 ```
