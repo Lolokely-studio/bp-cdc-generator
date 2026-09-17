@@ -683,10 +683,10 @@ git commit -m "feat(api): migrations Alembic et tables des comptes"
 **Interfaces :**
 - Consomme : rien.
 - Produit :
-  - `hash_password(mot_de_passe: str) -> str`
-  - `verify_password(mot_de_passe: str, stored_hash: str) -> bool`
+  - `hash_password(password: str) -> str`
+  - `verify_password(password: str | None, stored_hash: str | None) -> bool`
   - `new_token() -> tuple[str, bytes]` — rend le jeton en clair et son empreinte SHA-256
-  - `token_hash(jeton: str) -> bytes`
+  - `token_hash(token: str) -> bytes`
 
 - [ ] **Étape 1 : ajouter la dépendance**
 
@@ -724,6 +724,15 @@ def test_same_password_hashes_differ():
     assert hash_password("identique") != hash_password("identique")
 
 
+def test_verify_refuses_none_instead_of_crashing():
+    """Un appelant qui normalise le temps de réponse sur « utilisateur
+    inconnu » passe naturellement None comme empreinte. Ce module doit
+    répondre « non », jamais lever : une exception ici devient une 500."""
+    assert verify_password("motdepasse", None) is False
+    assert verify_password(None, hash_password("motdepasse")) is False
+    assert verify_password("", "") is False
+
+
 def test_new_token_is_unpredictable_and_digest_stable():
     clair_a, h_a = new_token()
     clair_b, h_b = new_token()
@@ -752,13 +761,22 @@ from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHas
 _hasher = PasswordHasher()
 
 
-def hash_password(mot_de_passe: str) -> str:
-    return _hasher.hash(mot_de_passe)
+def hash_password(password: str) -> str:
+    return _hasher.hash(password)
 
 
-def verify_password(mot_de_passe: str, stored_hash: str) -> bool:
+def verify_password(password: str | None, stored_hash: str | None) -> bool:
+    """Rend toujours un booléen, jamais une exception.
+
+    Le cas `None` n'est pas théorique : pour ne pas révéler quels comptes
+    existent, un appelant peut vouloir vérifier même quand l'utilisateur est
+    introuvable, et passe alors une empreinte absente. argon2 lèverait un
+    `AttributeError` avant même d'atteindre ses propres exceptions, qui
+    remonterait en erreur serveur."""
+    if not password or not stored_hash:
+        return False
     try:
-        return _hasher.verify(stored_hash, mot_de_passe)
+        return _hasher.verify(stored_hash, password)
     except (VerifyMismatchError, VerificationError, InvalidHashError):
         return False
 
@@ -767,12 +785,17 @@ def new_token() -> tuple[str, bytes]:
     """Rend le jeton en clair, à donner une seule fois au client, et son
     empreinte, seule chose écrite en base. Une fuite de la table sessions
     ne permet pas de se connecter."""
-    clair = secrets.token_urlsafe(32)
-    return clair, token_hash(clair)
+    plaintext = secrets.token_urlsafe(32)
+    return plaintext, token_hash(plaintext)
 
 
-def token_hash(jeton: str) -> bytes:
-    return hashlib.sha256(jeton.encode()).digest()
+def token_hash(token: str) -> bytes:
+    """SHA-256 nu, sans sel ni étirement, volontairement : le jeton porte déjà
+    256 bits d'entropie tirés du générateur du système, donc le ralentir
+    n'apporte rien contre la force brute — alors qu'une empreinte
+    déterministe permet de retrouver la session par égalité indexée. Le
+    contraste avec argon2id sur les mots de passe est un choix, pas un oubli."""
+    return hashlib.sha256(token.encode()).digest()
 ```
 
 - [ ] **Étape 5 : lancer les tests et vérifier qu'ils passent**
