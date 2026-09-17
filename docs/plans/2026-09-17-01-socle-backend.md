@@ -1878,7 +1878,122 @@ git commit -m "feat(api): limitation de débit sur inscription et connexion"
 
 ---
 
-## Tâche 10 : conteneur et intégration continue
+## Tâche 10 : passe de nommage, identifiants en anglais
+
+**Fichiers :**
+- Modifier : tous les fichiers `.py` sous `api/esquisse/` et `api/tests/`
+
+**Interfaces :**
+- Consomme : tout ce qui précède.
+- Produit : aucune nouvelle interface. Aucune signature publique ne change — les
+  noms de fonctions, de classes et de modules sont déjà en anglais depuis les
+  tâches précédentes. Seuls changent des identifiants locaux.
+
+Les tâches 1 à 9 ont laissé environ 120 identifiants français dans le code :
+variables locales, paramètres de fonctions privées, noms de fixtures internes.
+Chaque relecture l'a signalé, et chaque fois la bonne réponse a été de ne pas
+le corriger dans une tâche isolée — cela aurait rendu chaque fichier incohérent
+avec lui-même. La dette se solde ici, en une fois.
+
+**Ce qui ne change pas, sous aucun prétexte :**
+- Les noms de colonnes SQL (`token_hash`, `is_active`, `password_hash`, `revoked_at`…).
+- Les clés des corps de requête (`mot_de_passe`, `jeton` dans les réponses JSON).
+- Les codes d'erreur (`compte_inactif`, `identifiants_invalides`, `jeton_absent`,
+  `session_invalide`, `trop_de_tentatives`).
+- Les commentaires et les docstrings, qui restent en français.
+- Les noms de variables d'environnement.
+
+- [ ] **Étape 1 : établir la liste avant de toucher quoi que ce soit**
+
+Lancer, depuis la racine du dépôt :
+
+```bash
+cd api && uv run python - <<'EOF'
+import re
+from pathlib import Path
+mots = ["jeton","ligne","utilisateur","entetes","demande","valide","clair","empreinte",
+        "reponse","premiere","seconde","actif","schema","valeur","debut","erreur",
+        "retour","expire","fichier","racine","coupables","autorise"]
+for f in sorted(list(Path('esquisse').rglob('*.py')) + list(Path('tests').rglob('*.py'))):
+    code = re.sub(r'""".*?"""', '', re.sub(r'#.*', '', f.read_text(encoding='utf-8')), flags=re.S)
+    trouves = {m for m in mots if re.search(rf'\b{m}\b', code)}
+    if trouves:
+        print(f"{f}: {', '.join(sorted(trouves))}")
+EOF
+```
+
+Noter la sortie dans le rapport : c'est l'état de départ, et il servira à vérifier
+que rien n'a été oublié.
+
+- [ ] **Étape 2 : appliquer la correspondance**
+
+Renommer selon cette table, et uniquement selon elle. Ne pas inventer d'autres
+renommages ; ne pas toucher aux mots qui apparaissent dans un commentaire, une
+docstring, une chaîne de caractères ou un nom de colonne.
+
+| Français | Anglais | Remarque |
+|---|---|---|
+| `jeton` | `token` | variable locale ; la **clé JSON** `jeton` ne change pas |
+| `reponse` | `response` | |
+| `ligne` | `row` | ligne de résultat SQL |
+| `actif` | `active` | paramètre des aides de test |
+| `demande` | `payload` | l'instance du modèle de requête |
+| `entetes` | `headers` | |
+| `retour` | `result` | résultat de sous-processus |
+| `valeur` | `value` | |
+| `debut` | `start` | mesure de temps |
+| `empreinte` | `digest` | |
+| `premiere` / `seconde` | `first` / `second` | |
+| `schema` | `scheme` | le schéma d'authentification HTTP |
+| `expire` | `expires_at` | cohérent avec la colonne |
+| `utilisateur` | `user` | |
+| `valide` | `valid` | |
+| `erreur` | `error` | |
+| `fichier` | `file_path` | |
+| `racine` | `root` | |
+| `coupables` | `offenders` | |
+| `autorise` | `allowed` | |
+
+- [ ] **Étape 3 : vérifier qu'il ne reste rien**
+
+Relancer le script de l'étape 1.
+Attendu : aucune sortie. Si un mot subsiste, vérifier qu'il s'agit bien d'une
+clé de contrat de la liste « ce qui ne change pas », et le dire dans le rapport.
+
+- [ ] **Étape 4 : vérifier que les contrats n'ont pas bougé**
+
+```bash
+cd api && uv run python -c "
+import re
+from pathlib import Path
+attendus = ['mot_de_passe', 'compte_inactif', 'identifiants_invalides',
+            'jeton_absent', 'session_invalide', 'token_hash', 'is_active',
+            'password_hash', 'revoked_at', 'expires_at']
+src = ''.join(f.read_text(encoding='utf-8') for f in Path('.').rglob('*.py'))
+manquants = [a for a in attendus if a not in src]
+print('contrats manquants :', manquants or 'aucun')
+"
+```
+
+Attendu : `contrats manquants : aucun`. Un contrat disparu signifie qu'un
+renommage a débordé sur une valeur qui ne devait pas bouger.
+
+- [ ] **Étape 5 : lancer toute la suite**
+
+Lancer : `cd api && uv run pytest -v`
+Attendu : SUCCÈS, le même nombre de tests qu'avant la passe. Un test en moins
+signifie qu'une fonction de test a été renommée en double.
+
+- [ ] **Étape 6 : commiter**
+
+```bash
+git add api/
+git commit -m "refactor(api): identifiants locaux en anglais"
+```
+
+---
+
+## Tâche 11 : conteneur et intégration continue
 
 **Fichiers :**
 - Créer : `api/Dockerfile`
@@ -2025,7 +2140,7 @@ git commit -m "build: image du backend, description des services Render, intégr
 
 ---
 
-## Tâche 11 : README du dépôt
+## Tâche 12 : README du dépôt
 
 **Fichiers :**
 - Créer : `README.md` (racine)
