@@ -1004,8 +1004,12 @@ Dans `api/esquisse/app.py`, à l'intérieur de `create_app()`, avant `return app
 - [ ] **Étape 7 : ajouter la dépendance de validation d'adresse**
 
 ```bash
-cd api && uv add "pydantic[email]>=2.9"
+cd api && uv add "pydantic[email]>=2.9" "anyio>=4"
 ```
+
+`anyio` arrive déjà par FastAPI, mais `routes.py` l'importe directement :
+une dépendance qu'on importe se déclare, sinon elle disparaît le jour où
+la bibliothèque qui l'amenait change d'avis.
 
 - [ ] **Étape 8 : lancer les tests et vérifier qu'ils passent**
 
