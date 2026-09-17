@@ -25,3 +25,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .vscode/
+# Sorties des outils de navigation automatisée
+.playwright-mcp/
