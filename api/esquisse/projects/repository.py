@@ -9,6 +9,7 @@ class ProjectNotFound(Exception):
 async def create_project(
     conn,
     user_id: UUID,
+    *,
     nom: str,
     documents: str,
     profil_cdc: str | None,
@@ -16,6 +17,14 @@ async def create_project(
     thread_id: str,
     templates_version: str,
 ) -> UUID:
+    """Les six derniers paramètres sont nommés obligatoirement.
+
+    Ce sont des chaînes voisines, interchangeables pour le typage : intervertir
+    `profil_cdc` et `profil_bp`, ou `nom` et `documents`, donnerait un appel
+    parfaitement valide qui écrirait les valeurs dans les mauvaises colonnes.
+    Aucun test ne le verrait, puisqu'un test écrit avec la même interversion
+    passerait aussi. L'étoile transforme cette corruption silencieuse en
+    `TypeError` au point d'appel."""
     async with conn.cursor() as cur:
         await cur.execute(
             """
@@ -43,8 +52,11 @@ async def project_for_user(conn, project_id: UUID, user_id: UUID) -> dict:
             (project_id, user_id),
         )
         ligne = await cur.fetchone()
-    if not ligne:
-        raise ProjectNotFound
-    champs = ("id", "user_id", "nom", "documents", "profil_cdc", "profil_bp",
-              "thread_id", "run_status", "templates_version")
+        if not ligne:
+            raise ProjectNotFound
+        # Les noms de colonnes viennent du curseur, jamais d'une liste tenue à
+        # la main en parallèle du SELECT : deux listes finissent par diverger,
+        # et `zip` ne dit rien — il tronque en silence ou attache les valeurs
+        # aux mauvaises clés.
+        champs = [colonne.name for colonne in cur.description]
     return dict(zip(champs, ligne))
