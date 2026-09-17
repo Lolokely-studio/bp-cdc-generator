@@ -21,7 +21,7 @@ def pool() -> AsyncConnectionPool:
     )
 
 
-_ouvert = False
+_opened = False
 
 
 @asynccontextmanager
@@ -37,10 +37,10 @@ async def connection():
     première connexion échoue ou reste bloquée indéfiniment sur environ une
     exécution sur deux ; avec `wait=True`, aucun échec sur plusieurs
     dizaines d'exécutions."""
-    global _ouvert
+    global _opened
     p = pool()
-    if not _ouvert:
+    if not _opened:
         await p.open(wait=True)
-        _ouvert = True
+        _opened = True
     async with p.connection() as conn:
         yield conn
