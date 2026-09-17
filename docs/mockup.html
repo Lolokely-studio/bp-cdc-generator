@@ -547,6 +547,7 @@ table.s-table{border-collapse:collapse;width:100%;min-width:720px}
       <div><h3 style="color:var(--l1)"><i></i><span style="color:var(--ink)">Backend</span></h3><span class="s-host">Render, service web gratuit</span></div>
       <div class="s-items">
         <div class="s-item"><b>Python 3.12 et FastAPI</b><p>Créer un projet, répondre à une interaction, suivre la progression, télécharger.</p></div>
+        <div class="s-item"><b>uv</b><p>Dépendances déclarées dans <code>pyproject.toml</code> et verrouillées dans <code>uv.lock</code>. Même commande en local, en intégration continue et dans le conteneur.</p></div>
         <div class="s-item"><b>Flux SSE</b><p>Diffusion de la rédaction en direct vers le navigateur.</p></div>
         <div class="s-item"><b>Comptes et sessions</b><p>Inscription, connexion et jeton signés par l'API elle-même. Le service d'authentification de Supabase n'est pas utilisé : seule sa base l'est.</p></div>
         <div class="s-item"><b>Contrôle d'activation</b><p>Chaque requête vérifie le drapeau du compte. Un compte non activé est refusé avant d'atteindre le graphe.</p></div>
@@ -575,7 +576,7 @@ table.s-table{border-collapse:collapse;width:100%;min-width:720px}
       <div class="s-items">
         <div class="s-item"><b>docxtpl et python-docx</b><p>Remplissage du modèle Word à la charte et tableaux structurés.</p></div>
         <div class="s-item"><b>matplotlib</b><p>Graphiques du prévisionnel, insérés en images.</p></div>
-        <div class="s-item"><b>Gotenberg</b><p>Conversion du Word en PDF. Repli possible : PDF généré depuis du HTML.</p></div>
+        <div class="s-item"><b>Gotenberg</b><p>Conversion du Word en PDF, sur un second service Render tiré d'une image officielle épinglée. Repli possible : PDF généré depuis du HTML.</p></div>
       </div>
     </div>
     <div class="s-layer">
@@ -593,7 +594,7 @@ table.s-table{border-collapse:collapse;width:100%;min-width:720px}
         <div class="s-item"><b>LangSmith</b><p>Traces complètes, prompts versionnés, jeux d'évaluation et retours utilisateurs.</p></div>
         <div class="s-item"><b>pytest</b><p>Tests du graphe et des calculs financiers avec le LLM simulé.</p></div>
         <div class="s-item"><b>Playwright</b><p>Test du parcours complet dans le navigateur.</p></div>
-        <div class="s-item"><b>GitHub Actions et Docker</b><p>Intégration continue et environnement local identique pour toute l'équipe.</p></div>
+        <div class="s-item"><b>GitHub Actions et Docker</b><p>Intégration continue sur <code>uv sync --frozen</code> : le verrou fait foi, une dépendance qui dérive fait échouer la construction.</p></div>
       </div>
     </div>
   </div>
@@ -649,7 +650,8 @@ table.s-table{border-collapse:collapse;width:100%;min-width:720px}
         <tr><td>Supabase</td><td>Pause après 7 jours d'inactivité</td><td>Application hors ligne jusqu'à la restauration manuelle</td><td>Ouvrir le projet régulièrement, et le réveiller avant chaque session de travail</td></tr>
         <tr><td>Supabase</td><td>Pooler en mode transaction : la connexion change entre deux transactions</td><td>Toute variable de session posée hors transaction peut disparaître sans prévenir</td><td>Rien ne repose sur l'état de session. Ce qui doit valoir pour une requête est posé en <code>SET LOCAL</code>, dans la transaction</td></tr>
         <tr><td>Supabase</td><td>Base de 500 Mo, lecture seule au-delà</td><td>Les checkpoints remplissent la base</td><td>Purger les checkpoints intermédiaires à la fin de chaque projet</td></tr>
-        <tr><td>Render</td><td>Veille après 15 minutes sans trafic, environ 1 minute de réveil</td><td>Première action lente après une pause</td><td>Réveiller le backend à l'ouverture de l'application, avec un écran d'attente</td></tr>
+        <tr><td>Render</td><td>Veille après 15 minutes sans trafic, environ 1 minute de réveil</td><td>Première action lente après une pause</td><td>Écran d'attente à l'ouverture. Surtout pas de ping périodique : voir la ligne suivante</td></tr>
+        <tr><td>Render</td><td>750 heures d'instance par mois, partagées par tous les services de l'espace de travail</td><td>Un mois compte 744 heures : un seul service allumé en permanence épuise le quota</td><td>Laisser les deux services s'endormir. Gotenberg n'est réveillé qu'au moment de l'export</td></tr>
         <tr><td>Render</td><td>Redémarrage ou redéploiement du service</td><td>Rédaction en cours interrompue</td><td>Bouton « Reprendre » depuis le dernier checkpoint</td></tr>
         <tr><td>Render</td><td>512 Mo de RAM et 0,1 CPU</td><td>Conversion PDF impossible dans le même service</td><td>Gotenberg sur un service séparé, ou PDF généré depuis du HTML</td></tr>
         <tr><td>Vercel</td><td>Usage personnel et non commercial uniquement</td><td>Aucune tant que l'outil n'est pas ouvert à des clients</td><td>Passer au plan Pro le jour d'une mise en service</td></tr>
@@ -668,6 +670,7 @@ table.s-table{border-collapse:collapse;width:100%;min-width:720px}
 │   ├── app/                Projets, parcours guidé, rédaction, exports
 │   └── components/         Cartes d'interaction, éditeur, mémoire du projet
 ├── api/                    Backend FastAPI (Render)
+│   ├── pyproject.toml      Dépendances, verrouillées dans uv.lock
 │   ├── routes/             Comptes, projets, interactions, progression, exports
 │   ├── auth/               Inscription, connexion, jetons, contrôle d'activation
 │   ├── agent/
@@ -679,7 +682,8 @@ table.s-table{border-collapse:collapse;width:100%;min-width:720px}
 │   ├── export/             Modèle Word, graphiques, appel à Gotenberg
 │   └── tests/              Graphe avec LLM simulé, calculs
 ├── evals/                  Jeux d'évaluation LangSmith
-└── docker-compose.yml      Backend et Gotenberg en local</pre>
+├── render.yaml             Les deux services de production
+└── docker-compose.yml      Backend et Gotenberg en local, uniquement</pre>
 </div>
 </section>
 
