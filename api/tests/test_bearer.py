@@ -4,7 +4,7 @@ from esquisse.auth.bearer import bearer_token
 
 
 @pytest.mark.parametrize(
-    "entete, attendu",
+    "header, expected",
     [
         ("Bearer abc", "abc"),
         ("bearer abc", "abc"),
@@ -16,5 +16,5 @@ from esquisse.auth.bearer import bearer_token
         ("Bearer", ""),
     ],
 )
-def test_bearer_token(entete, attendu):
-    assert bearer_token(entete) == attendu
+def test_bearer_token(header, expected):
+    assert bearer_token(header) == expected

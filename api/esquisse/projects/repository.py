@@ -58,5 +58,5 @@ async def project_for_user(conn, project_id: UUID, user_id: UUID) -> dict:
         # la main en parallèle du SELECT : deux listes finissent par diverger,
         # et `zip` ne dit rien — il tronque en silence ou attache les valeurs
         # aux mauvaises clés.
-        champs = [colonne.name for colonne in cur.description]
-    return dict(zip(champs, row))
+        columns = [column.name for column in cur.description]
+    return dict(zip(columns, row))

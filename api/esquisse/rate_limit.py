@@ -16,17 +16,17 @@ class SlidingWindowCounter:
         self.maximum = maximum
         self.window = window_seconds
         self.clock = clock
-        self._passages: dict[str, deque[float]] = defaultdict(deque)
+        self._hits: dict[str, deque[float]] = defaultdict(deque)
 
-    def allow(self, cle: str) -> bool:
-        maintenant = self.clock()
-        passages = self._passages[cle]
-        while passages and maintenant - passages[0] > self.window:
-            passages.popleft()
-        if len(passages) >= self.maximum:
+    def allow(self, key: str) -> bool:
+        now = self.clock()
+        hits = self._hits[key]
+        while hits and now - hits[0] > self.window:
+            hits.popleft()
+        if len(hits) >= self.maximum:
             return False
-        passages.append(maintenant)
+        hits.append(now)
         return True
 
     def reset(self) -> None:
-        self._passages.clear()
+        self._hits.clear()

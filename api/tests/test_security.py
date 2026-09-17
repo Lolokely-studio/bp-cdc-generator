@@ -35,13 +35,13 @@ def test_verify_pays_the_same_cost_when_digest_is_absent():
 
     start = time.perf_counter()
     verify_password("mauvais", reference)
-    cout_reel = time.perf_counter() - start
+    cost_with_digest = time.perf_counter() - start
 
     start = time.perf_counter()
     verify_password("mauvais", None)
-    cout_absent = time.perf_counter() - start
+    cost_without_digest = time.perf_counter() - start
 
-    assert cout_absent > cout_reel / 3
+    assert cost_without_digest > cost_with_digest / 3
 
 
 def test_verify_refuses_none_instead_of_crashing():
@@ -54,9 +54,9 @@ def test_verify_refuses_none_instead_of_crashing():
 
 
 def test_new_token_is_unpredictable_and_digest_stable():
-    clair_a, h_a = new_token()
-    clair_b, h_b = new_token()
-    assert clair_a != clair_b
-    assert len(clair_a) >= 43           # 32 octets en base64url
-    assert h_a == token_hash(clair_a)
+    plaintext_a, h_a = new_token()
+    plaintext_b, h_b = new_token()
+    assert plaintext_a != plaintext_b
+    assert len(plaintext_a) >= 43           # 32 octets en base64url
+    assert h_a == token_hash(plaintext_a)
     assert len(h_a) == 32               # SHA-256

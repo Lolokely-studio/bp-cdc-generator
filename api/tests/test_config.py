@@ -17,13 +17,13 @@ def test_env_var_overrides_env_file(tmp_path, monkeypatch):
     # Sans variable d'environnement : la valeur vient bien du fichier temporaire
     # (sinon on ne saurait pas si celui-ci a seulement été pris en compte).
     monkeypatch.delenv("SUPABASE_DB_NAME", raising=False)
-    reglages_sans_variable = Settings(_env_file=env_file)
-    assert reglages_sans_variable.supabase_db_name == "valeur_du_fichier"
+    settings_without_env = Settings(_env_file=env_file)
+    assert settings_without_env.supabase_db_name == "valeur_du_fichier"
 
     # Avec une variable d'environnement conflictuelle : elle l'emporte sur le fichier.
     monkeypatch.setenv("SUPABASE_DB_NAME", "valeur_de_environnement")
-    reglages_avec_variable = Settings(_env_file=env_file)
-    assert reglages_avec_variable.supabase_db_name == "valeur_de_environnement"
+    settings_with_env = Settings(_env_file=env_file)
+    assert settings_with_env.supabase_db_name == "valeur_de_environnement"
 
 
 def test_fake_llm_reads_esquisse_fake_llm_env_var(monkeypatch):

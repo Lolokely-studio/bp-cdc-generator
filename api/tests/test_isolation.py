@@ -29,21 +29,21 @@ async def test_owner_reads_own_project(migrated_db):
             conn, uid, nom="CoachDom", documents="both", profil_cdc="consultation",
             profil_bp="banque", thread_id=f"thread-{uuid4()}", templates_version="0.1",
         )
-        projet = await project_for_user(conn, pid, uid)
-    assert projet["nom"] == "CoachDom"
+        project = await project_for_user(conn, pid, uid)
+    assert project["nom"] == "CoachDom"
 
 
 async def test_other_user_cannot_find_it(migrated_db):
     """Introuvable, pas interdit : répondre 403 révélerait que le projet existe."""
-    proprietaire = await _make_user(f"a-{uuid4()}@exemple.fr")
-    intrus = await _make_user(f"b-{uuid4()}@exemple.fr")
+    owner = await _make_user(f"a-{uuid4()}@exemple.fr")
+    intruder = await _make_user(f"b-{uuid4()}@exemple.fr")
     async with connection() as conn:
         pid = await create_project(
-            conn, proprietaire, nom="Privé", documents="cdc", profil_cdc="cadrage",
+            conn, owner, nom="Privé", documents="cdc", profil_cdc="cadrage",
             profil_bp=None, thread_id=f"thread-{uuid4()}", templates_version="0.1",
         )
         with pytest.raises(ProjectNotFound):
-            await project_for_user(conn, pid, intrus)
+            await project_for_user(conn, pid, intruder)
 
 
 async def test_missing_project_raises_same_error(migrated_db):
@@ -68,7 +68,7 @@ def _touches_projects_table(source: str) -> bool:
 
 
 @pytest.mark.parametrize(
-    "extrait",
+    "snippet",
     [
         "select * from projects where id = 1",
         "select *\n  from\n  projects\n where id = 1",
@@ -78,24 +78,24 @@ def _touches_projects_table(source: str) -> bool:
         "insert into projects (nom) values ('x')",
     ],
 )
-def test_the_guard_catches_every_shape(extrait):
+def test_the_guard_catches_every_shape(snippet):
     """On teste le garde-fou lui-même. Un garde-fou qu'on peut franchir sans
     s'en apercevoir est pire que pas de garde-fou : il fabrique de la
     confiance. La jointure est le cas qui compte, parce que c'est la forme la
     plus probable pour lire les projets à côté d'une autre table."""
-    assert _touches_projects_table(extrait)
+    assert _touches_projects_table(snippet)
 
 
 @pytest.mark.parametrize(
-    "extrait",
+    "snippet",
     [
         "from esquisse.projects.repository import project_for_user",
         "import esquisse.projects",
         "select * from sections where project_id = %s",
     ],
 )
-def test_the_guard_does_not_cry_wolf(extrait):
-    assert not _touches_projects_table(extrait)
+def test_the_guard_does_not_cry_wolf(snippet):
+    assert not _touches_projects_table(snippet)
 
 
 def test_no_projects_query_outside_repository():

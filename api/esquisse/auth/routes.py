@@ -16,7 +16,7 @@ me_router = APIRouter(tags=["comptes"])
 _account_limiter = SlidingWindowCounter(maximum=10, window_seconds=900)
 
 
-def _check_rate_limit(requete: Request) -> None:
+def _check_rate_limit(request: Request) -> None:
     """Limite par adresse d'appelant.
 
     Attention à une dépendance invisible en local : en production, le service
@@ -27,7 +27,7 @@ def _check_rate_limit(requete: Request) -> None:
     un seul compteur : dix tentatives de n'importe qui bloqueraient tout le
     monde pendant un quart d'heure. Ce serait un déni de service offert.
     """
-    ip = requete.client.host if requete.client else "adresse_inconnue"
+    ip = request.client.host if request.client else "adresse_inconnue"
     if not _account_limiter.allow(ip):
         raise HTTPException(status_code=429, detail="trop_de_tentatives")
 
@@ -46,8 +46,8 @@ class RegisterResponse(BaseModel):
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(requete: Request, payload: RegisterRequest) -> RegisterResponse:
-    _check_rate_limit(requete)
+async def register(request: Request, payload: RegisterRequest) -> RegisterResponse:
+    _check_rate_limit(request)
     # Hachage hors de la boucle d'événements et AVANT d'ouvrir la connexion :
     # argon2 coûte des dizaines de millisecondes, pendant lesquelles il
     # bloquerait tout le serveur et retiendrait une des cinq connexions du pool.
@@ -73,8 +73,8 @@ class LoginResponse(BaseModel):
 
 
 @router.post("/login")
-async def login(requete: Request, payload: LoginRequest) -> LoginResponse:
-    _check_rate_limit(requete)
+async def login(request: Request, payload: LoginRequest) -> LoginResponse:
+    _check_rate_limit(request)
     async with connection() as conn:
         user = await repository.user_by_email(conn, payload.email)
 
