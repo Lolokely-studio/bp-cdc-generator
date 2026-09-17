@@ -2,11 +2,7 @@ import os
 import subprocess
 from pathlib import Path
 
-import httpx
 import pytest
-import pytest_asyncio
-
-from esquisse.app import create_app
 
 # Affectation ferme (et non `setdefault`) : le `.env` à la racine du dépôt
 # contient les identifiants de la base Supabase de production, et un
@@ -20,6 +16,15 @@ os.environ["SUPABASE_DB_PORT"] = "5433"
 os.environ["SUPABASE_DB_USER"] = "esquisse"
 os.environ["SUPABASE_DB_PASSWORD"] = "esquisse"
 os.environ["SUPABASE_DB_NAME"] = "esquisse_test"
+
+# Les imports de `esquisse` viennent APRÈS les affectations ci-dessus. Aujourd'hui
+# `settings()` est paresseux et mémoïsé, donc l'ordre ne change rien — mais il
+# suffirait qu'un module appelle `settings()` à l'import pour que la configuration
+# se fige sur le `.env` de production. On ne fait pas reposer sur la chance ce que
+# l'ordre garantit.
+import httpx
+import pytest_asyncio
+from esquisse.app import create_app
 
 
 @pytest.fixture(scope="session")
