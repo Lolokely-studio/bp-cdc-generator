@@ -33,6 +33,19 @@ uv run uvicorn esquisse.app:app --reload --port 8000
 
 `curl localhost:8000/health` doit répondre `{"statut":"ok"}`.
 
+### Déployer
+
+Les migrations ne tournent pas au démarrage du conteneur : appliquer un schéma
+sur la base réelle est un geste délibéré, pas un effet de bord d'un réveil.
+Avant un déploiement qui change le schéma, depuis votre poste :
+
+```bash
+cd api && ESQUISSE_ALLOW_REMOTE_MIGRATIONS=1 uv run alembic upgrade head
+```
+
+Sans cette variable, la commande refuse de s'exécuter contre autre chose qu'une
+base locale, et nomme l'hôte qu'elle a refusé.
+
 ### Tests
 
 ```bash

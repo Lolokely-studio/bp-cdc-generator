@@ -16,19 +16,25 @@ me_router = APIRouter(tags=["comptes"])
 _account_limiter = SlidingWindowCounter(maximum=10, window_seconds=900)
 
 
-def _check_rate_limit(request: Request) -> None:
-    """Limite par adresse d'appelant.
+def _caller_address(request: Request) -> str:
+    """Adresse de l'appelant telle que l'a vue le routeur de l'hébergeur.
 
-    Attention à une dépendance invisible en local : en production, le service
-    est derrière le routeur de l'hébergeur, et `request.client.host` renvoie
-    alors l'adresse de ce routeur, identique pour tout le monde. Sans les
-    options `--proxy-headers --forwarded-allow-ips` passées à uvicorn
-    (voir le conteneur, tâche 11), tous les utilisateurs partageraient donc
-    un seul compteur : dix tentatives de n'importe qui bloqueraient tout le
-    monde pendant un quart d'heure. Ce serait un déni de service offert.
-    """
-    ip = request.client.host if request.client else "adresse_inconnue"
-    if not _account_limiter.allow(ip):
+    On analyse `X-Forwarded-For` plutôt que de laisser uvicorn le faire : avec
+    `--forwarded-allow-ips='*'`, uvicorn retient la PREMIÈRE entrée, qui est
+    écrite par l'appelant. N'importe qui pourrait alors choisir sa propre clé
+    de limitation et envoyer autant de tentatives qu'il veut.
+
+    Chaque routeur ajoute à la fin l'adresse qu'il a constatée. La dernière
+    entrée est donc celle vue par le routeur de l'hébergeur, la seule que
+    l'appelant ne contrôle pas."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.rsplit(",", 1)[-1].strip()
+    return request.client.host if request.client else "adresse_inconnue"
+
+
+def _check_rate_limit(request: Request) -> None:
+    if not _account_limiter.allow(_caller_address(request)):
         raise HTTPException(status_code=429, detail="trop_de_tentatives")
 
 

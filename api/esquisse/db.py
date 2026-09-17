@@ -21,14 +21,11 @@ def pool() -> AsyncConnectionPool:
     )
 
 
-_opened = False
-
-
 @asynccontextmanager
 async def connection():
-    """Ouvre le pool au premier usage. On ne s'appuie pas sur `pool.closed`,
-    dont la valeur avant la première ouverture prête à confusion : un drapeau
-    explicite est plus court à lire et ne dépend pas de la version.
+    """`open` est idempotent et prend un verrou interne : l'appeler ici garde la
+    fonction autonome, y compris dans les tests, où le transport ASGI de httpx
+    n'exécute pas le cycle de vie.
 
     `open(wait=True)` plutôt que `open()` : par défaut `wait` vaut `False`
     et la méthode rend la main avant que le remplissage initial du pool ne
@@ -37,10 +34,7 @@ async def connection():
     première connexion échoue ou reste bloquée indéfiniment sur environ une
     exécution sur deux ; avec `wait=True`, aucun échec sur plusieurs
     dizaines d'exécutions."""
-    global _opened
-    p = pool()
-    if not _opened:
-        await p.open(wait=True)
-        _opened = True
-    async with p.connection() as conn:
+    connection_pool = pool()
+    await connection_pool.open(wait=True)
+    async with connection_pool.connection() as conn:
         yield conn

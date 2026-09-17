@@ -30,3 +30,32 @@ async def test_login_is_rate_limited(client, migrated_db):
         "/auth/login", json={"email": "x@exemple.fr", "mot_de_passe": "motdepasse123"}
     )
     assert response.status_code == 429
+
+
+async def test_rate_limit_ignores_the_caller_supplied_prefix(client, migrated_db):
+    """La première entrée de X-Forwarded-For est écrite par l'appelant. Si la
+    limite s'y accrochait, il suffirait d'en changer à chaque requête pour ne
+    jamais être limité."""
+    corps = {"email": "x@exemple.fr", "mot_de_passe": "motdepasse123"}
+    for i in range(10):
+        await client.post(
+            "/auth/login", json=corps,
+            headers={"X-Forwarded-For": f"10.0.0.{i}, 9.9.9.9"},
+        )
+    bloque = await client.post(
+        "/auth/login", json=corps,
+        headers={"X-Forwarded-For": "10.0.0.99, 9.9.9.9"},
+    )
+    assert bloque.status_code == 429
+
+
+async def test_rate_limit_separates_distinct_forwarded_addresses(client, migrated_db):
+    corps = {"email": "x@exemple.fr", "mot_de_passe": "motdepasse123"}
+    for _ in range(10):
+        await client.post(
+            "/auth/login", json=corps, headers={"X-Forwarded-For": "1.1.1.1"}
+        )
+    autre = await client.post(
+        "/auth/login", json=corps, headers={"X-Forwarded-For": "2.2.2.2"}
+    )
+    assert autre.status_code != 429
