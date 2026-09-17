@@ -1954,6 +1954,7 @@ git commit -m "feat(api): limitation de débit sur inscription et connexion"
 
 **Fichiers :**
 - Modifier : tous les fichiers `.py` sous `api/esquisse/` et `api/tests/`
+- **Ne jamais toucher** : `api/migrations/`
 
 **Interfaces :**
 - Consomme : tout ce qui précède.
@@ -1967,8 +1968,21 @@ Chaque relecture l'a signalé, et chaque fois la bonne réponse a été de ne pa
 le corriger dans une tâche isolée — cela aurait rendu chaque fichier incohérent
 avec lui-même. La dette se solde ici, en une fois.
 
+**`api/migrations/` est hors périmètre, entièrement.** Une migration déjà
+appliquée est un fait historique : la modifier ne change pas la base, elle crée
+un écart entre ce que la base contient et ce que le dépôt décrit. Et le danger
+est concret ici : la table `facts` a une colonne nommée `valeur`, qui figurait
+dans la table de correspondance ci-dessous. Une passe naïve l'aurait renommée
+`value` dans le `create table`, et **aucun test ne l'aurait vu** — rien ne lit
+encore cette colonne dans ce plan. Le schéma aurait divergé en silence.
+
 **Ce qui ne change pas, sous aucun prétexte :**
-- Les noms de colonnes SQL (`token_hash`, `is_active`, `password_hash`, `revoked_at`…).
+- Les noms de colonnes SQL, y compris les dix-sept qui sont en français :
+  `nom`, `documents`, `profil_cdc`, `profil_bp`, `valeur`, `confiance`, `ordre`,
+  `statut`, `contenu`, `revisions`, `valide_par`, `valide_le`, `brouillon`,
+  `fournisseur`, `modele`, `requetes`, `issue`. Ce sont des valeurs de contrat
+  fixées par le §2.1 de la spec, pas des identifiants Python.
+- Les autres noms de colonnes (`token_hash`, `is_active`, `password_hash`, `revoked_at`…).
 - Les clés des corps de requête (`mot_de_passe`, `jeton` dans les réponses JSON).
 - Les codes d'erreur (`compte_inactif`, `identifiants_invalides`, `jeton_absent`,
   `session_invalide`, `trop_de_tentatives`).
@@ -1987,6 +2001,7 @@ mots = ["jeton","ligne","utilisateur","entetes","demande","valide","clair","empr
         "reponse","premiere","seconde","actif","schema","valeur","debut","erreur",
         "retour","expire","fichier","racine","coupables","autorise"]
 for f in sorted(list(Path('esquisse').rglob('*.py')) + list(Path('tests').rglob('*.py'))):
+    # `migrations/` est volontairement absent de cette liste.
     code = re.sub(r'""".*?"""', '', re.sub(r'#.*', '', f.read_text(encoding='utf-8')), flags=re.S)
     trouves = {m for m in mots if re.search(rf'\b{m}\b', code)}
     if trouves:
@@ -2012,12 +2027,12 @@ docstring, une chaîne de caractères ou un nom de colonne.
 | `demande` | `payload` | l'instance du modèle de requête |
 | `entetes` | `headers` | |
 | `retour` | `result` | résultat de sous-processus |
-| `valeur` | `value` | |
 | `debut` | `start` | mesure de temps |
 | `empreinte` | `digest` | |
 | `premiere` / `seconde` | `first` / `second` | |
 | `schema` | `scheme` | le schéma d'authentification HTTP |
 | `expire` | `expires_at` | cohérent avec la colonne |
+| `valeur` | `value` | variable locale de `bearer.py`. Sûr **uniquement** parce que `api/migrations/` est hors périmètre : la colonne `facts.valeur` porte le même mot |
 | `utilisateur` | `user` | |
 | `valide` | `valid` | |
 | `erreur` | `error` | |
@@ -2039,8 +2054,12 @@ cd api && uv run python -c "
 import re
 from pathlib import Path
 attendus = ['mot_de_passe', 'compte_inactif', 'identifiants_invalides',
-            'jeton_absent', 'session_invalide', 'token_hash', 'is_active',
-            'password_hash', 'revoked_at', 'expires_at']
+            'jeton_absent', 'session_invalide', 'trop_de_tentatives',
+            'token_hash', 'is_active', 'password_hash', 'revoked_at', 'expires_at',
+            # les dix-sept colonnes françaises du schéma
+            'nom', 'documents', 'profil_cdc', 'profil_bp', 'valeur', 'confiance',
+            'ordre', 'statut', 'contenu', 'revisions', 'valide_par', 'valide_le',
+            'brouillon', 'fournisseur', 'modele', 'requetes', 'issue']
 src = ''.join(f.read_text(encoding='utf-8') for f in Path('.').rglob('*.py'))
 manquants = [a for a in attendus if a not in src]
 print('contrats manquants :', manquants or 'aucun')
@@ -2059,9 +2078,13 @@ signifie qu'une fonction de test a été renommée en double.
 - [ ] **Étape 6 : commiter**
 
 ```bash
-git add api/
+git add api/esquisse api/tests
 git commit -m "refactor(api): identifiants locaux en anglais"
 ```
+
+`git add api/` prendrait aussi `api/migrations/`. On ajoute explicitement les
+deux dossiers concernés, pour qu'une modification accidentelle d'une migration
+n'entre pas dans le commit sans être vue.
 
 ---
 
