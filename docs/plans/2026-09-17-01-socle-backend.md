@@ -41,6 +41,7 @@ api/
 │   ├── app.py                  Application FastAPI, /health
 │   ├── security.py             Empreintes de mot de passe, jetons
 │   ├── rate_limit.py           Limitation de débit en mémoire
+│   ├── safety.py               Refus des migrations hors base locale
 │   ├── auth/
 │   │   ├── __init__.py
 │   │   ├── routes.py           /auth/register, /auth/login, /auth/logout, /me
@@ -53,6 +54,7 @@ api/
     ├── conftest.py             Base jetable, client HTTP, utilisateurs
     ├── test_health.py
     ├── test_config.py
+    ├── test_safety.py
     ├── test_db.py
     ├── test_security.py
     ├── test_register.py
@@ -413,6 +415,7 @@ git commit -m "feat(api): configuration et pool de connexions asynchrone"
 - Créer : `api/alembic.ini`
 - Créer : `api/migrations/env.py`
 - Créer : `api/migrations/versions/0001_accounts.py`
+- Créer : `api/esquisse/safety.py`
 - Modifier : `api/tests/conftest.py`
 - Test : `api/tests/test_migrations.py`
 
@@ -469,17 +472,55 @@ Attendu : ÉCHEC, fixture `migrated_db` introuvable
 
 Remplacer le contenu de `api/migrations/env.py` par :
 
+`api/esquisse/safety.py` — le garde-fou, dans un module à part parce que
+`env.py` n'est pas importable et qu'un garde-fou non testable n'en est pas un :
+
+```python
+import os
+from urllib.parse import urlparse
+
+_HOTES_LOCAUX = {"localhost", "127.0.0.1", "::1"}
+_AUTORISATION = "ESQUISSE_ALLOW_REMOTE_MIGRATIONS"
+
+
+class RemoteMigrationRefused(RuntimeError):
+    """Levée quand une migration vise une base non locale sans accord explicite."""
+
+
+def ensure_migration_target_allowed(dsn: str) -> None:
+    """Refuse d'appliquer une migration ailleurs qu'en local sans consentement.
+
+    `env.py` lit les réglages comme l'application. Lancé à la main depuis
+    `api/`, sans les variables que `conftest.py` pose pour les tests, il
+    retombe sur le `.env` de la racine — celui qui porte les identifiants de
+    production. Une frappe de trop et `alembic upgrade head` migre la base
+    réelle. Le refus par défaut rend ce geste volontaire."""
+    hote = urlparse(dsn).hostname or ""
+    if hote in _HOTES_LOCAUX:
+        return
+    if os.environ.get(_AUTORISATION) == "1":
+        return
+    raise RemoteMigrationRefused(
+        f"Cible de migration non locale : {hote}. "
+        f"Pour l'accepter, relancez avec {_AUTORISATION}=1."
+    )
+```
+
+`api/migrations/env.py` :
+
 ```python
 from alembic import context
 from sqlalchemy import create_engine
 
 from esquisse.config import settings
+from esquisse.safety import ensure_migration_target_allowed
 
 
 def run_migrations_online() -> None:
     """Moteur synchrone : les migrations ne sont pas un chemin chaud et
     le pilote asynchrone n'apporte rien ici. Le DDL passe sans problème
     par le pooler en mode transaction."""
+    ensure_migration_target_allowed(settings().dsn)
     dsn = settings().dsn.replace("postgresql://", "postgresql+psycopg://")
     engine = create_engine(dsn, poolclass=None)
     with engine.connect() as connection:
@@ -560,15 +601,50 @@ def migrated_db():
     return True
 ```
 
-- [ ] **Étape 7 : lancer les tests et vérifier qu'ils passent**
+- [ ] **Étape 7 : tester le garde-fou**
+
+`api/tests/test_safety.py` :
+
+```python
+import pytest
+
+from esquisse.safety import RemoteMigrationRefused, ensure_migration_target_allowed
+
+LOCAL = "postgresql://u:p@localhost:5433/esquisse_test"
+DISTANT = "postgresql://u:p@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"
+
+
+def test_local_target_is_allowed(monkeypatch):
+    monkeypatch.delenv("ESQUISSE_ALLOW_REMOTE_MIGRATIONS", raising=False)
+    ensure_migration_target_allowed(LOCAL)
+
+
+def test_remote_target_is_refused_by_default(monkeypatch):
+    """Sans ce refus, la commande d'installation du README migrerait la
+    base de production."""
+    monkeypatch.delenv("ESQUISSE_ALLOW_REMOTE_MIGRATIONS", raising=False)
+    with pytest.raises(RemoteMigrationRefused) as erreur:
+        ensure_migration_target_allowed(DISTANT)
+    assert "pooler.supabase.com" in str(erreur.value)
+
+
+def test_remote_target_is_allowed_when_opted_in(monkeypatch):
+    monkeypatch.setenv("ESQUISSE_ALLOW_REMOTE_MIGRATIONS", "1")
+    ensure_migration_target_allowed(DISTANT)
+```
+
+Lancer : `cd api && uv run pytest tests/test_safety.py -v`
+Attendu : SUCCÈS, trois tests
+
+- [ ] **Étape 8 : lancer les tests et vérifier qu'ils passent**
 
 Lancer : `cd api && uv run pytest tests/test_migrations.py -v`
 Attendu : SUCCÈS, deux tests
 
-- [ ] **Étape 8 : commiter**
+- [ ] **Étape 9 : commiter**
 
 ```bash
-git add api/alembic.ini api/migrations api/tests/conftest.py api/tests/test_migrations.py api/pyproject.toml api/uv.lock
+git add api/alembic.ini api/migrations api/esquisse/safety.py api/tests/conftest.py api/tests/test_migrations.py api/tests/test_safety.py api/pyproject.toml api/uv.lock
 git commit -m "feat(api): migrations Alembic et tables des comptes"
 ```
 
