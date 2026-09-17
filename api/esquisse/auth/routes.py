@@ -76,9 +76,18 @@ async def login(demande: LoginRequest) -> LoginResponse:
     return LoginResponse(jeton=plaintext)
 
 
+def _jeton_du_header(authorization: str) -> str:
+    """Le schéma est insensible à la casse d'après la norme HTTP. Comparer
+    « Bearer » au caractère près ferait qu'un client envoyant « bearer »
+    recevrait un 204 sans que sa session soit révoquée : il se croirait
+    déconnecté alors que son jeton reste valable."""
+    schema, _, valeur = authorization.partition(" ")
+    return valeur.strip() if schema.lower() == "bearer" else ""
+
+
 @router.post("/logout", status_code=204)
 async def logout(authorization: str = Header(default="")) -> None:
-    jeton = authorization.removeprefix("Bearer ").strip()
+    jeton = _jeton_du_header(authorization)
     if jeton:
         async with connection() as conn:
             await repository.revoke_session(conn, token_hash(jeton))

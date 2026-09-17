@@ -1,3 +1,5 @@
+import time
+
 from esquisse.security import hash_password, verify_password, new_token, token_hash
 
 
@@ -21,6 +23,25 @@ def test_same_password_hashes_differ():
     """Le sel rend chaque empreinte unique : deux comptes avec le même
     mot de passe n'ont pas la même ligne en base."""
     assert hash_password("identique") != hash_password("identique")
+
+
+def test_verify_pays_the_same_cost_when_digest_is_absent():
+    """Une garde qui rend False sans appeler argon2 répondrait en
+    microsecondes pour un compte inconnu, contre des dizaines de
+    millisecondes pour un mauvais mot de passe. L'écart révélerait quels
+    comptes existent. Le rapport toléré est large : sans la correction, il
+    est de plusieurs ordres de grandeur."""
+    reference = hash_password("motdepasse")
+
+    debut = time.perf_counter()
+    verify_password("mauvais", reference)
+    cout_reel = time.perf_counter() - debut
+
+    debut = time.perf_counter()
+    verify_password("mauvais", None)
+    cout_absent = time.perf_counter() - debut
+
+    assert cout_absent > cout_reel / 3
 
 
 def test_verify_refuses_none_instead_of_crashing():

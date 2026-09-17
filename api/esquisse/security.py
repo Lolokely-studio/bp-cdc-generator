@@ -6,6 +6,10 @@ from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHas
 
 _hasher = PasswordHasher()
 
+# Empreinte factice, calculée une fois au chargement du module. Elle sert
+# uniquement à payer le coût d'argon2 quand aucune empreinte réelle n'existe.
+_DUMMY_HASH = _hasher.hash("empreinte factice pour egaliser le temps de reponse")
+
 
 def hash_password(password: str) -> str:
     return _hasher.hash(password)
@@ -15,16 +19,25 @@ def verify_password(password: str | None, stored_hash: str | None) -> bool:
     """Rend toujours un booléen, jamais une exception.
 
     Le cas `None` n'est pas théorique : pour ne pas révéler quels comptes
-    existent, un appelant peut vouloir vérifier même quand l'utilisateur est
-    introuvable, et passe alors une empreinte absente. argon2 lèverait un
-    `AttributeError` avant même d'atteindre ses propres exceptions, qui
-    remonterait en erreur serveur."""
-    if not password or not stored_hash:
+    existent, un appelant vérifie même quand l'utilisateur est introuvable, et
+    passe alors une empreinte absente. argon2 lèverait un `AttributeError`
+    avant d'atteindre ses propres exceptions, qui remonterait en erreur serveur.
+
+    Mais rendre `False` tout de suite ne suffit pas : le chemin « compte
+    inconnu » répondrait en microsecondes là où « mauvais mot de passe » paie
+    les dizaines de millisecondes d'argon2, et cet écart révélerait
+    précisément ce qu'on cherche à cacher. On vérifie donc contre une
+    empreinte factice pour payer le même coût."""
+    if not password:
         return False
+    target = stored_hash if stored_hash else _DUMMY_HASH
     try:
-        return _hasher.verify(stored_hash, password)
+        valid = _hasher.verify(target, password)
     except (VerifyMismatchError, VerificationError, InvalidHashError):
         return False
+    # Une empreinte absente ne vaut jamais un succès, même dans le cas
+    # improbable où le mot de passe correspondrait à l'empreinte factice.
+    return valid and stored_hash is not None
 
 
 def new_token() -> tuple[str, bytes]:
