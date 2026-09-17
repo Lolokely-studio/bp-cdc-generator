@@ -225,7 +225,7 @@ Lancer : `docker compose up -d db`
 from esquisse.db import connection
 
 
-async def test_connexion_rend_une_session_utilisable():
+async def test_connection_yields_usable_session():
     async with connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute("select 1")
@@ -1381,7 +1381,7 @@ async def test_deactivation_takes_effect_immediately(client, migrated_db):
     assert (await client.get("/me", headers=entetes)).status_code == 403
 
 
-async def test_deconnexion_invalide_le_jeton(client, migrated_db):
+async def test_logout_invalidates_token(client, migrated_db):
     jeton = await _token_for(client, "sortie@exemple.fr")
     entetes = {"Authorization": f"Bearer {jeton}"}
     assert (await client.post("/auth/logout", headers=entetes)).status_code == 204
@@ -1751,7 +1751,7 @@ import pytest
 from esquisse.rate_limit import SlidingWindowCounter
 
 
-def test_autorise_jusqua_la_limite():
+def test_allows_up_to_limit():
     compteur = SlidingWindowCounter(maximum=3, window_seconds=900)
     assert [compteur.allow("1.2.3.4") for _ in range(4)] == [True, True, True, False]
 
