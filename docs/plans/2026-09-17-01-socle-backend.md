@@ -417,8 +417,8 @@ git commit -m "feat(api): configuration et pool de connexions asynchrone"
 - Test : `api/tests/test_migrations.py`
 
 **Interfaces :**
-- Consomme : `esquisse.config.reglages`
-- Produit : les tables `users` et `sessions` conformes au §2.1 de la spec. La fixture pytest `base_migree` (portée session) applique les migrations avant tout test.
+- Consomme : `esquisse.config.settings`
+- Produit : les tables `users` et `sessions` conformes au §2.1 de la spec. La fixture pytest `migrated_db` (portée session) applique les migrations avant tout test.
 
 - [ ] **Étape 1 : ajouter les dépendances**
 
@@ -463,7 +463,7 @@ async def test_is_active_defaults_to_false(migrated_db):
 - [ ] **Étape 3 : lancer le test et vérifier qu'il échoue**
 
 Lancer : `cd api && uv run pytest tests/test_migrations.py -v`
-Attendu : ÉCHEC, fixture `base_migree` introuvable
+Attendu : ÉCHEC, fixture `migrated_db` introuvable
 
 - [ ] **Étape 4 : configurer Alembic sur un moteur synchrone**
 
@@ -602,29 +602,29 @@ cd api && uv add "argon2-cffi>=23.1"
 from esquisse.security import hash_password, verify_password, new_token, token_hash
 
 
-def test_empreinte_ne_contient_pas_le_mot_de_passe():
+def test_hash_does_not_contain_password():
     e = hash_password("correct horse battery staple")
     assert "correct" not in e
     assert e.startswith("$argon2id$")
 
 
-def test_verifier_accepte_le_bon_mot_de_passe():
+def test_verify_accepts_correct_password():
     e = hash_password("motdepasse")
     assert verify_password("motdepasse", e) is True
 
 
-def test_verifier_refuse_le_mauvais():
+def test_verify_rejects_wrong_password():
     e = hash_password("motdepasse")
     assert verify_password("autrechose", e) is False
 
 
-def test_deux_empreintes_du_meme_mot_de_passe_different():
+def test_same_password_hashes_differ():
     """Le sel rend chaque empreinte unique : deux comptes avec le même
     mot de passe n'ont pas la même ligne en base."""
     assert hash_password("identique") != hash_password("identique")
 
 
-def test_nouveau_jeton_est_imprevisible_et_son_empreinte_est_stable():
+def test_new_token_is_unpredictable_and_digest_stable():
     clair_a, h_a = new_token()
     clair_b, h_b = new_token()
     assert clair_a != clair_b
@@ -665,7 +665,7 @@ def verify_password(mot_de_passe: str, stored_hash: str) -> bool:
 
 def new_token() -> tuple[str, bytes]:
     """Rend le jeton en clair, à donner une seule fois au client, et son
-    hash_password, seule chose écrite en base. Une fuite de la table sessions
+    empreinte, seule chose écrite en base. Une fuite de la table sessions
     ne permet pas de se connecter."""
     clair = secrets.token_urlsafe(32)
     return clair, token_hash(clair)
@@ -700,11 +700,11 @@ git commit -m "feat(api): empreintes argon2id et jetons de session"
 - Test : `api/tests/test_register.py`
 
 **Interfaces :**
-- Consomme : `esquisse.db.connexion`, `esquisse.security.empreinte`
+- Consomme : `esquisse.db.connexion`, `esquisse.security.hash_password`
 - Produit :
   - `esquisse.auth.repository.create_user(conn, email: str, password_digest: str) -> UUID | None` — rend `None` si l'adresse existe déjà
   - `esquisse.auth.repository.user_by_email(conn, email: str) -> dict | None`
-  - `esquisse.auth.routes.routeur` — `APIRouter` monté sur `/auth`
+  - `esquisse.auth.routes.router` — `APIRouter` monté sur `/auth`
   - la fixture pytest `client`
 
 - [ ] **Étape 1 : écrire le test qui échoue**
@@ -715,7 +715,7 @@ git commit -m "feat(api): empreintes argon2id et jetons de session"
 from esquisse.db import connection
 
 
-async def test_inscription_cree_un_compte_inactif(client, migrated_db):
+async def test_register_creates_inactive_account(client, migrated_db):
     reponse = await client.post(
         "/auth/register",
         json={"email": "nouvelle@exemple.fr", "mot_de_passe": "motdepasse123"},
@@ -731,7 +731,7 @@ async def test_inscription_cree_un_compte_inactif(client, migrated_db):
             )
             actif, stored_hash = await cur.fetchone()
     assert actif is False
-    assert "motdepasse123" not in empreinte_stockee
+    assert "motdepasse123" not in stored_hash
 
 
 async def test_existing_email_responds_identically(client, migrated_db):
@@ -830,7 +830,7 @@ from esquisse.auth import repository
 from esquisse.db import connection
 from esquisse.security import hash_password
 
-routeur = APIRouter(prefix="/auth", tags=["comptes"])
+router = APIRouter(prefix="/auth", tags=["comptes"])
 
 
 class RegisterRequest(BaseModel):
@@ -843,7 +843,7 @@ class RegisterResponse(BaseModel):
     message: str
 
 
-@routeur.post("/register", status_code=status.HTTP_201_CREATED)
+@router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(demande: RegisterRequest) -> RegisterResponse:
     async with connection() as conn:
         await repository.create_user(conn, demande.email, hash_password(demande.mot_de_passe))
@@ -858,8 +858,8 @@ async def register(demande: RegisterRequest) -> RegisterResponse:
 Dans `api/esquisse/app.py`, à l'intérieur de `create_app()`, avant `return app` :
 
 ```python
-    from esquisse.auth.routes import routeur as routeur_auth
-    app.include_router(routeur_auth)
+    from esquisse.auth.routes import router as auth_router
+    app.include_router(auth_router)
 ```
 
 - [ ] **Étape 7 : ajouter la dépendance de validation d'adresse**
@@ -890,7 +890,7 @@ git commit -m "feat(api): inscription, compte inactif par défaut"
 - Test : `api/tests/test_login.py`
 
 **Interfaces :**
-- Consomme : `nouveau_jeton`, `verifier`, `utilisateur_par_email`
+- Consomme : `new_token`, `verify_password`, `user_by_email`
 - Produit :
   - `repository.open_session(conn, user_id: UUID, token_digest: bytes, ttl_heures: int) -> None`
   - `repository.revoke_session(conn, token_digest: bytes) -> None`
@@ -914,7 +914,7 @@ async def _register_and_activate(client, email: str, actif: bool) -> None:
                 await cur.execute("update users set is_active = true where email = %s", (email,))
 
 
-async def test_connexion_rend_un_jeton(client, migrated_db):
+async def test_login_returns_token(client, migrated_db):
     await _register_and_activate(client, "actif@exemple.fr", actif=True)
     reponse = await client.post(
         "/auth/login", json={"email": "actif@exemple.fr", "mot_de_passe": "motdepasse123"}
@@ -1012,7 +1012,7 @@ class LoginResponse(BaseModel):
     jeton: str
 
 
-@routeur.post("/login")
+@router.post("/login")
 async def login(demande: LoginRequest) -> LoginResponse:
     async with connection() as conn:
         user = await repository.user_by_email(conn, demande.email)
@@ -1027,7 +1027,7 @@ async def login(demande: LoginRequest) -> LoginResponse:
     return LoginResponse(jeton=clair)
 
 
-@routeur.post("/logout", status_code=204)
+@router.post("/logout", status_code=204)
 async def logout(authorization: str = Header(default="")) -> None:
     jeton = authorization.removeprefix("Bearer ").strip()
     if jeton:
@@ -1057,8 +1057,8 @@ git commit -m "feat(api): connection, sessions et refus des comptes non activés
 - Test : `api/tests/test_dependencies.py`
 
 **Interfaces :**
-- Consomme : `empreinte_jeton`, `connexion`
-- Produit : `esquisse.auth.dependencies.utilisateur_actif` — dépendance FastAPI rendant `dict` avec `id` et `email`. Toutes les routes des plans suivants en dépendent.
+- Consomme : `token_hash`, `connexion`
+- Produit : `esquisse.auth.dependencies.active_user` — dépendance FastAPI rendant `dict` avec `id` et `email`. Toutes les routes des plans suivants en dépendent.
 
 - [ ] **Étape 1 : écrire le test qui échoue**
 
@@ -1169,10 +1169,10 @@ from fastapi import Depends
 
 from esquisse.auth.dependencies import active_user
 
-routeur_moi = APIRouter(tags=["comptes"])
+me_router = APIRouter(tags=["comptes"])
 
 
-@routeur_moi.get("/me")
+@me_router.get("/me")
 async def me(utilisateur: dict = Depends(active_user)) -> dict:
     return {"email": utilisateur["email"], "compte_actif": True}
 ```
@@ -1180,8 +1180,8 @@ async def me(utilisateur: dict = Depends(active_user)) -> dict:
 Dans `api/esquisse/app.py`, monter aussi ce routeur :
 
 ```python
-    from esquisse.auth.routes import routeur_moi
-    app.include_router(routeur_moi)
+    from esquisse.auth.routes import me_router
+    app.include_router(me_router)
 ```
 
 - [ ] **Étape 5 : lancer les tests et vérifier qu'ils passent**
@@ -1210,8 +1210,8 @@ git commit -m "feat(api): dépendance utilisateur actif et route /me"
 - Consomme : `connexion`
 - Produit :
   - les tables `projects`, `facts`, `sections`, `exports`, `llm_usage` du §2.1 de la spec
-  - `esquisse.projects.repository.project_for_user(conn, project_id: UUID, user_id: UUID) -> dict` — lève `ProjetIntrouvable`
-  - `esquisse.projects.repository.ProjetIntrouvable`
+  - `esquisse.projects.repository.project_for_user(conn, project_id: UUID, user_id: UUID) -> dict` — lève `ProjectNotFound`
+  - `esquisse.projects.repository.ProjectNotFound`
   - `esquisse.projects.repository.create_project(conn, user_id, nom, documents, profil_cdc, profil_bp, thread_id, templates_version) -> UUID`
 
 - [ ] **Étape 1 : écrire le test qui échoue**
@@ -1432,7 +1432,7 @@ async def project_for_user(conn, project_id: UUID, user_id: UUID) -> dict:
         )
         ligne = await cur.fetchone()
     if not ligne:
-        raise ProjetIntrouvable
+        raise ProjectNotFound
     champs = ("id", "user_id", "nom", "documents", "profil_cdc", "profil_bp",
               "thread_id", "run_status", "templates_version")
     return dict(zip(champs, ligne))
@@ -1466,7 +1466,7 @@ git commit -m "feat(api): tables des projets et cloisonnement par le dépôt"
 
 **Interfaces :**
 - Consomme : rien.
-- Produit : `esquisse.rate_limit.CompteurFenetre` avec `allow(cle: str) -> bool` et `reset() -> None`.
+- Produit : `esquisse.rate_limit.SlidingWindowCounter` avec `allow(cle: str) -> bool` et `reset() -> None`.
 
 - [ ] **Étape 1 : écrire le test qui échoue**
 
@@ -1478,27 +1478,27 @@ from esquisse.rate_limit import SlidingWindowCounter
 
 
 def test_autorise_jusqua_la_limite():
-    compteur = SlidingWindowCounter(maximum=3, fenetre_secondes=900)
+    compteur = SlidingWindowCounter(maximum=3, window_seconds=900)
     assert [compteur.allow("1.2.3.4") for _ in range(4)] == [True, True, True, False]
 
 
 def test_keys_are_independent():
-    compteur = SlidingWindowCounter(maximum=1, fenetre_secondes=900)
+    compteur = SlidingWindowCounter(maximum=1, window_seconds=900)
     assert compteur.allow("1.2.3.4") is True
     assert compteur.allow("5.6.7.8") is True
     assert compteur.allow("1.2.3.4") is False
 
 
 def test_window_slides():
-    horloge = [1000.0]
-    compteur = SlidingWindowCounter(maximum=1, fenetre_secondes=10, horloge=lambda: horloge[0])
+    clock_value = [1000.0]
+    compteur = SlidingWindowCounter(maximum=1, window_seconds=10, clock=lambda: clock_value[0])
     assert compteur.allow("ip") is True
     assert compteur.allow("ip") is False
-    horloge[0] += 11
+    clock_value[0] += 11
     assert compteur.allow("ip") is True
 
 
-async def test_connexion_limitee(client, migrated_db):
+async def test_login_is_rate_limited(client, migrated_db):
     for _ in range(10):
         await client.post("/auth/login", json={"email": "x@exemple.fr", "mot_de_passe": "motdepasse123"})
     reponse = await client.post(
@@ -1530,17 +1530,17 @@ class SlidingWindowCounter:
     compteur inopérant : il faudrait le déplacer en base.
     """
 
-    def __init__(self, maximum: int, fenetre_secondes: int,
-                 horloge: Callable[[], float] = time.monotonic) -> None:
+    def __init__(self, maximum: int, window_seconds: int,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self.maximum = maximum
-        self.fenetre = fenetre_secondes
-        self.horloge = horloge
+        self.window = window_seconds
+        self.clock = clock
         self._passages: dict[str, deque[float]] = defaultdict(deque)
 
     def allow(self, cle: str) -> bool:
-        maintenant = self.horloge()
+        maintenant = self.clock()
         passages = self._passages[cle]
-        while passages and maintenant - passages[0] > self.fenetre:
+        while passages and maintenant - passages[0] > self.window:
             passages.popleft()
         if len(passages) >= self.maximum:
             return False
@@ -1560,16 +1560,16 @@ from fastapi import Request
 
 from esquisse.rate_limit import SlidingWindowCounter
 
-_account_limiter = SlidingWindowCounter(maximum=10, fenetre_secondes=900)
+_account_limiter = SlidingWindowCounter(maximum=10, window_seconds=900)
 
 
 def _check_rate_limit(requete: Request) -> None:
     ip = requete.client.host if requete.client else "inconnue"
-    if not _limite_comptes.allow(ip):
+    if not _account_limiter.allow(ip):
         raise HTTPException(status_code=429, detail="trop_de_tentatives")
 ```
 
-Ajouter `requete: Request` en premier paramètre de `inscrire` et de `connecter`, et appeler `_check_rate_limit(requete)` en première ligne de chacune.
+Ajouter `requete: Request` en premier paramètre de `register` et de `login`, et appeler `_check_rate_limit(requete)` en première ligne de chacune.
 
 - [ ] **Étape 5 : isoler les tests les uns des autres**
 
@@ -1581,7 +1581,7 @@ def _fresh_rate_limit():
     """Le compteur vit dans le processus : sans remise à zéro, un test
     qui consomme la limite fait échouer le suivant."""
     from esquisse.auth import routes
-    routes._limite_comptes.reset()
+    routes._account_limiter.reset()
     yield
 ```
 
