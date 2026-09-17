@@ -52,6 +52,7 @@ api/
 └── tests/
     ├── conftest.py             Base jetable, client HTTP, utilisateurs
     ├── test_health.py
+    ├── test_config.py
     ├── test_db.py
     ├── test_security.py
     ├── test_register.py
@@ -177,7 +178,7 @@ git commit -m "feat(api): squelette FastAPI et sonde de santé"
 - Créer : `api/esquisse/db.py`
 - Créer : `api/tests/conftest.py`
 - Créer : `docker-compose.yml` (racine du dépôt)
-- Test : `api/tests/test_db.py`
+- Test : `api/tests/test_db.py` (connexion) et `api/tests/test_config.py` (réglages)
 
 **Interfaces :**
 - Consomme : rien.
@@ -356,10 +357,51 @@ os.environ.setdefault("SUPABASE_DB_NAME", "esquisse_test")
 Lancer : `cd api && uv run pytest tests/test_db.py -v`
 Attendu : SUCCÈS, deux tests
 
-- [ ] **Étape 9 : commiter**
+- [ ] **Étape 9 : prouver que les tests ne peuvent pas atteindre la base réelle**
+
+Le `.env` de la racine contient les identifiants de production, et `env_file`
+pointe désormais dessus. La seule chose qui protège la suite de tests est que
+les variables d'environnement l'emportent sur `env_file`. Cela se prouve, et la
+preuve doit tenir seule : un test qui ne pose le conflit que d'un côté passe au
+vert sans rien démontrer dès que le `.env` local n'existe pas — sur un clone
+neuf ou en intégration continue.
+
+`api/tests/test_config.py` :
+
+```python
+from esquisse.config import Settings
+
+
+def test_env_file_is_read_when_no_env_var(tmp_path, monkeypatch):
+    fichier = tmp_path / ".env"
+    fichier.write_text("SUPABASE_DB_NAME=venu_du_fichier\n", encoding="utf-8")
+    monkeypatch.delenv("SUPABASE_DB_NAME", raising=False)
+    assert Settings(_env_file=fichier).supabase_db_name == "venu_du_fichier"
+
+
+def test_env_var_beats_env_file(tmp_path, monkeypatch):
+    """Les deux côtés du conflit sont posés par le test lui-même : sans cela,
+    il passerait au vert en ne démontrant rien."""
+    fichier = tmp_path / ".env"
+    fichier.write_text("SUPABASE_DB_NAME=venu_du_fichier\n", encoding="utf-8")
+    monkeypatch.setenv("SUPABASE_DB_NAME", "venu_de_l_environnement")
+    assert Settings(_env_file=fichier).supabase_db_name == "venu_de_l_environnement"
+
+
+def test_fake_llm_reads_its_documented_env_var(monkeypatch):
+    """L'alias n'est pas le comportement par défaut : sans lui le champ lirait
+    FAKE_LLM. Un nettoyage futur casserait le contrat en silence."""
+    monkeypatch.setenv("ESQUISSE_FAKE_LLM", "true")
+    assert Settings().fake_llm is True
+```
+
+Lancer : `cd api && uv run pytest tests/test_config.py -v`
+Attendu : SUCCÈS, trois tests
+
+- [ ] **Étape 10 : commiter**
 
 ```bash
-git add api/esquisse/config.py api/esquisse/db.py api/tests/conftest.py api/tests/test_db.py api/pyproject.toml api/uv.lock docker-compose.yml
+git add api/esquisse/config.py api/esquisse/db.py api/tests/conftest.py api/tests/test_db.py api/tests/test_config.py api/pyproject.toml api/uv.lock docker-compose.yml
 git commit -m "feat(api): configuration et pool de connexions asynchrone"
 ```
 
