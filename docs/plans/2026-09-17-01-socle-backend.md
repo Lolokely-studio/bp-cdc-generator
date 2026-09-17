@@ -1035,7 +1035,7 @@ git commit -m "feat(api): inscription, compte inactif par défaut"
 **Interfaces :**
 - Consomme : `new_token`, `verify_password`, `user_by_email`
 - Produit :
-  - `repository.open_session(conn, user_id: UUID, token_digest: bytes, ttl_heures: int) -> None`
+  - `repository.open_session(conn, user_id: UUID, token_digest: bytes, ttl_hours: int) -> None`
   - `repository.revoke_session(conn, token_digest: bytes) -> None`
   - `POST /auth/login` rendant `{"jeton": str}`
   - `POST /auth/logout`
@@ -1117,8 +1117,8 @@ Ajouter à `api/esquisse/auth/repository.py` :
 from datetime import datetime, timedelta, timezone
 
 
-async def open_session(conn, user_id: UUID, token_digest: bytes, ttl_heures: int) -> None:
-    expire = datetime.now(timezone.utc) + timedelta(hours=ttl_heures)
+async def open_session(conn, user_id: UUID, token_digest: bytes, ttl_hours: int) -> None:
+    expire = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
     async with conn.cursor() as cur:
         await cur.execute(
             "insert into sessions (token_hash, user_id, expires_at) values (%s, %s, %s)",
