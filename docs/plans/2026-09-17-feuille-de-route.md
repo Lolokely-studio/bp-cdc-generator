@@ -29,6 +29,39 @@ Chaque plan ci-dessous produit un logiciel qui tourne et qui se teste seul. On �
 | 5 | **Export** | Word et PDF produits depuis les blocs structurés, déposés au stockage, servis par lien signé | 3 |
 | 6 | **Interface** | Le parcours de la maquette, en vrai | 4, 5 |
 
+## Conventions d'exécution, valables pour tous les plans
+
+Tirées de l'exécution du plan 1, où elles ont manqué.
+
+**Un seul commit de plan par tâche.** Quand une relecture trouve un défaut dans
+le code que le plan impose, le plan se corrige — sinon le brief régénéré fait
+réécrire le même défaut à la tâche suivante. Mais ces corrections se groupent
+par tâche, en un commit, et non une par constat. Le plan 1 en a produit dix-huit
+sur un seul fichier, ce qui noie l'historique du code dans du bruit de
+documentation.
+
+**Corriger le plan et le brief dans le même geste.** Deux fois pendant le plan 1,
+le brief a été régénéré sans que le plan soit corrigé, ou l'inverse. Les deux
+divergences portaient sur des protections réelles — l'affectation ferme des
+variables de test, un nom de test. Le plan est la source, le brief en dérive :
+l'un sans l'autre est une régression silencieuse.
+
+**Vérifier le plan avant de l'exécuter, pas pendant.** Trois contrôles qui
+auraient épargné des tours de correction au plan 1, à passer une fois le plan
+écrit :
+- analyse syntaxique de chaque bloc de code (`ast.parse`), qui attrape les
+  fragments incohérents ;
+- balayage des identifiants, pour que les conventions de nommage soient tenues
+  partout et pas seulement dans les définitions ;
+- audit croisé des renvois entre tâches — ce qu'une tâche produit contre ce que
+  la suivante consomme, nom par nom.
+
+**Ne jamais laisser une édition du plan non commitée pendant qu'un sous-agent
+travaille.** Deux fois, un agent a nettoyé l'arbre de travail et effacé des
+modifications en cours sur un fichier qui ne le concernait pas. Les dispatches
+interdisent désormais explicitement `git checkout`, `restore`, `stash`, `clean`
+et `reset`, mais la vraie protection est de commiter avant de dispatcher.
+
 ## Ce qui n'est dans aucun plan
 
 Relecture des consignes et des grilles des 30 sections, plafond par compte, réinitialisation de mot de passe, interface d'administration. Ce sont des décisions ouvertes listées au §12 de la spec, pas des tâches en attente.

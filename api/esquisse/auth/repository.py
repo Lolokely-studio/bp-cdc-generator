@@ -1,0 +1,48 @@
+from datetime import datetime, timedelta, timezone
+from uuid import UUID
+
+
+async def create_user(conn, email: str, password_digest: str) -> UUID | None:
+    """Rend l'identifiant, ou None si l'adresse est déjà prise.
+    L'appelant répond la même chose dans les deux cas."""
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            insert into users (email, password_hash) values (%s, %s)
+            on conflict (email) do nothing
+            returning id
+            """,
+            (email, password_digest),
+        )
+        row = await cur.fetchone()
+    return row[0] if row else None
+
+
+async def user_by_email(conn, email: str) -> dict | None:
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "select id, email, password_hash, is_active from users where email = %s",
+            (email,),
+        )
+        row = await cur.fetchone()
+    if not row:
+        return None
+    return {"id": row[0], "email": row[1], "password_hash": row[2], "is_active": row[3]}
+
+
+async def open_session(conn, user_id: UUID, token_digest: bytes, ttl_hours: int) -> None:
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "insert into sessions (token_hash, user_id, expires_at) values (%s, %s, %s)",
+            (token_digest, user_id, expires_at),
+        )
+        await cur.execute("update users set last_login_at = now() where id = %s", (user_id,))
+
+
+async def revoke_session(conn, token_digest: bytes) -> None:
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "update sessions set revoked_at = now() where token_hash = %s and revoked_at is null",
+            (token_digest,),
+        )

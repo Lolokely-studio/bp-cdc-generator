@@ -1,0 +1,30 @@
+[project]
+name = "esquisse"
+version = "0.1.0"
+description = "Générateur de cahier des charges et de business plan"
+authors = [
+    { name = "Brice Dubois", email = "brice.dubois@etail-agency.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.14",
+    "anyio>=4",
+    "argon2-cffi>=23.1",
+    "fastapi>=0.115",
+    "psycopg[binary,pool]>=3.2",
+    "pydantic-settings>=2.6",
+    "pydantic[email]>=2.9",
+    "sqlalchemy>=2.0",
+    "uvicorn[standard]>=0.32",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27",
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+]

@@ -20,7 +20,7 @@
 - **Aucune variable de session PostgreSQL.** Le pooler est en mode transaction : ce qui doit valoir pour une requête se pose en `SET LOCAL`, dans la transaction. Une variable posée hors transaction disparaît sans erreur.
 - **Aucun test ne joint un vrai fournisseur de modèle ni la base de production.** Les tests utilisent une base PostgreSQL locale jetable.
 - **Un projet qui n'appartient pas à l'utilisateur répond `404`, jamais `403`.** On ne révèle pas l'existence de ce qu'on ne possède pas.
-- **Le code, les noms de fichiers et les messages d'erreur sont en français**, comme le reste du projet. Les identifiants techniques SQL restent tels qu'ils sont définis au §2.1 de la spec.
+- **Les identifiants du code sont en anglais** : fonctions, classes, fixtures, modules, fichiers, mais aussi variables et constantes. **Les commentaires, les docstrings et la documentation restent en français.** Les noms de colonnes SQL restent tels qu'ils sont définis au §2.1 de la spec, et les codes d'erreur d'API (`compte_inactif`, `identifiants_invalides`) aussi : ce sont des valeurs de contrat que l'interface lit.
 
 ---
 
@@ -39,29 +39,34 @@ api/
 │   ├── config.py               Réglages lus dans l'environnement
 │   ├── db.py                   Pool de connexions asynchrone
 │   ├── app.py                  Application FastAPI, /health
-│   ├── securite.py             Empreintes de mot de passe, jetons
-│   ├── limites.py              Limitation de débit en mémoire
+│   ├── security.py             Empreintes de mot de passe, jetons
+│   ├── rate_limit.py           Limitation de débit en mémoire
+│   ├── safety.py               Refus des migrations hors base locale
 │   ├── auth/
 │   │   ├── __init__.py
+│   │   ├── bearer.py           Découpage de l'en-tête Authorization
 │   │   ├── routes.py           /auth/register, /auth/login, /auth/logout, /me
-│   │   ├── depot.py            Accès SQL aux tables users et sessions
-│   │   └── dependances.py      Dépendance FastAPI « utilisateur actif »
-│   └── projets/
+│   │   ├── repository.py            Accès SQL aux tables users et sessions
+│   │   └── dependencies.py     Dépendance FastAPI « utilisateur actif »
+│   └── projects/
 │       ├── __init__.py
-│       └── depot.py            projet_de_lutilisateur, seul accès à la table
+│       └── repository.py            project_for_user, seul accès à la table
 └── tests/
     ├── conftest.py             Base jetable, client HTTP, utilisateurs
-    ├── test_sante.py
+    ├── test_health.py
+    ├── test_config.py
+    ├── test_safety.py
+    ├── test_bearer.py
     ├── test_db.py
-    ├── test_securite.py
-    ├── test_inscription.py
-    ├── test_connexion.py
-    ├── test_dependances.py
-    ├── test_limites.py
-    └── test_cloisonnement.py
+    ├── test_security.py
+    ├── test_register.py
+    ├── test_login.py
+    ├── test_dependencies.py
+    ├── test_rate_limit.py
+    └── test_isolation.py
 ```
 
-Chaque module a une responsabilité unique. `depot.py` est le seul endroit où l'on écrit du SQL pour un domaine donné : c'est ce qui rend vérifiable, à la tâche 8, qu'aucune requête ne contourne le cloisonnement.
+Chaque module a une responsabilité unique. `repository.py` est le seul endroit où l'on écrit du SQL pour un domaine donné : c'est ce qui rend vérifiable, à la tâche 8, qu'aucune requête ne contourne le cloisonnement.
 
 ---
 
@@ -72,11 +77,11 @@ Chaque module a une responsabilité unique. `depot.py` est le seul endroit où l
 - Créer : `api/esquisse/__init__.py`
 - Créer : `api/esquisse/app.py`
 - Créer : `api/tests/__init__.py`
-- Test : `api/tests/test_sante.py`
+- Test : `api/tests/test_health.py`
 
 **Interfaces :**
 - Consomme : rien.
-- Produit : `esquisse.app.creer_app() -> FastAPI` et l'instance de module `esquisse.app.app`. Toutes les tâches suivantes montent leurs routes sur cette application.
+- Produit : `esquisse.app.create_app() -> FastAPI` et l'instance de module `esquisse.app.app`. Toutes les tâches suivantes montent leurs routes sur cette application.
 
 - [ ] **Étape 1 : créer le projet avec uv**
 
@@ -99,16 +104,16 @@ testpaths = ["tests"]
 
 - [ ] **Étape 3 : écrire le test qui échoue**
 
-`api/tests/test_sante.py` :
+`api/tests/test_health.py` :
 
 ```python
 import httpx
 import pytest
-from esquisse.app import creer_app
+from esquisse.app import create_app
 
 
-async def test_sante_repond_ok():
-    app = creer_app()
+async def test_health_returns_ok():
+    app = create_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         reponse = await client.get("/health")
@@ -118,7 +123,7 @@ async def test_sante_repond_ok():
 
 - [ ] **Étape 4 : lancer le test et vérifier qu'il échoue**
 
-Lancer : `cd api && uv run pytest tests/test_sante.py -v`
+Lancer : `cd api && uv run pytest tests/test_health.py -v`
 Attendu : ÉCHEC, `ModuleNotFoundError: No module named 'esquisse.app'`
 
 - [ ] **Étape 5 : écrire l'implémentation minimale**
@@ -131,13 +136,13 @@ Attendu : ÉCHEC, `ModuleNotFoundError: No module named 'esquisse.app'`
 from fastapi import FastAPI
 
 
-def creer_app() -> FastAPI:
+def create_app() -> FastAPI:
     """Construit l'application. Une fonction et non un module-niveau :
     les tests en créent une par cas, sans état partagé."""
     app = FastAPI(title="Esquisse", version="0.1.0")
 
     @app.get("/health")
-    async def sante() -> dict[str, str]:
+    async def health() -> dict[str, str]:
         """Sonde de réveil. L'hébergement gratuit s'endort après quinze
         minutes ; l'interface appelle cette route et affiche un écran
         d'attente le temps du redémarrage."""
@@ -146,14 +151,14 @@ def creer_app() -> FastAPI:
     return app
 
 
-app = creer_app()
+app = create_app()
 ```
 
 `api/tests/__init__.py` : fichier vide.
 
 - [ ] **Étape 6 : lancer le test et vérifier qu'il passe**
 
-Lancer : `cd api && uv run pytest tests/test_sante.py -v`
+Lancer : `cd api && uv run pytest tests/test_health.py -v`
 Attendu : SUCCÈS
 
 - [ ] **Étape 7 : vérifier que le serveur démarre**
@@ -177,16 +182,16 @@ git commit -m "feat(api): squelette FastAPI et sonde de santé"
 - Créer : `api/esquisse/db.py`
 - Créer : `api/tests/conftest.py`
 - Créer : `docker-compose.yml` (racine du dépôt)
-- Test : `api/tests/test_db.py`
+- Test : `api/tests/test_db.py` (connexion) et `api/tests/test_config.py` (réglages)
 
 **Interfaces :**
 - Consomme : rien.
 - Produit :
-  - `esquisse.config.Reglages` (pydantic-settings) avec `dsn: str`, `session_ttl_heures: int`, `fake_llm: bool`
-  - `esquisse.config.reglages() -> Reglages`, mémoïsé
+  - `esquisse.config.Settings` (pydantic-settings) avec `dsn: str`, `session_ttl_hours: int`, `fake_llm: bool`
+  - `esquisse.config.settings() -> Settings`, mémoïsé
   - `esquisse.db.pool() -> AsyncConnectionPool`
-  - `esquisse.db.connexion()` — gestionnaire de contexte asynchrone qui rend une connexion du pool
-  - Toutes les tâches suivantes obtiennent leurs connexions par `connexion()`.
+  - `esquisse.db.connection()` — gestionnaire de contexte asynchrone qui rend une connexion du pool
+  - Toutes les tâches suivantes obtiennent leurs connexions par `connection()`.
 
 - [ ] **Étape 1 : ajouter les dépendances**
 
@@ -217,20 +222,20 @@ Lancer : `docker compose up -d db`
 `api/tests/test_db.py` :
 
 ```python
-from esquisse.db import connexion
+from esquisse.db import connection
 
 
-async def test_connexion_rend_une_session_utilisable():
-    async with connexion() as conn:
+async def test_connection_yields_usable_session():
+    async with connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute("select 1")
             assert (await cur.fetchone())[0] == 1
 
 
-async def test_set_local_vaut_dans_la_transaction():
+async def test_set_local_applies_within_transaction():
     """Le pooler est en mode transaction : SET LOCAL est le seul mécanisme
     sûr pour porter une valeur. Ce test fixe cette contrainte dans le code."""
-    async with connexion() as conn:
+    async with connection() as conn:
         async with conn.transaction():
             async with conn.cursor() as cur:
                 await cur.execute("set local esquisse.test = 'valeur'")
@@ -249,11 +254,19 @@ Attendu : ÉCHEC, `ModuleNotFoundError: No module named 'esquisse.db'`
 
 ```python
 from functools import lru_cache
+from pathlib import Path
+
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Ancré sur l'emplacement du module : le `.env` documenté vit à la racine du
+# dépôt, alors que les commandes se lancent depuis `api/`. Un chemin relatif
+# viserait `api/.env` et ne trouverait jamais le fichier.
+_RACINE_DEPOT = Path(__file__).resolve().parents[2]
 
-class Reglages(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=_RACINE_DEPOT / ".env", extra="ignore")
 
     supabase_db_host: str = "localhost"
     supabase_db_port: int = 5433
@@ -261,8 +274,11 @@ class Reglages(BaseSettings):
     supabase_db_password: str = "esquisse"
     supabase_db_name: str = "esquisse_test"
 
-    session_ttl_heures: int = 24 * 14
-    esquisse_fake_llm: bool = False
+    session_ttl_hours: int = 24 * 14
+    # pydantic-settings dérive le nom de la variable d'environnement du nom du
+    # champ. L'alias garde `ESQUISSE_FAKE_LLM`, documenté au §11 de la spec,
+    # sans imposer ce préfixe au nom Python.
+    fake_llm: bool = Field(default=False, validation_alias="ESQUISSE_FAKE_LLM")
 
     @property
     def dsn(self) -> str:
@@ -273,8 +289,8 @@ class Reglages(BaseSettings):
 
 
 @lru_cache
-def reglages() -> Reglages:
-    return Reglages()
+def settings() -> Settings:
+    return Settings()
 ```
 
 - [ ] **Étape 6 : écrire le pool**
@@ -287,7 +303,7 @@ from functools import lru_cache
 
 from psycopg_pool import AsyncConnectionPool
 
-from esquisse.config import reglages
+from esquisse.config import settings
 
 
 @lru_cache
@@ -297,7 +313,7 @@ def pool() -> AsyncConnectionPool:
     multiplexer. Ouvrir trop de connexions ici ne gagne rien et
     consomme le quota du pooler."""
     return AsyncConnectionPool(
-        conninfo=reglages().dsn,
+        conninfo=settings().dsn,
         min_size=1,
         max_size=5,
         open=False,
@@ -305,19 +321,22 @@ def pool() -> AsyncConnectionPool:
     )
 
 
-_ouvert = False
+_opened = False
 
 
 @asynccontextmanager
-async def connexion():
+async def connection():
     """Ouvre le pool au premier usage. On ne s'appuie pas sur `pool.closed`,
     dont la valeur avant la première ouverture prête à confusion : un drapeau
     explicite est plus court à lire et ne dépend pas de la version."""
-    global _ouvert
+    global _opened
     p = pool()
-    if not _ouvert:
-        await p.open()
-        _ouvert = True
+    if not _opened:
+        # `wait=True` : sans lui, `open()` rend la main avant la fin du
+        # remplissage initial et entre en course avec la demande de connexion
+        # juste en dessous — mesuré à plus d'un blocage sur deux.
+        await p.open(wait=True)
+        _opened = True
     async with p.connection() as conn:
         yield conn
 ```
@@ -329,12 +348,17 @@ async def connexion():
 ```python
 import os
 
-# Les tests parlent à la base jetable de docker-compose, jamais à la production.
-os.environ.setdefault("SUPABASE_DB_HOST", "localhost")
-os.environ.setdefault("SUPABASE_DB_PORT", "5433")
-os.environ.setdefault("SUPABASE_DB_USER", "esquisse")
-os.environ.setdefault("SUPABASE_DB_PASSWORD", "esquisse")
-os.environ.setdefault("SUPABASE_DB_NAME", "esquisse_test")
+# Affectation ferme, et surtout pas `setdefault` : le `.env` de la racine
+# contient les identifiants de la base Supabase de production, et un
+# développeur peut avoir ces variables déjà exportées dans son shell. Avec
+# `setdefault`, ces valeurs passeraient au travers et la suite de tests
+# s'exécuterait contre la base réelle. L'affectation ferme écrase tout et
+# garantit que les tests ne parlent jamais qu'à la base jetable.
+os.environ["SUPABASE_DB_HOST"] = "localhost"
+os.environ["SUPABASE_DB_PORT"] = "5433"
+os.environ["SUPABASE_DB_USER"] = "esquisse"
+os.environ["SUPABASE_DB_PASSWORD"] = "esquisse"
+os.environ["SUPABASE_DB_NAME"] = "esquisse_test"
 ```
 
 - [ ] **Étape 8 : lancer les tests et vérifier qu'ils passent**
@@ -342,10 +366,51 @@ os.environ.setdefault("SUPABASE_DB_NAME", "esquisse_test")
 Lancer : `cd api && uv run pytest tests/test_db.py -v`
 Attendu : SUCCÈS, deux tests
 
-- [ ] **Étape 9 : commiter**
+- [ ] **Étape 9 : prouver que les tests ne peuvent pas atteindre la base réelle**
+
+Le `.env` de la racine contient les identifiants de production, et `env_file`
+pointe désormais dessus. La seule chose qui protège la suite de tests est que
+les variables d'environnement l'emportent sur `env_file`. Cela se prouve, et la
+preuve doit tenir seule : un test qui ne pose le conflit que d'un côté passe au
+vert sans rien démontrer dès que le `.env` local n'existe pas — sur un clone
+neuf ou en intégration continue.
+
+`api/tests/test_config.py` :
+
+```python
+from esquisse.config import Settings
+
+
+def test_env_file_is_read_when_no_env_var(tmp_path, monkeypatch):
+    fichier = tmp_path / ".env"
+    fichier.write_text("SUPABASE_DB_NAME=venu_du_fichier\n", encoding="utf-8")
+    monkeypatch.delenv("SUPABASE_DB_NAME", raising=False)
+    assert Settings(_env_file=fichier).supabase_db_name == "venu_du_fichier"
+
+
+def test_env_var_beats_env_file(tmp_path, monkeypatch):
+    """Les deux côtés du conflit sont posés par le test lui-même : sans cela,
+    il passerait au vert en ne démontrant rien."""
+    fichier = tmp_path / ".env"
+    fichier.write_text("SUPABASE_DB_NAME=venu_du_fichier\n", encoding="utf-8")
+    monkeypatch.setenv("SUPABASE_DB_NAME", "venu_de_l_environnement")
+    assert Settings(_env_file=fichier).supabase_db_name == "venu_de_l_environnement"
+
+
+def test_fake_llm_reads_its_documented_env_var(monkeypatch):
+    """L'alias n'est pas le comportement par défaut : sans lui le champ lirait
+    FAKE_LLM. Un nettoyage futur casserait le contrat en silence."""
+    monkeypatch.setenv("ESQUISSE_FAKE_LLM", "true")
+    assert Settings().fake_llm is True
+```
+
+Lancer : `cd api && uv run pytest tests/test_config.py -v`
+Attendu : SUCCÈS, trois tests
+
+- [ ] **Étape 10 : commiter**
 
 ```bash
-git add api/esquisse/config.py api/esquisse/db.py api/tests/conftest.py api/tests/test_db.py api/pyproject.toml api/uv.lock docker-compose.yml
+git add api/esquisse/config.py api/esquisse/db.py api/tests/conftest.py api/tests/test_db.py api/tests/test_config.py api/pyproject.toml api/uv.lock docker-compose.yml
 git commit -m "feat(api): configuration et pool de connexions asynchrone"
 ```
 
@@ -356,13 +421,14 @@ git commit -m "feat(api): configuration et pool de connexions asynchrone"
 **Fichiers :**
 - Créer : `api/alembic.ini`
 - Créer : `api/migrations/env.py`
-- Créer : `api/migrations/versions/0001_comptes.py`
+- Créer : `api/migrations/versions/0001_accounts.py`
+- Créer : `api/esquisse/safety.py`
 - Modifier : `api/tests/conftest.py`
 - Test : `api/tests/test_migrations.py`
 
 **Interfaces :**
-- Consomme : `esquisse.config.reglages`
-- Produit : les tables `users` et `sessions` conformes au §2.1 de la spec. La fixture pytest `base_migree` (portée session) applique les migrations avant tout test.
+- Consomme : `esquisse.config.settings`
+- Produit : les tables `users` et `sessions` conformes au §2.1 de la spec. La fixture pytest `migrated_db` (portée session) applique les migrations avant tout test.
 
 - [ ] **Étape 1 : ajouter les dépendances**
 
@@ -379,11 +445,11 @@ Note : SQLAlchemy n'est utilisé que par Alembic. L'application n'en dépend pas
 `api/tests/test_migrations.py` :
 
 ```python
-from esquisse.db import connexion
+from esquisse.db import connection
 
 
-async def test_tables_des_comptes_existent(base_migree):
-    async with connexion() as conn:
+async def test_account_tables_exist(migrated_db):
+    async with connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute("""
                 select table_name from information_schema.tables
@@ -393,8 +459,8 @@ async def test_tables_des_comptes_existent(base_migree):
     assert {"users", "sessions"} <= tables
 
 
-async def test_is_active_est_faux_par_defaut(base_migree):
-    async with connexion() as conn:
+async def test_is_active_defaults_to_false(migrated_db):
+    async with connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 "insert into users (email, password_hash) values (%s, %s) returning is_active",
@@ -407,25 +473,66 @@ async def test_is_active_est_faux_par_defaut(base_migree):
 - [ ] **Étape 3 : lancer le test et vérifier qu'il échoue**
 
 Lancer : `cd api && uv run pytest tests/test_migrations.py -v`
-Attendu : ÉCHEC, fixture `base_migree` introuvable
+Attendu : ÉCHEC, fixture `migrated_db` introuvable
 
 - [ ] **Étape 4 : configurer Alembic sur un moteur synchrone**
 
 Remplacer le contenu de `api/migrations/env.py` par :
 
+`api/esquisse/safety.py` — le garde-fou, dans un module à part parce que
+`env.py` n'est pas importable et qu'un garde-fou non testable n'en est pas un :
+
+```python
+import os
+from urllib.parse import urlparse
+
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+_OPT_IN = "ESQUISSE_ALLOW_REMOTE_MIGRATIONS"
+
+
+class RemoteMigrationRefused(RuntimeError):
+    """Levée quand une migration vise une base non locale sans accord explicite."""
+
+
+def ensure_migration_target_allowed(dsn: str) -> None:
+    """Refuse d'appliquer une migration ailleurs qu'en local sans consentement.
+
+    `env.py` lit les réglages comme l'application. Lancé à la main depuis
+    `api/`, sans les variables que `conftest.py` pose pour les tests, il
+    retombe sur le `.env` de la racine — celui qui porte les identifiants de
+    production. Une frappe de trop et `alembic upgrade head` migre la base
+    réelle. Le refus par défaut rend ce geste volontaire."""
+    host = urlparse(dsn).hostname or ""
+    if host in _LOCAL_HOSTS:
+        return
+    if os.environ.get(_OPT_IN) == "1":
+        return
+    raise RemoteMigrationRefused(
+        f"Cible de migration non locale : {host}. "
+        f"Pour l'accepter, relancez avec {_OPT_IN}=1."
+    )
+```
+
+`api/migrations/env.py` :
+
 ```python
 from alembic import context
 from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 
-from esquisse.config import reglages
+from esquisse.config import settings
+from esquisse.safety import ensure_migration_target_allowed
 
 
 def run_migrations_online() -> None:
     """Moteur synchrone : les migrations ne sont pas un chemin chaud et
     le pilote asynchrone n'apporte rien ici. Le DDL passe sans problème
     par le pooler en mode transaction."""
-    dsn = reglages().dsn.replace("postgresql://", "postgresql+psycopg://")
-    engine = create_engine(dsn, poolclass=None)
+    ensure_migration_target_allowed(settings().dsn)
+    dsn = settings().dsn.replace("postgresql://", "postgresql+psycopg://")
+    # NullPool : une seule connexion, le processus se termine juste après.
+    # `poolclass=None` ne désactive rien, contrairement à ce que son nom suggère.
+    engine = create_engine(dsn, poolclass=NullPool)
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=None)
         with context.begin_transaction():
@@ -435,11 +542,11 @@ def run_migrations_online() -> None:
 run_migrations_online()
 ```
 
-Dans `api/alembic.ini`, laisser `sqlalchemy.url` vide : la chaîne vient de `reglages()`.
+Dans `api/alembic.ini`, laisser `sqlalchemy.url` vide : la chaîne vient de `settings()`.
 
 - [ ] **Étape 5 : écrire la migration**
 
-`api/migrations/versions/0001_comptes.py` :
+`api/migrations/versions/0001_accounts.py` :
 
 ```python
 """comptes et sessions
@@ -479,6 +586,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Les extensions ne sont volontairement pas désinstallées.
+
+    `drop extension` sur une base gérée peut casser des objets sans rapport
+    avec ce projet, et sur Supabase les extensions relèvent de la plateforme.
+    Une migration inverse qui désinstalle une extension partagée est plus
+    dangereuse que l'asymétrie qu'elle corrigerait. `create extension if not
+    exists` rend de toute façon la remontée idempotente."""
     op.execute("drop table if exists sessions")
     op.execute("drop table if exists users")
 ```
@@ -495,24 +609,73 @@ import pytest
 
 
 @pytest.fixture(scope="session")
-def base_migree():
+def migrated_db():
     """Applique les migrations sur la base jetable avant la suite de tests.
     Même chemin qu'en production : si une migration casse, les tests cassent."""
-    racine_api = Path(__file__).resolve().parents[1]
-    subprocess.run(["uv", "run", "alembic", "downgrade", "base"], cwd=racine_api, check=False)
-    subprocess.run(["uv", "run", "alembic", "upgrade", "head"], cwd=racine_api, check=True)
+    api_root = Path(__file__).resolve().parents[1]
+
+    # `check=False` seul masquerait un vrai échec : une base laissée dans un
+    # état partiel par une exécution interrompue produirait au tour suivant une
+    # erreur peu diagnostique, voire des tests verts sur un schéma périmé. On
+    # distingue donc « rien à annuler » d'« annulation en échec ».
+    retour = subprocess.run(
+        ["uv", "run", "alembic", "downgrade", "base"],
+        cwd=api_root, check=False, capture_output=True, text=True,
+    )
+    if retour.returncode != 0 and "Can't locate revision" not in retour.stderr:
+        raise RuntimeError(
+            "Le retour arrière des migrations a échoué, la base de test est "
+            f"peut-être dans un état partiel :\n{retour.stderr}"
+        )
+
+    subprocess.run(["uv", "run", "alembic", "upgrade", "head"], cwd=api_root, check=True)
     return True
 ```
 
-- [ ] **Étape 7 : lancer les tests et vérifier qu'ils passent**
+- [ ] **Étape 7 : tester le garde-fou**
+
+`api/tests/test_safety.py` :
+
+```python
+import pytest
+
+from esquisse.safety import RemoteMigrationRefused, ensure_migration_target_allowed
+
+LOCAL = "postgresql://u:p@localhost:5433/esquisse_test"
+DISTANT = "postgresql://u:p@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"
+
+
+def test_local_target_is_allowed(monkeypatch):
+    monkeypatch.delenv("ESQUISSE_ALLOW_REMOTE_MIGRATIONS", raising=False)
+    ensure_migration_target_allowed(LOCAL)
+
+
+def test_remote_target_is_refused_by_default(monkeypatch):
+    """Sans ce refus, la commande d'installation du README migrerait la
+    base de production."""
+    monkeypatch.delenv("ESQUISSE_ALLOW_REMOTE_MIGRATIONS", raising=False)
+    with pytest.raises(RemoteMigrationRefused) as erreur:
+        ensure_migration_target_allowed(DISTANT)
+    assert "pooler.supabase.com" in str(erreur.value)
+
+
+def test_remote_target_is_allowed_when_opted_in(monkeypatch):
+    monkeypatch.setenv("ESQUISSE_ALLOW_REMOTE_MIGRATIONS", "1")
+    ensure_migration_target_allowed(DISTANT)
+```
+
+Lancer : `cd api && uv run pytest tests/test_safety.py -v`
+Attendu : SUCCÈS, trois tests
+
+- [ ] **Étape 8 : lancer les tests et vérifier qu'ils passent**
 
 Lancer : `cd api && uv run pytest tests/test_migrations.py -v`
 Attendu : SUCCÈS, deux tests
 
-- [ ] **Étape 8 : commiter**
+- [ ] **Étape 9 : commiter**
 
 ```bash
-git add api/alembic.ini api/migrations api/tests/conftest.py api/tests/test_migrations.py api/pyproject.toml api/uv.lock
+git add api/alembic.ini api/migrations api/esquisse/safety.py api/tests/conftest.py api/tests/test_migrations.py api/tests/test_safety.py api/pyproject.toml api/uv.lock
 git commit -m "feat(api): migrations Alembic et tables des comptes"
 ```
 
@@ -521,16 +684,16 @@ git commit -m "feat(api): migrations Alembic et tables des comptes"
 ## Tâche 4 : empreintes de mot de passe et jetons
 
 **Fichiers :**
-- Créer : `api/esquisse/securite.py`
-- Test : `api/tests/test_securite.py`
+- Créer : `api/esquisse/security.py`
+- Test : `api/tests/test_security.py`
 
 **Interfaces :**
 - Consomme : rien.
 - Produit :
-  - `empreinte(mot_de_passe: str) -> str`
-  - `verifier(mot_de_passe: str, empreinte_stockee: str) -> bool`
-  - `nouveau_jeton() -> tuple[str, bytes]` — rend le jeton en clair et son empreinte SHA-256
-  - `empreinte_jeton(jeton: str) -> bytes`
+  - `hash_password(password: str) -> str`
+  - `verify_password(password: str | None, stored_hash: str | None) -> bool`
+  - `new_token() -> tuple[str, bytes]` — rend le jeton en clair et son empreinte SHA-256
+  - `token_hash(token: str) -> bytes`
 
 - [ ] **Étape 1 : ajouter la dépendance**
 
@@ -540,51 +703,81 @@ cd api && uv add "argon2-cffi>=23.1"
 
 - [ ] **Étape 2 : écrire le test qui échoue**
 
-`api/tests/test_securite.py` :
+`api/tests/test_security.py` :
 
 ```python
-from esquisse.securite import empreinte, verifier, nouveau_jeton, empreinte_jeton
+import time
+
+from esquisse.security import hash_password, verify_password, new_token, token_hash
 
 
-def test_empreinte_ne_contient_pas_le_mot_de_passe():
-    e = empreinte("correct horse battery staple")
+def test_hash_does_not_contain_password():
+    e = hash_password("correct horse battery staple")
     assert "correct" not in e
     assert e.startswith("$argon2id$")
 
 
-def test_verifier_accepte_le_bon_mot_de_passe():
-    e = empreinte("motdepasse")
-    assert verifier("motdepasse", e) is True
+def test_verify_accepts_correct_password():
+    e = hash_password("motdepasse")
+    assert verify_password("motdepasse", e) is True
 
 
-def test_verifier_refuse_le_mauvais():
-    e = empreinte("motdepasse")
-    assert verifier("autrechose", e) is False
+def test_verify_rejects_wrong_password():
+    e = hash_password("motdepasse")
+    assert verify_password("autrechose", e) is False
 
 
-def test_deux_empreintes_du_meme_mot_de_passe_different():
+def test_same_password_hashes_differ():
     """Le sel rend chaque empreinte unique : deux comptes avec le même
     mot de passe n'ont pas la même ligne en base."""
-    assert empreinte("identique") != empreinte("identique")
+    assert hash_password("identique") != hash_password("identique")
 
 
-def test_nouveau_jeton_est_imprevisible_et_son_empreinte_est_stable():
-    clair_a, h_a = nouveau_jeton()
-    clair_b, h_b = nouveau_jeton()
+def test_verify_pays_the_same_cost_when_digest_is_absent():
+    """Une garde qui rend False sans appeler argon2 répondrait en
+    microsecondes pour un compte inconnu, contre des dizaines de
+    millisecondes pour un mauvais mot de passe. L'écart révélerait quels
+    comptes existent. Le rapport toléré est large : sans la correction, il
+    est de plusieurs ordres de grandeur."""
+    reference = hash_password("motdepasse")
+
+    debut = time.perf_counter()
+    verify_password("mauvais", reference)
+    cout_reel = time.perf_counter() - debut
+
+    debut = time.perf_counter()
+    verify_password("mauvais", None)
+    cout_absent = time.perf_counter() - debut
+
+    assert cout_absent > cout_reel / 3
+
+
+def test_verify_refuses_none_instead_of_crashing():
+    """Un appelant qui normalise le temps de réponse sur « utilisateur
+    inconnu » passe naturellement None comme empreinte. Ce module doit
+    répondre « non », jamais lever : une exception ici devient une 500."""
+    assert verify_password("motdepasse", None) is False
+    assert verify_password(None, hash_password("motdepasse")) is False
+    assert verify_password("", "") is False
+
+
+def test_new_token_is_unpredictable_and_digest_stable():
+    clair_a, h_a = new_token()
+    clair_b, h_b = new_token()
     assert clair_a != clair_b
     assert len(clair_a) >= 43           # 32 octets en base64url
-    assert h_a == empreinte_jeton(clair_a)
+    assert h_a == token_hash(clair_a)
     assert len(h_a) == 32               # SHA-256
 ```
 
 - [ ] **Étape 3 : lancer le test et vérifier qu'il échoue**
 
-Lancer : `cd api && uv run pytest tests/test_securite.py -v`
-Attendu : ÉCHEC, `ModuleNotFoundError: No module named 'esquisse.securite'`
+Lancer : `cd api && uv run pytest tests/test_security.py -v`
+Attendu : ÉCHEC, `ModuleNotFoundError: No module named 'esquisse.security'`
 
 - [ ] **Étape 4 : écrire l'implémentation**
 
-`api/esquisse/securite.py` :
+`api/esquisse/security.py` :
 
 ```python
 import hashlib
@@ -595,39 +788,66 @@ from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHas
 
 _hasher = PasswordHasher()
 
+# Empreinte factice, calculée une fois au chargement du module. Elle sert
+# uniquement à payer le coût d'argon2 quand aucune empreinte réelle n'existe.
+_DUMMY_HASH = _hasher.hash("empreinte factice pour egaliser le temps de reponse")
 
-def empreinte(mot_de_passe: str) -> str:
-    return _hasher.hash(mot_de_passe)
+
+def hash_password(password: str) -> str:
+    return _hasher.hash(password)
 
 
-def verifier(mot_de_passe: str, empreinte_stockee: str) -> bool:
+def verify_password(password: str | None, stored_hash: str | None) -> bool:
+    """Rend toujours un booléen, jamais une exception.
+
+    Le cas `None` n'est pas théorique : pour ne pas révéler quels comptes
+    existent, un appelant vérifie même quand l'utilisateur est introuvable, et
+    passe alors une empreinte absente. argon2 lèverait un `AttributeError`
+    avant d'atteindre ses propres exceptions, qui remonterait en erreur serveur.
+
+    Mais rendre `False` tout de suite ne suffit pas : le chemin « compte
+    inconnu » répondrait en microsecondes là où « mauvais mot de passe » paie
+    les dizaines de millisecondes d'argon2, et cet écart révélerait
+    précisément ce qu'on cherche à cacher. On vérifie donc contre une
+    empreinte factice pour payer le même coût."""
+    if not password:
+        return False
+    target = stored_hash if stored_hash else _DUMMY_HASH
     try:
-        return _hasher.verify(empreinte_stockee, mot_de_passe)
+        valid = _hasher.verify(target, password)
     except (VerifyMismatchError, VerificationError, InvalidHashError):
         return False
+    # Une empreinte absente ne vaut jamais un succès, même dans le cas
+    # improbable où le mot de passe correspondrait à l'empreinte factice.
+    return valid and stored_hash is not None
 
 
-def nouveau_jeton() -> tuple[str, bytes]:
+def new_token() -> tuple[str, bytes]:
     """Rend le jeton en clair, à donner une seule fois au client, et son
     empreinte, seule chose écrite en base. Une fuite de la table sessions
     ne permet pas de se connecter."""
-    clair = secrets.token_urlsafe(32)
-    return clair, empreinte_jeton(clair)
+    plaintext = secrets.token_urlsafe(32)
+    return plaintext, token_hash(plaintext)
 
 
-def empreinte_jeton(jeton: str) -> bytes:
-    return hashlib.sha256(jeton.encode()).digest()
+def token_hash(token: str) -> bytes:
+    """SHA-256 nu, sans sel ni étirement, volontairement : le jeton porte déjà
+    256 bits d'entropie tirés du générateur du système, donc le ralentir
+    n'apporte rien contre la force brute — alors qu'une empreinte
+    déterministe permet de retrouver la session par égalité indexée. Le
+    contraste avec argon2id sur les mots de passe est un choix, pas un oubli."""
+    return hashlib.sha256(token.encode()).digest()
 ```
 
 - [ ] **Étape 5 : lancer les tests et vérifier qu'ils passent**
 
-Lancer : `cd api && uv run pytest tests/test_securite.py -v`
+Lancer : `cd api && uv run pytest tests/test_security.py -v`
 Attendu : SUCCÈS, cinq tests
 
 - [ ] **Étape 6 : commiter**
 
 ```bash
-git add api/esquisse/securite.py api/tests/test_securite.py api/pyproject.toml api/uv.lock
+git add api/esquisse/security.py api/tests/test_security.py api/pyproject.toml api/uv.lock
 git commit -m "feat(api): empreintes argon2id et jetons de session"
 ```
 
@@ -637,29 +857,29 @@ git commit -m "feat(api): empreintes argon2id et jetons de session"
 
 **Fichiers :**
 - Créer : `api/esquisse/auth/__init__.py`
-- Créer : `api/esquisse/auth/depot.py`
+- Créer : `api/esquisse/auth/repository.py`
 - Créer : `api/esquisse/auth/routes.py`
 - Modifier : `api/esquisse/app.py`
 - Modifier : `api/tests/conftest.py`
-- Test : `api/tests/test_inscription.py`
+- Test : `api/tests/test_register.py`
 
 **Interfaces :**
-- Consomme : `esquisse.db.connexion`, `esquisse.securite.empreinte`
+- Consomme : `esquisse.db.connexion`, `esquisse.security.hash_password`
 - Produit :
-  - `esquisse.auth.depot.creer_utilisateur(conn, email: str, empreinte_mdp: str) -> UUID | None` — rend `None` si l'adresse existe déjà
-  - `esquisse.auth.depot.utilisateur_par_email(conn, email: str) -> dict | None`
-  - `esquisse.auth.routes.routeur` — `APIRouter` monté sur `/auth`
+  - `esquisse.auth.repository.create_user(conn, email: str, password_digest: str) -> UUID | None` — rend `None` si l'adresse existe déjà
+  - `esquisse.auth.repository.user_by_email(conn, email: str) -> dict | None`
+  - `esquisse.auth.routes.router` — `APIRouter` monté sur `/auth`
   - la fixture pytest `client`
 
 - [ ] **Étape 1 : écrire le test qui échoue**
 
-`api/tests/test_inscription.py` :
+`api/tests/test_register.py` :
 
 ```python
-from esquisse.db import connexion
+from esquisse.db import connection
 
 
-async def test_inscription_cree_un_compte_inactif(client, base_migree):
+async def test_register_creates_inactive_account(client, migrated_db):
     reponse = await client.post(
         "/auth/register",
         json={"email": "nouvelle@exemple.fr", "mot_de_passe": "motdepasse123"},
@@ -667,18 +887,18 @@ async def test_inscription_cree_un_compte_inactif(client, base_migree):
     assert reponse.status_code == 201
     assert reponse.json()["compte_actif"] is False
 
-    async with connexion() as conn:
+    async with connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 "select is_active, password_hash from users where email = %s",
                 ("nouvelle@exemple.fr",),
             )
-            actif, empreinte_stockee = await cur.fetchone()
+            actif, stored_hash = await cur.fetchone()
     assert actif is False
-    assert "motdepasse123" not in empreinte_stockee
+    assert "motdepasse123" not in stored_hash
 
 
-async def test_adresse_deja_prise_repond_pareil(client, base_migree):
+async def test_existing_email_responds_identically(client, migrated_db):
     """On ne révèle pas qui est inscrit : deux réponses identiques."""
     premiere = await client.post(
         "/auth/register", json={"email": "double@exemple.fr", "mot_de_passe": "motdepasse123"}
@@ -689,13 +909,13 @@ async def test_adresse_deja_prise_repond_pareil(client, base_migree):
     assert premiere.status_code == seconde.status_code == 201
     assert premiere.json() == seconde.json()
 
-    async with connexion() as conn:
+    async with connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute("select count(*) from users where email = %s", ("double@exemple.fr",))
             assert (await cur.fetchone())[0] == 1
 
 
-async def test_mot_de_passe_trop_court_refuse(client, base_migree):
+async def test_short_password_rejected(client, migrated_db):
     reponse = await client.post(
         "/auth/register", json={"email": "court@exemple.fr", "mot_de_passe": "abc"}
     )
@@ -704,7 +924,7 @@ async def test_mot_de_passe_trop_court_refuse(client, base_migree):
 
 - [ ] **Étape 2 : lancer le test et vérifier qu'il échoue**
 
-Lancer : `cd api && uv run pytest tests/test_inscription.py -v`
+Lancer : `cd api && uv run pytest tests/test_register.py -v`
 Attendu : ÉCHEC, fixture `client` introuvable
 
 - [ ] **Étape 3 : ajouter la fixture client**
@@ -712,14 +932,19 @@ Attendu : ÉCHEC, fixture `client` introuvable
 Ajouter à `api/tests/conftest.py` :
 
 ```python
+# Les imports de `esquisse` viennent APRÈS les affectations ci-dessus. Aujourd'hui
+# `settings()` est paresseux et mémoïsé, donc l'ordre ne change rien — mais il
+# suffirait qu'un module appelle `settings()` à l'import pour que la configuration
+# se fige sur le `.env` de production. On ne fait pas reposer sur la chance ce que
+# l'ordre garantit.
 import httpx
 import pytest_asyncio
-from esquisse.app import creer_app
+from esquisse.app import create_app
 
 
 @pytest_asyncio.fixture
 async def client():
-    transport = httpx.ASGITransport(app=creer_app())
+    transport = httpx.ASGITransport(app=create_app())
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 ```
@@ -728,13 +953,13 @@ async def client():
 
 `api/esquisse/auth/__init__.py` : fichier vide.
 
-`api/esquisse/auth/depot.py` :
+`api/esquisse/auth/repository.py` :
 
 ```python
 from uuid import UUID
 
 
-async def creer_utilisateur(conn, email: str, empreinte_mdp: str) -> UUID | None:
+async def create_user(conn, email: str, password_digest: str) -> UUID | None:
     """Rend l'identifiant, ou None si l'adresse est déjà prise.
     L'appelant répond la même chose dans les deux cas."""
     async with conn.cursor() as cur:
@@ -744,13 +969,13 @@ async def creer_utilisateur(conn, email: str, empreinte_mdp: str) -> UUID | None
             on conflict (email) do nothing
             returning id
             """,
-            (email, empreinte_mdp),
+            (email, password_digest),
         )
         ligne = await cur.fetchone()
     return ligne[0] if ligne else None
 
 
-async def utilisateur_par_email(conn, email: str) -> dict | None:
+async def user_by_email(conn, email: str) -> dict | None:
     async with conn.cursor() as cur:
         await cur.execute(
             "select id, email, password_hash, is_active from users where email = %s",
@@ -767,31 +992,42 @@ async def utilisateur_par_email(conn, email: str) -> dict | None:
 `api/esquisse/auth/routes.py` :
 
 ```python
+import anyio
 from fastapi import APIRouter, status
 from pydantic import BaseModel, EmailStr, Field
 
-from esquisse.auth import depot
-from esquisse.db import connexion
-from esquisse.securite import empreinte
+from esquisse.auth import repository
+from esquisse.db import connection
+from esquisse.security import hash_password
 
-routeur = APIRouter(prefix="/auth", tags=["comptes"])
+router = APIRouter(prefix="/auth", tags=["comptes"])
 
 
-class DemandeInscription(BaseModel):
+class RegisterRequest(BaseModel):
     email: EmailStr
-    mot_de_passe: str = Field(min_length=10)
+    # Le maximum n'est pas cosmétique : sans lui, un client peut envoyer un
+    # mot de passe de plusieurs mégaoctets qu'argon2 mettrait très longtemps à
+    # hacher. 128 caractères laissent place à n'importe quelle phrase de passe.
+    mot_de_passe: str = Field(min_length=10, max_length=128)
 
 
-class ReponseInscription(BaseModel):
+class RegisterResponse(BaseModel):
     compte_actif: bool
     message: str
 
 
-@routeur.post("/register", status_code=status.HTTP_201_CREATED)
-async def inscrire(demande: DemandeInscription) -> ReponseInscription:
-    async with connexion() as conn:
-        await depot.creer_utilisateur(conn, demande.email, empreinte(demande.mot_de_passe))
-    return ReponseInscription(
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register(demande: RegisterRequest) -> RegisterResponse:
+    # Hachage hors de la boucle d'événements et AVANT d'ouvrir la connexion :
+    # argon2 coûte des dizaines de millisecondes, pendant lesquelles il
+    # bloquerait tout le serveur et retiendrait une des cinq connexions du pool.
+    digest = await anyio.to_thread.run_sync(hash_password, demande.mot_de_passe)
+    async with connection() as conn:
+        # La valeur de retour est volontairement ignorée, et ne doit jamais
+        # être testée dans un chemin de réponse : c'est ce qui garantit qu'une
+        # adresse déjà prise réponde exactement comme une inscription réussie.
+        await repository.create_user(conn, demande.email, digest)
+    return RegisterResponse(
         compte_actif=False,
         message="Compte créé. Il sera utilisable une fois activé.",
     )
@@ -799,67 +1035,74 @@ async def inscrire(demande: DemandeInscription) -> ReponseInscription:
 
 - [ ] **Étape 6 : monter le routeur**
 
-Dans `api/esquisse/app.py`, à l'intérieur de `creer_app()`, avant `return app` :
+Dans `api/esquisse/app.py`, à l'intérieur de `create_app()`, avant `return app` :
 
 ```python
-    from esquisse.auth.routes import routeur as routeur_auth
-    app.include_router(routeur_auth)
+    from esquisse.auth.routes import router as auth_router
+    app.include_router(auth_router)
 ```
 
 - [ ] **Étape 7 : ajouter la dépendance de validation d'adresse**
 
 ```bash
-cd api && uv add "pydantic[email]>=2.9"
+cd api && uv add "pydantic[email]>=2.9" "anyio>=4"
 ```
+
+`anyio` arrive déjà par FastAPI, mais `routes.py` l'importe directement :
+une dépendance qu'on importe se déclare, sinon elle disparaît le jour où
+la bibliothèque qui l'amenait change d'avis.
 
 - [ ] **Étape 8 : lancer les tests et vérifier qu'ils passent**
 
-Lancer : `cd api && uv run pytest tests/test_inscription.py -v`
+Lancer : `cd api && uv run pytest tests/test_register.py -v`
 Attendu : SUCCÈS, trois tests
 
 - [ ] **Étape 9 : commiter**
 
 ```bash
-git add api/esquisse/auth api/esquisse/app.py api/tests/conftest.py api/tests/test_inscription.py api/pyproject.toml api/uv.lock
+git add api/esquisse/auth api/esquisse/app.py api/tests/conftest.py api/tests/test_register.py api/pyproject.toml api/uv.lock
 git commit -m "feat(api): inscription, compte inactif par défaut"
 ```
 
 ---
 
-## Tâche 6 : connexion, session et refus d'un compte inactif
+## Tâche 6 : connection, session et refus d'un compte inactif
 
 **Fichiers :**
-- Modifier : `api/esquisse/auth/depot.py`
+- Créer : `api/esquisse/auth/bearer.py`
+- Modifier : `api/esquisse/auth/repository.py`
 - Modifier : `api/esquisse/auth/routes.py`
-- Test : `api/tests/test_connexion.py`
+- Test : `api/tests/test_login.py`
+- Test : `api/tests/test_bearer.py`
 
 **Interfaces :**
-- Consomme : `nouveau_jeton`, `verifier`, `utilisateur_par_email`
+- Consomme : `new_token`, `verify_password`, `user_by_email`
 - Produit :
-  - `depot.ouvrir_session(conn, user_id: UUID, empreinte_du_jeton: bytes, ttl_heures: int) -> None`
-  - `depot.revoquer_session(conn, empreinte_du_jeton: bytes) -> None`
+  - `repository.open_session(conn, user_id: UUID, token_digest: bytes, ttl_hours: int) -> None`
+  - `repository.revoke_session(conn, token_digest: bytes) -> None`
   - `POST /auth/login` rendant `{"jeton": str}`
   - `POST /auth/logout`
 
 - [ ] **Étape 1 : écrire le test qui échoue**
 
-`api/tests/test_connexion.py` :
+`api/tests/test_login.py` :
 
 ```python
-import pytest
-from esquisse.db import connexion
+import hashlib
+
+from esquisse.db import connection
 
 
-async def _inscrire_et_activer(client, email: str, actif: bool) -> None:
+async def _register_and_activate(client, email: str, actif: bool) -> None:
     await client.post("/auth/register", json={"email": email, "mot_de_passe": "motdepasse123"})
     if actif:
-        async with connexion() as conn:
+        async with connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("update users set is_active = true where email = %s", (email,))
 
 
-async def test_connexion_rend_un_jeton(client, base_migree):
-    await _inscrire_et_activer(client, "actif@exemple.fr", actif=True)
+async def test_login_returns_token(client, migrated_db):
+    await _register_and_activate(client, "actif@exemple.fr", actif=True)
     reponse = await client.post(
         "/auth/login", json={"email": "actif@exemple.fr", "mot_de_passe": "motdepasse123"}
     )
@@ -867,10 +1110,10 @@ async def test_connexion_rend_un_jeton(client, base_migree):
     assert len(reponse.json()["jeton"]) >= 43
 
 
-async def test_compte_non_active_refuse_avec_un_code_explicite(client, base_migree):
+async def test_inactive_account_rejected_with_explicit_code(client, migrated_db):
     """403 et non 401 : les identifiants sont bons, c'est l'accès qui n'est
     pas ouvert. L'interface doit pouvoir afficher le bon écran."""
-    await _inscrire_et_activer(client, "attente@exemple.fr", actif=False)
+    await _register_and_activate(client, "attente@exemple.fr", actif=False)
     reponse = await client.post(
         "/auth/login", json={"email": "attente@exemple.fr", "mot_de_passe": "motdepasse123"}
     )
@@ -878,28 +1121,52 @@ async def test_compte_non_active_refuse_avec_un_code_explicite(client, base_migr
     assert reponse.json()["detail"] == "compte_inactif"
 
 
-async def test_mauvais_mot_de_passe_refuse(client, base_migree):
-    await _inscrire_et_activer(client, "mauvais@exemple.fr", actif=True)
+async def test_wrong_password_rejected(client, migrated_db):
+    await _register_and_activate(client, "mauvais@exemple.fr", actif=True)
     reponse = await client.post(
         "/auth/login", json={"email": "mauvais@exemple.fr", "mot_de_passe": "pasbonlemotdepasse"}
     )
     assert reponse.status_code == 401
 
 
-async def test_compte_inexistant_refuse_sans_reveler(client, base_migree):
+async def test_unknown_account_rejected_without_leak(client, migrated_db):
     reponse = await client.post(
         "/auth/login", json={"email": "jamais@exemple.fr", "mot_de_passe": "motdepasse123"}
     )
     assert reponse.status_code == 401
 
 
-async def test_le_jeton_en_clair_nest_pas_en_base(client, base_migree):
-    await _inscrire_et_activer(client, "empreinte@exemple.fr", actif=True)
+async def test_logout_accepts_any_case_of_the_scheme(client, migrated_db):
+    """Un 204 sans révocation serait pire qu'une erreur : l'utilisateur se
+    croirait déconnecté alors que son jeton resterait valable."""
+    await _register_and_activate(client, "casse@exemple.fr", actif=True)
+    r = await client.post(
+        "/auth/login", json={"email": "casse@exemple.fr", "mot_de_passe": "motdepasse123"}
+    )
+    jeton = r.json()["jeton"]
+    assert (await client.post("/auth/logout", headers={"Authorization": f"bearer {jeton}"})).status_code == 204
+
+    async with connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "select revoked_at from sessions where token_hash = %s",
+                (hashlib.sha256(jeton.encode()).digest(),),
+            )
+            assert (await cur.fetchone())[0] is not None
+
+
+async def test_logout_without_header_is_harmless(client, migrated_db):
+    assert (await client.post("/auth/logout")).status_code == 204
+    assert (await client.post("/auth/logout", headers={"Authorization": "n importe quoi"})).status_code == 204
+
+
+async def test_plaintext_token_not_stored(client, migrated_db):
+    await _register_and_activate(client, "empreinte@exemple.fr", actif=True)
     reponse = await client.post(
         "/auth/login", json={"email": "empreinte@exemple.fr", "mot_de_passe": "motdepasse123"}
     )
     jeton = reponse.json()["jeton"]
-    async with connexion() as conn:
+    async with connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute("select count(*) from sessions where token_hash = %s", (jeton.encode(),))
             assert (await cur.fetchone())[0] == 0
@@ -907,32 +1174,81 @@ async def test_le_jeton_en_clair_nest_pas_en_base(client, base_migree):
 
 - [ ] **Étape 2 : lancer le test et vérifier qu'il échoue**
 
-Lancer : `cd api && uv run pytest tests/test_connexion.py -v`
+Lancer : `cd api && uv run pytest tests/test_login.py -v`
 Attendu : ÉCHEC, 404 sur `/auth/login`
+
+- [ ] **Étape 2b : découper l'en-tête Authorization, une fois pour toutes**
+
+Deux endroits liront ce même en-tête : la déconnexion ici, et la dépendance
+« utilisateur actif » de la tâche 7. Un module minuscule, testé seul, évite
+que la deuxième copie diverge de la première.
+
+`api/esquisse/auth/bearer.py` :
+
+```python
+def bearer_token(authorization: str) -> str:
+    """Extrait le jeton d'un en-tête Authorization, ou rend une chaîne vide.
+
+    Le schéma est insensible à la casse d'après la norme HTTP. Le comparer au
+    caractère près ferait qu'un client envoyant « bearer » se verrait refuser
+    l'accès sans raison visible — ou, à la déconnexion, recevrait un 204 sans
+    que sa session soit révoquée : il se croirait déconnecté alors que son
+    jeton reste valable."""
+    schema, _, valeur = authorization.partition(" ")
+    return valeur.strip() if schema.lower() == "bearer" else ""
+```
+
+`api/tests/test_bearer.py` :
+
+```python
+import pytest
+
+from esquisse.auth.bearer import bearer_token
+
+
+@pytest.mark.parametrize(
+    "entete, attendu",
+    [
+        ("Bearer abc", "abc"),
+        ("bearer abc", "abc"),
+        ("BEARER abc", "abc"),
+        ("Bearer   abc  ", "abc"),
+        ("", ""),
+        ("abc", ""),
+        ("Basic abc", ""),
+        ("Bearer", ""),
+    ],
+)
+def test_bearer_token(entete, attendu):
+    assert bearer_token(entete) == attendu
+```
+
+Lancer : `cd api && uv run pytest tests/test_bearer.py -v`
+Attendu : SUCCÈS, huit cas
 
 - [ ] **Étape 3 : compléter le dépôt**
 
-Ajouter à `api/esquisse/auth/depot.py` :
+Ajouter à `api/esquisse/auth/repository.py` :
 
 ```python
 from datetime import datetime, timedelta, timezone
 
 
-async def ouvrir_session(conn, user_id: UUID, empreinte_du_jeton: bytes, ttl_heures: int) -> None:
-    expire = datetime.now(timezone.utc) + timedelta(hours=ttl_heures)
+async def open_session(conn, user_id: UUID, token_digest: bytes, ttl_hours: int) -> None:
+    expire = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
     async with conn.cursor() as cur:
         await cur.execute(
             "insert into sessions (token_hash, user_id, expires_at) values (%s, %s, %s)",
-            (empreinte_du_jeton, user_id, expire),
+            (token_digest, user_id, expire),
         )
         await cur.execute("update users set last_login_at = now() where id = %s", (user_id,))
 
 
-async def revoquer_session(conn, empreinte_du_jeton: bytes) -> None:
+async def revoke_session(conn, token_digest: bytes) -> None:
     async with conn.cursor() as cur:
         await cur.execute(
             "update sessions set revoked_at = now() where token_hash = %s and revoked_at is null",
-            (empreinte_du_jeton,),
+            (token_digest,),
         )
 ```
 
@@ -943,52 +1259,65 @@ Ajouter à `api/esquisse/auth/routes.py` :
 ```python
 from fastapi import Header, HTTPException
 
-from esquisse.config import reglages
-from esquisse.securite import nouveau_jeton, verifier, empreinte_jeton
+from esquisse.auth.bearer import bearer_token
+from esquisse.config import settings
+from esquisse.security import new_token, verify_password, token_hash
 
 
-class DemandeConnexion(BaseModel):
+class LoginRequest(BaseModel):
     email: EmailStr
-    mot_de_passe: str
+    mot_de_passe: str = Field(max_length=128)
 
 
-class ReponseConnexion(BaseModel):
+class LoginResponse(BaseModel):
     jeton: str
 
 
-@routeur.post("/login")
-async def connecter(demande: DemandeConnexion) -> ReponseConnexion:
-    async with connexion() as conn:
-        utilisateur = await depot.utilisateur_par_email(conn, demande.email)
-        if not utilisateur or not verifier(demande.mot_de_passe, utilisateur["password_hash"]):
-            raise HTTPException(status_code=401, detail="identifiants_invalides")
-        if not utilisateur["is_active"]:
-            raise HTTPException(status_code=403, detail="compte_inactif")
-        clair, empreinte_du_jeton = nouveau_jeton()
-        await depot.ouvrir_session(
-            conn, utilisateur["id"], empreinte_du_jeton, reglages().session_ttl_heures
+@router.post("/login")
+async def login(demande: LoginRequest) -> LoginResponse:
+    async with connection() as conn:
+        user = await repository.user_by_email(conn, demande.email)
+
+    # Hors de la connexion et hors de la boucle d'événements, pour la même
+    # raison qu'à l'inscription. `verify_password` rend False sur une empreinte
+    # absente : on le fait donc tourner même quand l'utilisateur est
+    # introuvable, de sorte que les deux cas coûtent le même temps et qu'on
+    # ne révèle pas quels comptes existent.
+    stored = user["password_hash"] if user else None
+    valide = await anyio.to_thread.run_sync(
+        verify_password, demande.mot_de_passe, stored
+    )
+    if not user or not valide:
+        raise HTTPException(status_code=401, detail="identifiants_invalides")
+    if not user["is_active"]:
+        raise HTTPException(status_code=403, detail="compte_inactif")
+
+    plaintext, token_digest = new_token()
+    async with connection() as conn:
+        await repository.open_session(
+            conn, user["id"], token_digest, settings().session_ttl_hours
         )
-    return ReponseConnexion(jeton=clair)
+    return LoginResponse(jeton=plaintext)
 
 
-@routeur.post("/logout", status_code=204)
-async def deconnecter(authorization: str = Header(default="")) -> None:
-    jeton = authorization.removeprefix("Bearer ").strip()
+@router.post("/logout", status_code=204)
+async def logout(authorization: str = Header(default="")) -> None:
+    jeton = bearer_token(authorization)
     if jeton:
-        async with connexion() as conn:
-            await depot.revoquer_session(conn, empreinte_jeton(jeton))
+        async with connection() as conn:
+            await repository.revoke_session(conn, token_hash(jeton))
 ```
 
 - [ ] **Étape 5 : lancer les tests et vérifier qu'ils passent**
 
-Lancer : `cd api && uv run pytest tests/test_connexion.py -v`
+Lancer : `cd api && uv run pytest tests/test_login.py -v`
 Attendu : SUCCÈS, cinq tests
 
 - [ ] **Étape 6 : commiter**
 
 ```bash
-git add api/esquisse/auth api/tests/test_connexion.py
-git commit -m "feat(api): connexion, sessions et refus des comptes non activés"
+git add api/esquisse/auth api/tests/test_login.py
+git commit -m "feat(api): connection, sessions et refus des comptes non activés"
 ```
 
 ---
@@ -996,64 +1325,64 @@ git commit -m "feat(api): connexion, sessions et refus des comptes non activés"
 ## Tâche 7 : dépendance « utilisateur actif » et route /me
 
 **Fichiers :**
-- Créer : `api/esquisse/auth/dependances.py`
+- Créer : `api/esquisse/auth/dependencies.py`
 - Modifier : `api/esquisse/auth/routes.py`
-- Test : `api/tests/test_dependances.py`
+- Test : `api/tests/test_dependencies.py`
 
 **Interfaces :**
-- Consomme : `empreinte_jeton`, `connexion`
-- Produit : `esquisse.auth.dependances.utilisateur_actif` — dépendance FastAPI rendant `dict` avec `id` et `email`. Toutes les routes des plans suivants en dépendent.
+- Consomme : `token_hash`, `connexion`
+- Produit : `esquisse.auth.dependencies.active_user` — dépendance FastAPI rendant `dict` avec `id` et `email`. Toutes les routes des plans suivants en dépendent.
 
 - [ ] **Étape 1 : écrire le test qui échoue**
 
-`api/tests/test_dependances.py` :
+`api/tests/test_dependencies.py` :
 
 ```python
-from esquisse.db import connexion
+from esquisse.db import connection
 
 
-async def _jeton_pour(client, email: str) -> str:
+async def _token_for(client, email: str) -> str:
     await client.post("/auth/register", json={"email": email, "mot_de_passe": "motdepasse123"})
-    async with connexion() as conn:
+    async with connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute("update users set is_active = true where email = %s", (email,))
     r = await client.post("/auth/login", json={"email": email, "mot_de_passe": "motdepasse123"})
     return r.json()["jeton"]
 
 
-async def test_me_renvoie_le_compte(client, base_migree):
-    jeton = await _jeton_pour(client, "moi@exemple.fr")
+async def test_me_returns_account(client, migrated_db):
+    jeton = await _token_for(client, "moi@exemple.fr")
     r = await client.get("/me", headers={"Authorization": f"Bearer {jeton}"})
     assert r.status_code == 200
     assert r.json()["email"] == "moi@exemple.fr"
 
 
-async def test_sans_jeton_refuse(client, base_migree):
+async def test_missing_token_rejected(client, migrated_db):
     assert (await client.get("/me")).status_code == 401
 
 
-async def test_jeton_inconnu_refuse(client, base_migree):
+async def test_unknown_token_rejected(client, migrated_db):
     r = await client.get("/me", headers={"Authorization": "Bearer nimportequoi"})
     assert r.status_code == 401
 
 
-async def test_desactivation_prend_effet_immediatement(client, base_migree):
+async def test_deactivation_takes_effect_immediately(client, migrated_db):
     """Le cœur du choix des jetons opaques : le drapeau est basculé à la
     main dans la base, et le jeton déjà émis cesse de valoir aussitôt.
     Un JWT resterait valable jusqu'à son expiration."""
-    jeton = await _jeton_pour(client, "coupe@exemple.fr")
+    jeton = await _token_for(client, "coupe@exemple.fr")
     entetes = {"Authorization": f"Bearer {jeton}"}
     assert (await client.get("/me", headers=entetes)).status_code == 200
 
-    async with connexion() as conn:
+    async with connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute("update users set is_active = false where email = %s", ("coupe@exemple.fr",))
 
     assert (await client.get("/me", headers=entetes)).status_code == 403
 
 
-async def test_deconnexion_invalide_le_jeton(client, base_migree):
-    jeton = await _jeton_pour(client, "sortie@exemple.fr")
+async def test_logout_invalidates_token(client, migrated_db):
+    jeton = await _token_for(client, "sortie@exemple.fr")
     entetes = {"Authorization": f"Bearer {jeton}"}
     assert (await client.post("/auth/logout", headers=entetes)).status_code == 204
     assert (await client.get("/me", headers=entetes)).status_code == 401
@@ -1061,29 +1390,30 @@ async def test_deconnexion_invalide_le_jeton(client, base_migree):
 
 - [ ] **Étape 2 : lancer le test et vérifier qu'il échoue**
 
-Lancer : `cd api && uv run pytest tests/test_dependances.py -v`
+Lancer : `cd api && uv run pytest tests/test_dependencies.py -v`
 Attendu : ÉCHEC, 404 sur `/me`
 
 - [ ] **Étape 3 : écrire la dépendance**
 
-`api/esquisse/auth/dependances.py` :
+`api/esquisse/auth/dependencies.py` :
 
 ```python
 from fastapi import Header, HTTPException
 
-from esquisse.db import connexion
-from esquisse.securite import empreinte_jeton
+from esquisse.auth.bearer import bearer_token
+from esquisse.db import connection
+from esquisse.security import token_hash
 
 
-async def utilisateur_actif(authorization: str = Header(default="")) -> dict:
+async def active_user(authorization: str = Header(default="")) -> dict:
     """Une requête par appel, indexée sur la clé primaire de sessions.
     C'est le prix de la révocation instantanée, et il est négligeable
     aux volumes visés."""
-    jeton = authorization.removeprefix("Bearer ").strip()
+    jeton = bearer_token(authorization)
     if not jeton:
         raise HTTPException(status_code=401, detail="jeton_absent")
 
-    async with connexion() as conn:
+    async with connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
@@ -1093,7 +1423,7 @@ async def utilisateur_actif(authorization: str = Header(default="")) -> dict:
                   and s.revoked_at is null
                   and s.expires_at > now()
                 """,
-                (empreinte_jeton(jeton),),
+                (token_hash(jeton),),
             )
             ligne = await cur.fetchone()
 
@@ -1111,32 +1441,32 @@ Ajouter à `api/esquisse/auth/routes.py` :
 ```python
 from fastapi import Depends
 
-from esquisse.auth.dependances import utilisateur_actif
+from esquisse.auth.dependencies import active_user
 
-routeur_moi = APIRouter(tags=["comptes"])
+me_router = APIRouter(tags=["comptes"])
 
 
-@routeur_moi.get("/me")
-async def moi(utilisateur: dict = Depends(utilisateur_actif)) -> dict:
+@me_router.get("/me")
+async def me(utilisateur: dict = Depends(active_user)) -> dict:
     return {"email": utilisateur["email"], "compte_actif": True}
 ```
 
 Dans `api/esquisse/app.py`, monter aussi ce routeur :
 
 ```python
-    from esquisse.auth.routes import routeur_moi
-    app.include_router(routeur_moi)
+    from esquisse.auth.routes import me_router
+    app.include_router(me_router)
 ```
 
 - [ ] **Étape 5 : lancer les tests et vérifier qu'ils passent**
 
-Lancer : `cd api && uv run pytest tests/test_dependances.py -v`
+Lancer : `cd api && uv run pytest tests/test_dependencies.py -v`
 Attendu : SUCCÈS, cinq tests
 
 - [ ] **Étape 6 : commiter**
 
 ```bash
-git add api/esquisse/auth api/esquisse/app.py api/tests/test_dependances.py
+git add api/esquisse/auth api/esquisse/app.py api/tests/test_dependencies.py
 git commit -m "feat(api): dépendance utilisateur actif et route /me"
 ```
 
@@ -1145,39 +1475,40 @@ git commit -m "feat(api): dépendance utilisateur actif et route /me"
 ## Tâche 8 : tables des projets et cloisonnement vérifié
 
 **Fichiers :**
-- Créer : `api/migrations/versions/0002_projets.py`
-- Créer : `api/esquisse/projets/__init__.py`
-- Créer : `api/esquisse/projets/depot.py`
-- Test : `api/tests/test_cloisonnement.py`
+- Créer : `api/migrations/versions/0002_projects.py`
+- Créer : `api/esquisse/projects/__init__.py`
+- Créer : `api/esquisse/projects/repository.py`
+- Test : `api/tests/test_isolation.py`
 
 **Interfaces :**
 - Consomme : `connexion`
 - Produit :
   - les tables `projects`, `facts`, `sections`, `exports`, `llm_usage` du §2.1 de la spec
-  - `esquisse.projets.depot.projet_de_lutilisateur(conn, project_id: UUID, user_id: UUID) -> dict` — lève `ProjetIntrouvable`
-  - `esquisse.projets.depot.ProjetIntrouvable`
-  - `esquisse.projets.depot.creer_projet(conn, user_id, nom, documents, profil_cdc, profil_bp, thread_id, templates_version) -> UUID`
+  - `esquisse.projects.repository.project_for_user(conn, project_id: UUID, user_id: UUID) -> dict` — lève `ProjectNotFound`
+  - `esquisse.projects.repository.ProjectNotFound`
+  - `esquisse.projects.repository.create_project(conn, user_id, *, nom, documents, profil_cdc, profil_bp, thread_id, templates_version) -> UUID` — les six derniers sont nommés obligatoirement
 
 - [ ] **Étape 1 : écrire le test qui échoue**
 
-`api/tests/test_cloisonnement.py` :
+`api/tests/test_isolation.py` :
 
 ```python
+import re
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
-from esquisse.db import connexion
-from esquisse.projets.depot import (
-    ProjetIntrouvable,
-    creer_projet,
-    projet_de_lutilisateur,
+from esquisse.db import connection
+from esquisse.projects.repository import (
+    ProjectNotFound,
+    create_project,
+    project_for_user,
 )
 
 
-async def _utilisateur(email: str):
-    async with connexion() as conn:
+async def _make_user(email: str):
+    async with connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 "insert into users (email, password_hash, is_active) values (%s, 'x', true) returning id",
@@ -1186,53 +1517,102 @@ async def _utilisateur(email: str):
             return (await cur.fetchone())[0]
 
 
-async def test_le_proprietaire_lit_son_projet(base_migree):
-    uid = await _utilisateur(f"prop-{uuid4()}@exemple.fr")
-    async with connexion() as conn:
-        pid = await creer_projet(conn, uid, "CoachDom", "both", "consultation", "banque",
-                                 f"thread-{uuid4()}", "0.1")
-        projet = await projet_de_lutilisateur(conn, pid, uid)
+async def test_owner_reads_own_project(migrated_db):
+    uid = await _make_user(f"prop-{uuid4()}@exemple.fr")
+    async with connection() as conn:
+        pid = await create_project(
+            conn, uid, nom="CoachDom", documents="both", profil_cdc="consultation",
+            profil_bp="banque", thread_id=f"thread-{uuid4()}", templates_version="0.1",
+        )
+        projet = await project_for_user(conn, pid, uid)
     assert projet["nom"] == "CoachDom"
 
 
-async def test_un_autre_utilisateur_ne_le_trouve_pas(base_migree):
+async def test_other_user_cannot_find_it(migrated_db):
     """Introuvable, pas interdit : répondre 403 révélerait que le projet existe."""
-    proprietaire = await _utilisateur(f"a-{uuid4()}@exemple.fr")
-    intrus = await _utilisateur(f"b-{uuid4()}@exemple.fr")
-    async with connexion() as conn:
-        pid = await creer_projet(conn, proprietaire, "Privé", "cdc", "cadrage", None,
-                                 f"thread-{uuid4()}", "0.1")
-        with pytest.raises(ProjetIntrouvable):
-            await projet_de_lutilisateur(conn, pid, intrus)
+    proprietaire = await _make_user(f"a-{uuid4()}@exemple.fr")
+    intrus = await _make_user(f"b-{uuid4()}@exemple.fr")
+    async with connection() as conn:
+        pid = await create_project(
+            conn, proprietaire, nom="Privé", documents="cdc", profil_cdc="cadrage",
+            profil_bp=None, thread_id=f"thread-{uuid4()}", templates_version="0.1",
+        )
+        with pytest.raises(ProjectNotFound):
+            await project_for_user(conn, pid, intrus)
 
 
-async def test_projet_inexistant_leve_la_meme_erreur(base_migree):
-    uid = await _utilisateur(f"c-{uuid4()}@exemple.fr")
-    async with connexion() as conn:
-        with pytest.raises(ProjetIntrouvable):
-            await projet_de_lutilisateur(conn, uuid4(), uid)
+async def test_missing_project_raises_same_error(migrated_db):
+    uid = await _make_user(f"c-{uuid4()}@exemple.fr")
+    async with connection() as conn:
+        with pytest.raises(ProjectNotFound):
+            await project_for_user(conn, uuid4(), uid)
 
 
-def test_aucune_requete_sur_projects_hors_du_depot():
-    """Garde-fou structurel : le cloisonnement ne vaut que si personne ne
-    contourne le dépôt. Ce test casse dès qu'une route écrit son propre SQL."""
-    racine = Path(__file__).resolve().parents[1] / "esquisse"
-    autorise = racine / "projets" / "depot.py"
-    coupables = [
-        f for f in racine.rglob("*.py")
-        if f != autorise and "from projects" in f.read_text(encoding="utf-8").lower()
+# Chercher « from projects » au caractère près ne couvre qu'une seule façon
+# d'écrire la requête. Les jointures — la forme la plus probable pour lire les
+# projets à côté des sections — ne contiennent jamais cette suite de mots.
+_PROJECTS_TABLE = re.compile(r"\b(from|join|into|update)\s+(?:public\.)?projects\b")
+
+
+def _touches_projects_table(source: str) -> bool:
+    """Cherche une référence SQL à la table `projects`, quelle que soit sa mise
+    en forme. Les sauts de ligne et espaces multiples sont ramenés à un espace
+    unique avant la recherche, sinon une requête écrite sur plusieurs lignes
+    passerait à travers."""
+    return bool(_PROJECTS_TABLE.search(re.sub(r"\s+", " ", source.lower())))
+
+
+@pytest.mark.parametrize(
+    "extrait",
+    [
+        "select * from projects where id = 1",
+        "select *\n  from\n  projects\n where id = 1",
+        "select * from public.projects",
+        "select s.* from sections s join projects p on p.id = s.project_id",
+        "update projects set nom = 'x'",
+        "insert into projects (nom) values ('x')",
+    ],
+)
+def test_the_guard_catches_every_shape(extrait):
+    """On teste le garde-fou lui-même. Un garde-fou qu'on peut franchir sans
+    s'en apercevoir est pire que pas de garde-fou : il fabrique de la
+    confiance. La jointure est le cas qui compte, parce que c'est la forme la
+    plus probable pour lire les projets à côté d'une autre table."""
+    assert _touches_projects_table(extrait)
+
+
+@pytest.mark.parametrize(
+    "extrait",
+    [
+        "from esquisse.projects.repository import project_for_user",
+        "import esquisse.projects",
+        "select * from sections where project_id = %s",
+    ],
+)
+def test_the_guard_does_not_cry_wolf(extrait):
+    assert not _touches_projects_table(extrait)
+
+
+def test_no_projects_query_outside_repository():
+    """Le cloisonnement ne vaut que si personne ne contourne le dépôt. Ce test
+    casse dès qu'un autre fichier écrit son propre SQL sur la table."""
+    root = Path(__file__).resolve().parents[1] / "esquisse"
+    allowed = root / "projects" / "repository.py"
+    offenders = [
+        f for f in root.rglob("*.py")
+        if f != allowed and _touches_projects_table(f.read_text(encoding="utf-8"))
     ]
-    assert coupables == [], f"SQL sur projects hors du dépôt : {coupables}"
+    assert offenders == [], f"SQL sur projects hors du dépôt : {offenders}"
 ```
 
 - [ ] **Étape 2 : lancer le test et vérifier qu'il échoue**
 
-Lancer : `cd api && uv run pytest tests/test_cloisonnement.py -v`
-Attendu : ÉCHEC, `ModuleNotFoundError: No module named 'esquisse.projets'`
+Lancer : `cd api && uv run pytest tests/test_isolation.py -v`
+Attendu : ÉCHEC, `ModuleNotFoundError: No module named 'esquisse.projects'`
 
 - [ ] **Étape 3 : écrire la migration**
 
-`api/migrations/versions/0002_projets.py` :
+`api/migrations/versions/0002_projects.py` :
 
 ```python
 """projets, faits, sections, exports, usage des modèles
@@ -1325,22 +1705,23 @@ def downgrade() -> None:
 
 - [ ] **Étape 4 : écrire le dépôt**
 
-`api/esquisse/projets/__init__.py` : fichier vide.
+`api/esquisse/projects/__init__.py` : fichier vide.
 
-`api/esquisse/projets/depot.py` :
+`api/esquisse/projects/repository.py` :
 
 ```python
 from uuid import UUID
 
 
-class ProjetIntrouvable(Exception):
+class ProjectNotFound(Exception):
     """Levée aussi bien quand le projet n'existe pas que quand il
     appartient à quelqu'un d'autre. Les deux cas se répondent pareil."""
 
 
-async def creer_projet(
+async def create_project(
     conn,
     user_id: UUID,
+    *,
     nom: str,
     documents: str,
     profil_cdc: str | None,
@@ -1348,6 +1729,14 @@ async def creer_projet(
     thread_id: str,
     templates_version: str,
 ) -> UUID:
+    """Les six derniers paramètres sont nommés obligatoirement.
+
+    Ce sont des chaînes voisines, interchangeables pour le typage : intervertir
+    `profil_cdc` et `profil_bp`, ou `nom` et `documents`, donnerait un appel
+    parfaitement valide qui écrirait les valeurs dans les mauvaises colonnes.
+    Aucun test ne le verrait, puisqu'un test écrit avec la même interversion
+    passerait aussi. L'étoile transforme cette corruption silencieuse en
+    `TypeError` au point d'appel."""
     async with conn.cursor() as cur:
         await cur.execute(
             """
@@ -1361,7 +1750,7 @@ async def creer_projet(
         return (await cur.fetchone())[0]
 
 
-async def projet_de_lutilisateur(conn, project_id: UUID, user_id: UUID) -> dict:
+async def project_for_user(conn, project_id: UUID, user_id: UUID) -> dict:
     """Seul accès en lecture à la table projects dans toute l'application.
     Le filtre sur le propriétaire est dans la requête, pas dans l'appelant :
     on ne peut pas l'oublier."""
@@ -1375,16 +1764,19 @@ async def projet_de_lutilisateur(conn, project_id: UUID, user_id: UUID) -> dict:
             (project_id, user_id),
         )
         ligne = await cur.fetchone()
-    if not ligne:
-        raise ProjetIntrouvable
-    champs = ("id", "user_id", "nom", "documents", "profil_cdc", "profil_bp",
-              "thread_id", "run_status", "templates_version")
+        if not ligne:
+            raise ProjectNotFound
+        # Les noms de colonnes viennent du curseur, jamais d'une liste tenue à
+        # la main en parallèle du SELECT : deux listes finissent par diverger,
+        # et `zip` ne dit rien — il tronque en silence ou attache les valeurs
+        # aux mauvaises clés.
+        champs = [colonne.name for colonne in cur.description]
     return dict(zip(champs, ligne))
 ```
 
 - [ ] **Étape 5 : lancer les tests et vérifier qu'ils passent**
 
-Lancer : `cd api && uv run pytest tests/test_cloisonnement.py -v`
+Lancer : `cd api && uv run pytest tests/test_isolation.py -v`
 Attendu : SUCCÈS, quatre tests
 
 - [ ] **Étape 6 : lancer toute la suite**
@@ -1395,7 +1787,7 @@ Attendu : SUCCÈS, tous les tests des tâches 1 à 8
 - [ ] **Étape 7 : commiter**
 
 ```bash
-git add api/migrations api/esquisse/projets api/tests/test_cloisonnement.py
+git add api/migrations api/esquisse/projects api/tests/test_isolation.py
 git commit -m "feat(api): tables des projets et cloisonnement par le dépôt"
 ```
 
@@ -1404,45 +1796,45 @@ git commit -m "feat(api): tables des projets et cloisonnement par le dépôt"
 ## Tâche 9 : limitation de débit sur les routes de compte
 
 **Fichiers :**
-- Créer : `api/esquisse/limites.py`
+- Créer : `api/esquisse/rate_limit.py`
 - Modifier : `api/esquisse/auth/routes.py`
-- Test : `api/tests/test_limites.py`
+- Test : `api/tests/test_rate_limit.py`
 
 **Interfaces :**
 - Consomme : rien.
-- Produit : `esquisse.limites.CompteurFenetre` avec `autoriser(cle: str) -> bool` et `reinitialiser() -> None`.
+- Produit : `esquisse.rate_limit.SlidingWindowCounter` avec `allow(cle: str) -> bool` et `reset() -> None`.
 
 - [ ] **Étape 1 : écrire le test qui échoue**
 
-`api/tests/test_limites.py` :
+`api/tests/test_rate_limit.py` :
 
 ```python
 import pytest
-from esquisse.limites import CompteurFenetre
+from esquisse.rate_limit import SlidingWindowCounter
 
 
-def test_autorise_jusqua_la_limite():
-    compteur = CompteurFenetre(maximum=3, fenetre_secondes=900)
-    assert [compteur.autoriser("1.2.3.4") for _ in range(4)] == [True, True, True, False]
+def test_allows_up_to_limit():
+    compteur = SlidingWindowCounter(maximum=3, window_seconds=900)
+    assert [compteur.allow("1.2.3.4") for _ in range(4)] == [True, True, True, False]
 
 
-def test_les_cles_sont_independantes():
-    compteur = CompteurFenetre(maximum=1, fenetre_secondes=900)
-    assert compteur.autoriser("1.2.3.4") is True
-    assert compteur.autoriser("5.6.7.8") is True
-    assert compteur.autoriser("1.2.3.4") is False
+def test_keys_are_independent():
+    compteur = SlidingWindowCounter(maximum=1, window_seconds=900)
+    assert compteur.allow("1.2.3.4") is True
+    assert compteur.allow("5.6.7.8") is True
+    assert compteur.allow("1.2.3.4") is False
 
 
-def test_la_fenetre_glisse():
-    horloge = [1000.0]
-    compteur = CompteurFenetre(maximum=1, fenetre_secondes=10, horloge=lambda: horloge[0])
-    assert compteur.autoriser("ip") is True
-    assert compteur.autoriser("ip") is False
-    horloge[0] += 11
-    assert compteur.autoriser("ip") is True
+def test_window_slides():
+    clock_value = [1000.0]
+    compteur = SlidingWindowCounter(maximum=1, window_seconds=10, clock=lambda: clock_value[0])
+    assert compteur.allow("ip") is True
+    assert compteur.allow("ip") is False
+    clock_value[0] += 11
+    assert compteur.allow("ip") is True
 
 
-async def test_connexion_limitee(client, base_migree):
+async def test_login_is_rate_limited(client, migrated_db):
     for _ in range(10):
         await client.post("/auth/login", json={"email": "x@exemple.fr", "mot_de_passe": "motdepasse123"})
     reponse = await client.post(
@@ -1453,12 +1845,12 @@ async def test_connexion_limitee(client, base_migree):
 
 - [ ] **Étape 2 : lancer le test et vérifier qu'il échoue**
 
-Lancer : `cd api && uv run pytest tests/test_limites.py -v`
-Attendu : ÉCHEC, `ModuleNotFoundError: No module named 'esquisse.limites'`
+Lancer : `cd api && uv run pytest tests/test_rate_limit.py -v`
+Attendu : ÉCHEC, `ModuleNotFoundError: No module named 'esquisse.rate_limit'`
 
 - [ ] **Étape 3 : écrire le compteur**
 
-`api/esquisse/limites.py` :
+`api/esquisse/rate_limit.py` :
 
 ```python
 import time
@@ -1466,7 +1858,7 @@ from collections import defaultdict, deque
 from collections.abc import Callable
 
 
-class CompteurFenetre:
+class SlidingWindowCounter:
     """Fenêtre glissante en mémoire du processus.
 
     Correct tant qu'il n'y a qu'une instance, ce qui est le cas sur
@@ -1474,24 +1866,24 @@ class CompteurFenetre:
     compteur inopérant : il faudrait le déplacer en base.
     """
 
-    def __init__(self, maximum: int, fenetre_secondes: int,
-                 horloge: Callable[[], float] = time.monotonic) -> None:
+    def __init__(self, maximum: int, window_seconds: int,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self.maximum = maximum
-        self.fenetre = fenetre_secondes
-        self.horloge = horloge
+        self.window = window_seconds
+        self.clock = clock
         self._passages: dict[str, deque[float]] = defaultdict(deque)
 
-    def autoriser(self, cle: str) -> bool:
-        maintenant = self.horloge()
+    def allow(self, cle: str) -> bool:
+        maintenant = self.clock()
         passages = self._passages[cle]
-        while passages and maintenant - passages[0] > self.fenetre:
+        while passages and maintenant - passages[0] > self.window:
             passages.popleft()
         if len(passages) >= self.maximum:
             return False
         passages.append(maintenant)
         return True
 
-    def reinitialiser(self) -> None:
+    def reset(self) -> None:
         self._passages.clear()
 ```
 
@@ -1502,18 +1894,28 @@ Ajouter à `api/esquisse/auth/routes.py` :
 ```python
 from fastapi import Request
 
-from esquisse.limites import CompteurFenetre
+from esquisse.rate_limit import SlidingWindowCounter
 
-_limite_comptes = CompteurFenetre(maximum=10, fenetre_secondes=900)
+_account_limiter = SlidingWindowCounter(maximum=10, window_seconds=900)
 
 
-def _verifier_debit(requete: Request) -> None:
-    ip = requete.client.host if requete.client else "inconnue"
-    if not _limite_comptes.autoriser(ip):
+def _check_rate_limit(requete: Request) -> None:
+    """Limite par adresse d'appelant.
+
+    Attention à une dépendance invisible en local : en production, le service
+    est derrière le routeur de l'hébergeur, et `request.client.host` renvoie
+    alors l'adresse de ce routeur, identique pour tout le monde. Sans les
+    options `--proxy-headers --forwarded-allow-ips` passées à uvicorn
+    (voir le conteneur, tâche 11), tous les utilisateurs partageraient donc
+    un seul compteur : dix tentatives de n'importe qui bloqueraient tout le
+    monde pendant un quart d'heure. Ce serait un déni de service offert.
+    """
+    ip = requete.client.host if requete.client else "adresse_inconnue"
+    if not _account_limiter.allow(ip):
         raise HTTPException(status_code=429, detail="trop_de_tentatives")
 ```
 
-Ajouter `requete: Request` en premier paramètre de `inscrire` et de `connecter`, et appeler `_verifier_debit(requete)` en première ligne de chacune.
+Ajouter `requete: Request` en premier paramètre de `register` et de `login`, et appeler `_check_rate_limit(requete)` en première ligne de chacune.
 
 - [ ] **Étape 5 : isoler les tests les uns des autres**
 
@@ -1521,17 +1923,17 @@ Ajouter à `api/tests/conftest.py` :
 
 ```python
 @pytest.fixture(autouse=True)
-def _debit_neuf():
+def _fresh_rate_limit():
     """Le compteur vit dans le processus : sans remise à zéro, un test
     qui consomme la limite fait échouer le suivant."""
     from esquisse.auth import routes
-    routes._limite_comptes.reinitialiser()
+    routes._account_limiter.reset()
     yield
 ```
 
 - [ ] **Étape 6 : lancer les tests et vérifier qu'ils passent**
 
-Lancer : `cd api && uv run pytest tests/test_limites.py -v`
+Lancer : `cd api && uv run pytest tests/test_rate_limit.py -v`
 Attendu : SUCCÈS, quatre tests
 
 - [ ] **Étape 7 : lancer toute la suite**
@@ -1542,13 +1944,174 @@ Attendu : SUCCÈS
 - [ ] **Étape 8 : commiter**
 
 ```bash
-git add api/esquisse/limites.py api/esquisse/auth/routes.py api/tests/conftest.py api/tests/test_limites.py
+git add api/esquisse/rate_limit.py api/esquisse/auth/routes.py api/tests/conftest.py api/tests/test_rate_limit.py
 git commit -m "feat(api): limitation de débit sur inscription et connexion"
 ```
 
 ---
 
-## Tâche 10 : conteneur et intégration continue
+## Tâche 10 : passe de nommage, identifiants en anglais
+
+**Fichiers :**
+- Modifier : tous les fichiers `.py` sous `api/esquisse/` et `api/tests/`
+- **Ne jamais toucher** : `api/migrations/`
+
+**Interfaces :**
+- Consomme : tout ce qui précède.
+- Produit : aucune nouvelle interface. Aucune signature publique ne change — les
+  noms de fonctions, de classes et de modules sont déjà en anglais depuis les
+  tâches précédentes. Seuls changent des identifiants locaux.
+
+Les tâches 1 à 9 ont laissé environ 120 identifiants français dans le code :
+variables locales, paramètres de fonctions privées, noms de fixtures internes.
+Chaque relecture l'a signalé, et chaque fois la bonne réponse a été de ne pas
+le corriger dans une tâche isolée — cela aurait rendu chaque fichier incohérent
+avec lui-même. La dette se solde ici, en une fois.
+
+**`api/migrations/` est hors périmètre, entièrement.** Une migration déjà
+appliquée est un fait historique : la modifier ne change pas la base, elle crée
+un écart entre ce que la base contient et ce que le dépôt décrit. Et le danger
+est concret ici : la table `facts` a une colonne nommée `valeur`, qui figurait
+dans la table de correspondance ci-dessous. Une passe naïve l'aurait renommée
+`value` dans le `create table`, et **aucun test ne l'aurait vu** — rien ne lit
+encore cette colonne dans ce plan. Le schéma aurait divergé en silence.
+
+**Ce qui ne change pas, sous aucun prétexte :**
+- Les noms de colonnes SQL, y compris les dix-sept qui sont en français :
+  `nom`, `documents`, `profil_cdc`, `profil_bp`, `valeur`, `confiance`, `ordre`,
+  `statut`, `contenu`, `revisions`, `valide_par`, `valide_le`, `brouillon`,
+  `fournisseur`, `modele`, `requetes`, `issue`. Ce sont des valeurs de contrat
+  fixées par le §2.1 de la spec, pas des identifiants Python.
+- Les autres noms de colonnes (`token_hash`, `is_active`, `password_hash`, `revoked_at`…).
+- Les clés des corps de requête (`mot_de_passe`, `jeton` dans les réponses JSON).
+- Les codes d'erreur (`compte_inactif`, `identifiants_invalides`, `jeton_absent`,
+  `session_invalide`, `trop_de_tentatives`).
+- Les commentaires et les docstrings, qui restent en français.
+- Les noms de variables d'environnement.
+- **Les paramètres de `create_project` qui portent le nom d'une colonne** :
+  `nom`, `documents`, `profil_cdc`, `profil_bp`. Ce sont des paramètres nommés
+  obligatoires, donc écrits tels quels aux points d'appel, et ils reflètent
+  délibérément les colonnes du schéma. Les angliciser créerait un écart entre
+  le nom de l'argument et celui de la colonne qu'il remplit.
+
+- [ ] **Étape 1 : établir la liste avant de toucher quoi que ce soit**
+
+Lancer, depuis la racine du dépôt :
+
+```bash
+cd api && uv run python - <<'EOF'
+import re
+from pathlib import Path
+mots = ["jeton","ligne","utilisateur","entetes","demande","valide","clair","empreinte",
+        "reponse","premiere","seconde","actif","schema","valeur","debut","erreur",
+        "retour","expire","fichier","racine","coupables","autorise","requete","champs",
+        "colonne","cle","maintenant","passages","projet","proprietaire","intrus",
+        "extrait","entete","attendu","compteur","cout_reel","cout_absent","reglages_"]
+for f in sorted(list(Path('esquisse').rglob('*.py')) + list(Path('tests').rglob('*.py'))):
+    # `migrations/` est volontairement absent de cette liste.
+    code = re.sub(r'""".*?"""', '', re.sub(r'#.*', '', f.read_text(encoding='utf-8')), flags=re.S)
+    trouves = {m for m in mots if re.search(rf'\b{m}\b', code)}
+    if trouves:
+        print(f"{f}: {', '.join(sorted(trouves))}")
+EOF
+```
+
+Noter la sortie dans le rapport : c'est l'état de départ, et il servira à vérifier
+que rien n'a été oublié.
+
+- [ ] **Étape 2 : appliquer la correspondance**
+
+Renommer selon cette table, et uniquement selon elle. Ne pas inventer d'autres
+renommages ; ne pas toucher aux mots qui apparaissent dans un commentaire, une
+docstring, une chaîne de caractères ou un nom de colonne.
+
+| Français | Anglais | Remarque |
+|---|---|---|
+| `jeton` | `token` | variable locale ; la **clé JSON** `jeton` ne change pas |
+| `reponse` | `response` | |
+| `ligne` | `row` | ligne de résultat SQL |
+| `actif` | `active` | paramètre des aides de test |
+| `demande` | `payload` | l'instance du modèle de requête |
+| `entetes` | `headers` | |
+| `retour` | `result` | résultat de sous-processus |
+| `debut` | `start` | mesure de temps |
+| `empreinte` | `digest` | |
+| `premiere` / `seconde` | `first` / `second` | |
+| `schema` | `scheme` | le schéma d'authentification HTTP |
+| `expire` | `expires_at` | cohérent avec la colonne |
+| `valeur` | `value` | variable locale de `bearer.py`. Sûr **uniquement** parce que `api/migrations/` est hors périmètre : la colonne `facts.valeur` porte le même mot |
+| `utilisateur` | `user` | |
+| `valide` | `valid` | |
+| `erreur` | `error` | |
+| `fichier` | `file_path` | |
+| `racine` | `root` | |
+| `coupables` | `offenders` | |
+| `autorise` | `allowed` | |
+| `requete` | `request` | |
+| `champs` | `columns` | liste des noms de colonnes lue du curseur |
+| `colonne` | `column` | |
+| `cle` | `key` | |
+| `maintenant` | `now` | |
+| `passages` | `hits` | |
+| `projet` | `project` | |
+| `proprietaire` | `owner` | |
+| `intrus` | `intruder` | |
+| `extrait` | `snippet` | |
+| `entete` | `header` | |
+| `attendu` | `expected` | |
+| `compteur` | `counter` | |
+| `clair_a` / `clair_b` | `plaintext_a` / `plaintext_b` | |
+| `cout_reel` / `cout_absent` | `cost_with_digest` / `cost_without_digest` | |
+| `reglages_sans_variable` / `reglages_avec_variable` | `settings_without_env` / `settings_with_env` | |
+
+- [ ] **Étape 3 : vérifier qu'il ne reste rien**
+
+Relancer le script de l'étape 1.
+Attendu : aucune sortie. Si un mot subsiste, vérifier qu'il s'agit bien d'une
+clé de contrat de la liste « ce qui ne change pas », et le dire dans le rapport.
+
+- [ ] **Étape 4 : vérifier que les contrats n'ont pas bougé**
+
+```bash
+cd api && uv run python -c "
+import re
+from pathlib import Path
+attendus = ['mot_de_passe', 'compte_inactif', 'identifiants_invalides',
+            'jeton_absent', 'session_invalide', 'trop_de_tentatives',
+            'token_hash', 'is_active', 'password_hash', 'revoked_at', 'expires_at',
+            # les dix-sept colonnes françaises du schéma
+            'nom', 'documents', 'profil_cdc', 'profil_bp', 'valeur', 'confiance',
+            'ordre', 'statut', 'contenu', 'revisions', 'valide_par', 'valide_le',
+            'brouillon', 'fournisseur', 'modele', 'requetes', 'issue']
+src = ''.join(f.read_text(encoding='utf-8') for f in Path('.').rglob('*.py'))
+manquants = [a for a in attendus if a not in src]
+print('contrats manquants :', manquants or 'aucun')
+"
+```
+
+Attendu : `contrats manquants : aucun`. Un contrat disparu signifie qu'un
+renommage a débordé sur une valeur qui ne devait pas bouger.
+
+- [ ] **Étape 5 : lancer toute la suite**
+
+Lancer : `cd api && uv run pytest -v`
+Attendu : SUCCÈS, le même nombre de tests qu'avant la passe. Un test en moins
+signifie qu'une fonction de test a été renommée en double.
+
+- [ ] **Étape 6 : commiter**
+
+```bash
+git add api/esquisse api/tests
+git commit -m "refactor(api): identifiants locaux en anglais"
+```
+
+`git add api/` prendrait aussi `api/migrations/`. On ajoute explicitement les
+deux dossiers concernés, pour qu'une modification accidentelle d'une migration
+n'entre pas dans le commit sans être vue.
+
+---
+
+## Tâche 11 : conteneur et intégration continue
 
 **Fichiers :**
 - Créer : `api/Dockerfile`
@@ -1581,7 +2144,12 @@ COPY . .
 RUN uv sync --frozen --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"
-CMD ["sh", "-c", "alembic upgrade head && uvicorn esquisse.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# `--proxy-headers` fait lire X-Forwarded-For à uvicorn, sans quoi
+# `request.client.host` vaut l'adresse du routeur de l'hébergeur pour toutes
+# les requêtes et la limitation de débit devient un compteur unique partagé
+# par tous les utilisateurs. `--forwarded-allow-ips` vaut `*` parce que le
+# service n'est joignable qu'à travers ce routeur.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn esquisse.app:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
 ```
 
 `api/.dockerignore` :
@@ -1592,6 +2160,21 @@ __pycache__
 tests
 .pytest_cache
 ```
+
+- [ ] **Étape 1b : vérifier que les options de proxy sont bien là**
+
+Lancer : `grep -c "proxy-headers" api/Dockerfile`
+Attendu : au moins `1`. La valeur réelle est `2`, le commentaire au-dessus de
+`CMD` contenant lui aussi le mot — ce qui est normal, puisqu'il explique
+pourquoi l'option est là. Ce qu'on vérifie, c'est la présence de l'option dans
+la commande de démarrage.
+
+Ce n'est pas une vérification de forme. Sans cette option, `request.client.host`
+vaut l'adresse du routeur de l'hébergeur pour toutes les requêtes, la
+limitation de débit de la tâche 9 devient un compteur unique partagé, et dix
+tentatives de connexion suffisent à bloquer tous les utilisateurs pendant un
+quart d'heure. Le défaut est invisible en développement, où il n'y a pas de
+routeur intermédiaire.
 
 - [ ] **Étape 2 : vérifier que l'image se construit et démarre**
 
@@ -1691,6 +2274,323 @@ Attendu : SUCCÈS. Si la commande échoue, lancer `uv lock` puis commiter le ver
 ```bash
 git add api/Dockerfile api/.dockerignore render.yaml .github/workflows/ci.yml docker-compose.yml
 git commit -m "build: image du backend, description des services Render, intégration continue"
+```
+
+---
+
+## Tâche 12 : README du dépôt
+
+**Fichiers :**
+- Créer : `README.md` (racine)
+- Créer : `.env.example` (racine)
+
+**Interfaces :**
+- Consomme : tout ce qui précède. Les commandes documentées doivent être celles qui marchent réellement.
+- Produit : rien que le code consomme.
+
+- [ ] **Étape 1 : écrire le README**
+
+Créer `README.md` à la racine du dépôt. Contenu (les titres ci-dessous sont
+ceux du README lui-même, pas des titres de ce plan) :
+
+````markdown
+# Esquisse
+
+Génère un cahier des charges et un business plan à partir d'une idée de projet,
+en posant des questions ciblées plutôt qu'en demandant de remplir un formulaire.
+
+### En deux mots
+
+Un porteur de projet décrit son idée en quelques phrases. L'agent en extrait ce
+qu'il peut, demande le reste, rédige les sections une à une, se relit, et ne
+dérange l'utilisateur que lorsque sa relecture n'est pas satisfaite. À la fin,
+quatre fichiers : le cahier des charges et le business plan, en Word et en PDF.
+
+### Documents de référence
+
+| Document | Ce qu'il contient |
+|---|---|
+| [docs/mockup.html](docs/mockup.html) | Prototype cliquable, workflow en 18 étapes, stack technique. À ouvrir dans un navigateur. |
+| [docs/analyse-cdc-bp.md](docs/analyse-cdc-bp.md) | Ce que doivent contenir les deux documents, d'après les normes et d'après de vrais documents. Sources en fin de page. |
+| [docs/templates/](docs/templates/) | 30 sections et 74 faits, en YAML. Le cœur de valeur du produit. |
+| [docs/spec-implementation.md](docs/spec-implementation.md) | Spécification technique. |
+| [docs/plans/](docs/plans/) | Feuille de route et plans d'implémentation. |
+
+### Démarrer
+
+Prérequis : Python 3.12, [uv](https://docs.astral.sh/uv/), Docker.
+
+```bash
+docker compose up -d db          # base de développement et de test
+cd api && uv sync                # dépendances
+uv run alembic upgrade head      # migrations
+uv run uvicorn esquisse.app:app --reload --port 8000
+```
+
+`curl localhost:8000/health` doit répondre `{"statut":"ok"}`.
+
+### Tests
+
+```bash
+cd api && uv run pytest -v
+```
+
+Les tests utilisent la base jetable de `docker-compose.yml`, jamais la base
+distante. Aucun test ne joint un fournisseur de modèle.
+
+### Configuration
+
+Copier `.env.example` en `.env` à la racine et le remplir. Le fichier `.env`
+n'est jamais versionné.
+
+### Comptes
+
+L'inscription est ouverte, mais un compte créé n'est pas utilisable. Le drapeau
+`is_active` se bascule à la main dans la base :
+
+```sql
+update users set is_active = true where email = 'quelquun@exemple.fr';
+```
+
+C'est volontaire : la génération repose sur des paliers gratuits dont les quotas
+sont journaliers et partagés. Une inscription libre les épuiserait en une matinée.
+
+### Conventions
+
+Les identifiants du code — fonctions, classes, modules, fichiers — sont en
+anglais. Les commentaires, les docstrings et la documentation sont en français.
+
+Dépendances gérées par `uv`, jamais `pip`. `pyproject.toml` déclare, `uv.lock`
+verrouille, les deux sont versionnés. Toute commande passe par `uv run`.
+````
+
+- [ ] **Étape 2 : écrire le fichier d'exemple de configuration**
+
+Créer `.env.example` à la racine, sans aucune valeur réelle :
+
+```
+# Base PostgreSQL — pooler Supabase en mode transaction
+SUPABASE_DB_HOST=aws-0-eu-central-1.pooler.supabase.com
+SUPABASE_DB_PORT=6543
+SUPABASE_DB_USER=
+SUPABASE_DB_PASSWORD=
+SUPABASE_DB_NAME=postgres
+
+# Stockage des exports
+SUPABASE_URL=
+SUPABASE_SERVICE_KEY=
+
+# Fournisseurs de modèles, paliers gratuits
+GEMINI_API_KEY=
+MISTRAL_AI_API_KEY=
+OPENROUTER_API_KEY=
+NVIDIA_API_KEY=
+GROQ_CLOUD_API_KEY=
+
+# Suivi
+LANGSMITH_API_KEY=
+LANGSMITH_PROJECT=esquisse
+
+# Rendu des PDF
+GOTENBERG_URL=
+
+# Sessions et développement
+SESSION_TTL_HOURS=336
+ESQUISSE_FAKE_LLM=false
+```
+
+- [ ] **Étape 3 : vérifier que les commandes du README fonctionnent**
+
+Exécuter, depuis un dépôt propre, chacune des commandes du bloc « Démarrer »
+puis celle des « Tests ».
+Attendu : chaque commande réussit, `/health` répond `{"statut":"ok"}`, la suite
+de tests passe entièrement. Corriger le README si une commande diverge.
+
+- [ ] **Étape 4 : vérifier qu'aucun secret n'a filé**
+
+Lancer : `git check-ignore -q .env && echo ignoré`
+Attendu : `ignoré`.
+
+Lancer ensuite : `grep -E "=.+" .env.example`
+Attendu : seules les lignes `SUPABASE_DB_HOST`, `SUPABASE_DB_PORT`,
+`SUPABASE_DB_NAME`, `LANGSMITH_PROJECT`, `SESSION_TTL_HOURS` et
+`ESQUISSE_FAKE_LLM` ont une valeur, et aucune n'est un secret.
+
+- [ ] **Étape 5 : commiter**
+
+```bash
+git add README.md .env.example
+git commit -m "docs: README du dépôt et exemple de configuration"
+```
+
+---
+
+## Corrections issues de la relecture finale
+
+Trois corrections trouvées par la relecture de branche, là où les relectures par
+tâche n'avaient pas de siège : la couture entre la tâche 3, qui a construit le
+garde-fou des migrations, et la tâche 11, qui a écrit la commande qui le
+déclenche.
+
+### C1 — le conteneur ne démarrait jamais
+
+`CMD` lançait `alembic upgrade head && uvicorn`. Or `env.py` appelle le
+garde-fou, qui refuse toute cible non locale, et `ESQUISSE_ALLOW_REMOTE_MIGRATIONS`
+n'est posé nulle part — ni dans `render.yaml`, ni dans le `Dockerfile`, ni dans
+l'environnement. Alembic sort en erreur, le `&&` court-circuite, uvicorn ne
+démarre pas. Le déploiement échoue au premier démarrage, et à chaque réveil.
+
+La correction n'est pas d'ajouter la variable : la poser en permanence dans
+l'environnement de l'hébergeur annulerait le garde-fou, dont toute la raison
+d'être est qu'une migration distante soit un geste délibéré. **Les migrations
+sortent de la commande de démarrage.** Elles se lancent à la main, depuis le
+poste du développeur, avant un déploiement qui change le schéma.
+
+`api/Dockerfile`, dernière ligne :
+
+```dockerfile
+CMD ["sh", "-c", "uvicorn esquisse.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
+```
+
+Et dans le README, sous « Démarrer », une section de déploiement :
+
+````markdown
+### Déployer
+
+Les migrations ne tournent pas au démarrage du conteneur : appliquer un schéma
+sur la base réelle est un geste délibéré, pas un effet de bord d'un réveil.
+Avant un déploiement qui change le schéma, depuis votre poste :
+
+```bash
+cd api && ESQUISSE_ALLOW_REMOTE_MIGRATIONS=1 uv run alembic upgrade head
+```
+
+Sans cette variable, la commande refuse de s'exécuter contre autre chose qu'une
+base locale, et nomme l'hôte qu'elle a refusé.
+````
+
+### C2 — la limitation de débit était contournable
+
+Le `Dockerfile` passait `--proxy-headers --forwarded-allow-ips='*'` à uvicorn.
+Avec `*`, uvicorn retient la **première** entrée de `X-Forwarded-For` — celle
+que l'appelant a écrite lui-même. La clé de limitation devenait donc choisie
+par l'attaquant : une adresse différente à chaque requête, et plus aucune
+limite. C'est le seul contrôle d'abus du service.
+
+Aucun test ne pouvait le voir : le transport ASGI de httpx n'exécute jamais
+l'intergiciel de proxy d'uvicorn, donc `request.client` est une valeur fixe
+dans les 57 tests.
+
+La correction analyse l'en-tête nous-mêmes, ce qui rend la règle testable.
+Dans `api/esquisse/auth/routes.py`, remplacer la lecture de l'adresse :
+
+```python
+def _caller_address(request: Request) -> str:
+    """Adresse de l'appelant telle que l'a vue le routeur de l'hébergeur.
+
+    On analyse `X-Forwarded-For` plutôt que de laisser uvicorn le faire : avec
+    `--forwarded-allow-ips='*'`, uvicorn retient la PREMIÈRE entrée, qui est
+    écrite par l'appelant. N'importe qui pourrait alors choisir sa propre clé
+    de limitation et envoyer autant de tentatives qu'il veut.
+
+    Chaque routeur ajoute à la fin l'adresse qu'il a constatée. La dernière
+    entrée est donc celle vue par le routeur de l'hébergeur, la seule que
+    l'appelant ne contrôle pas."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.rsplit(",", 1)[-1].strip()
+    return request.client.host if request.client else "adresse_inconnue"
+
+
+def _check_rate_limit(request: Request) -> None:
+    if not _account_limiter.allow(_caller_address(request)):
+        raise HTTPException(status_code=429, detail="trop_de_tentatives")
+```
+
+Le `Dockerfile` perd les deux options, devenues inutiles et nuisibles — voir C1
+pour la ligne `CMD` complète.
+
+Deux tests dans `api/tests/test_rate_limit.py` :
+
+```python
+async def test_rate_limit_ignores_the_caller_supplied_prefix(client, migrated_db):
+    """La première entrée de X-Forwarded-For est écrite par l'appelant. Si la
+    limite s'y accrochait, il suffirait d'en changer à chaque requête pour ne
+    jamais être limité."""
+    corps = {"email": "x@exemple.fr", "mot_de_passe": "motdepasse123"}
+    for i in range(10):
+        await client.post(
+            "/auth/login", json=corps,
+            headers={"X-Forwarded-For": f"10.0.0.{i}, 9.9.9.9"},
+        )
+    bloque = await client.post(
+        "/auth/login", json=corps,
+        headers={"X-Forwarded-For": "10.0.0.99, 9.9.9.9"},
+    )
+    assert bloque.status_code == 429
+
+
+async def test_rate_limit_separates_distinct_forwarded_addresses(client, migrated_db):
+    corps = {"email": "x@exemple.fr", "mot_de_passe": "motdepasse123"}
+    for _ in range(10):
+        await client.post(
+            "/auth/login", json=corps, headers={"X-Forwarded-For": "1.1.1.1"}
+        )
+    autre = await client.post(
+        "/auth/login", json=corps, headers={"X-Forwarded-For": "2.2.2.2"}
+    )
+    assert autre.status_code != 429
+```
+
+### C3 — pas de cycle de vie d'application
+
+`create_app` n'a aucun point d'accroche au démarrage ni à l'arrêt. Le pool
+s'ouvrait paresseusement à la première requête, sous un drapeau de module, ce
+qui fait payer l'établissement de la connexion au premier utilisateur après
+chaque réveil de l'hébergeur. Et le §9.3 de la spec réclame une purge des points
+de reprise « au démarrage de l'application » : il n'y a nulle part où la mettre.
+
+`api/esquisse/app.py` :
+
+```python
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from esquisse.db import pool
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Ouvre le pool au démarrage, le referme à l'arrêt.
+
+    C'est aussi le point d'accroche que réclamera la purge des points de reprise
+    du §9.3 de la spec."""
+    connection_pool = pool()
+    await connection_pool.open(wait=True)
+    try:
+        yield
+    finally:
+        await connection_pool.close()
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="Esquisse", version="0.1.0", lifespan=lifespan)
+    ...
+```
+
+`api/esquisse/db.py` perd son drapeau de module :
+
+```python
+@asynccontextmanager
+async def connection():
+    """`open` est idempotent et prend un verrou interne : l'appeler ici garde la
+    fonction autonome, y compris dans les tests, où le transport ASGI de httpx
+    n'exécute pas le cycle de vie."""
+    connection_pool = pool()
+    await connection_pool.open(wait=True)
+    async with connection_pool.connection() as conn:
+        yield conn
 ```
 
 ---
