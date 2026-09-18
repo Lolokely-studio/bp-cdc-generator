@@ -72,6 +72,38 @@ distante. Aucun test ne joint un fournisseur de modèle.
 Copier `backend/.env.example` en `backend/.env` et le remplir. Le fichier
 `.env` n'est jamais versionné.
 
+## La couche modèles
+
+Cinq fournisseurs gratuits, tous compatibles avec l'API Chat Completions
+d'OpenAI : un seul adaptateur, cinq URL de base. Un appelant demande une
+**capacité**, pas un fournisseur :
+
+```python
+from app.llm.gateway import complete, stream
+from app.llm.types import Message
+
+reponse = await complete("court", [Message("user", "…")], schema=MonSchema)
+async for evenement in stream("redaction", messages, project_id=pid):
+    ...
+```
+
+Les trois routes — `court`, `redaction`, `grand_contexte` — et les quotas de
+chaque palier vivent dans `app/llm/providers.py`. Ce sont des réglages : les
+offres gratuites bougent, et les quotas plus vite que le reste.
+
+**Développer sans réseau.** `ESQUISSE_FAKE_LLM=true` dans le `.env` remplace
+le transport par un modèle simulé déterministe. La sélection de route et
+l'écriture de `llm_usage` restent les mêmes ; les lignes s'écrivent sous le
+nom de fournisseur `fake`, sans toucher aux compteurs réels.
+
+**Vérifier que les modèles existent encore.** Un modèle gratuit peut
+disparaître sans préavis. La campagne réseau, exclue de la suite ordinaire,
+interroge chaque modèle du catalogue :
+
+```bash
+ESQUISSE_NETWORK_TESTS=1 uv run pytest -m network -v
+```
+
 ### Comptes
 
 L'inscription est ouverte, mais un compte créé n'est pas utilisable. Le drapeau
