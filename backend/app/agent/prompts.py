@@ -70,9 +70,10 @@ WRITING_FORMAT = """Format de sortie, à respecter strictement :
 - Une donnée que tu n'as pas s'écrit sur sa propre ligne, seule :
   [Donnée à compléter : ce qui manque]
 - Un tableau ne s'écrit pas. Tu places un repère sur sa propre ligne :
-  [Tableau: identifiant_du_calcul]
-  Le tableau sera inséré à cet endroit, déjà calculé. Ne recopie jamais ses
-  chiffres dans le texte : renvoie-y.
+  [Tableau: <identifiant>]
+  où <identifiant> est celui d'un tableau proposé plus bas. Le tableau sera
+  inséré à cet endroit, déjà calculé. Ne recopie jamais ses chiffres dans le
+  texte : renvoie-y.
 
 N'écris ni titre de section, ni Markdown, ni HTML, ni numérotation."""
 

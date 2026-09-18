@@ -175,3 +175,13 @@ def test_the_output_schemas_are_the_shape_the_nodes_expect():
 def test_a_critique_score_outside_the_scale_is_refused():
     with pytest.raises(ValueError):
         Critique(score=11, problems=[])
+
+
+def test_the_format_example_cannot_be_mistaken_for_a_computation():
+    # Le mot d'exemple de la consigne était un identifiant valide. Un modèle
+    # qui recopie l'exemple — le simulé le fait — demandait alors un tableau
+    # qui n'existe pas, et l'analyseur levait.
+    from app.agent.prompts import WRITING_FORMAT, _TABLE
+
+    for line in WRITING_FORMAT.splitlines():
+        assert not _TABLE.match(line.strip()), f"l'exemple passe pour un repère : {line}"
