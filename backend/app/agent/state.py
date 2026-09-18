@@ -123,5 +123,15 @@ class EsquisseState(TypedDict):
     revisions: int
     question_rounds: int
     computations: dict[str, Any]
+    # Le lot de questions proposé par `formulate_questions`, consommé par
+    # `ask_questions` (tâche 7). Une clé à lui seul plutôt qu'une entrée
+    # rangée dans `computations` sous un nom réservé : la première mouture
+    # faisait cette économie, mais rien ne vidait `computations` entre les
+    # sections, et l'entrée aurait survécu dans chaque point de reprise du
+    # reste du run — exactement le coût que la ruse voulait éviter. Une clé
+    # dédiée à valeur unique, écrasée à chaque tour, ne coûte pas plus cher à
+    # sérialiser qu'un `None`, et ne mélange plus un schéma de questions avec
+    # les `Computation` financiers.
+    pending_questions: Any | None
 
     inconsistencies: list[Inconsistency]

@@ -7,6 +7,7 @@ from app.agent import nodes
 from app.agent.state import Fact, Paragraph, SectionRef
 from app.agent.templates import load_catalogue
 from app.core.db import connection
+from app.llm.errors import ProviderUnavailable
 from app.llm.fake import FakeTransport
 from app.projects.repository import create_project
 
@@ -54,6 +55,7 @@ def _state(**surcharges):
         "revisions": 0,
         "question_rounds": 0,
         "computations": {},
+        "pending_questions": None,
         "inconsistencies": [],
     }
     return {**base, **surcharges}
@@ -140,6 +142,19 @@ async def test_extraction_only_keeps_deducible_facts(project):
         assert fact.source == "deduced"
 
 
+async def test_formulate_questions_stores_them_under_their_own_key(project):
+    # Rond 1 de correction : plus de clé réservée dans `computations`
+    # (`_pending_questions`) — une clé d'état dédiée, `pending_questions`,
+    # écrasée à chaque tour plutôt que recopiée sans jamais être vidée.
+    plan = CATALOGUE.plan_for("cdc", "consultation", None)
+    maj = await nodes.formulate_questions(_state(project_id=project, plan=plan, cursor=0),
+                                          transport=FakeTransport())
+    assert set(maj) == {"question_rounds", "pending_questions"}
+    assert maj["question_rounds"] == 1
+    assert maj["pending_questions"] is not None
+    assert "computations" not in maj
+
+
 async def test_writing_produces_blocks(project):
     plan = CATALOGUE.plan_for("cdc", "consultation", None)
     maj = await nodes.write(_state(project_id=project, plan=plan, cursor=0),
@@ -147,6 +162,41 @@ async def test_writing_produces_blocks(project):
     assert maj["draft"]
     assert all(hasattr(b, "kind") for b in maj["draft"])
     assert maj["revisions"] == 1
+
+
+class _RestartingTransport:
+    """Simulé de flux sous script, même forme que `_StreamStub` dans
+    `test_gateway.py` : un script de fragments (ou d'exceptions) par couple
+    (fournisseur, modèle). Sert à vérifier que `write` vide ce qu'il avait
+    déjà accumulé quand le flux repart sur le fournisseur suivant (§5.2),
+    plutôt que de coller un faux départ devant le texte relancé."""
+
+    def __init__(self, script: dict) -> None:
+        self.script = script
+
+    async def stream_chat(self, provider, model, messages):
+        for item in self.script.get((provider.name, model), ["texte"]):
+            if isinstance(item, Exception):
+                raise item
+            yield item
+
+
+async def test_write_discards_a_false_start_after_a_stream_restart(project):
+    # `FakeTransport` ne rompt jamais un flux en cours, donc aucun des tests
+    # ci-dessus n'exerce ce chemin : un simulé sous script, comme dans
+    # `test_gateway.py`, est nécessaire pour le provoquer.
+    plan = CATALOGUE.plan_for("cdc", "consultation", None)
+    stub = _RestartingTransport({
+        ("gemini", "gemini-3.1-flash-lite"): [
+            "Un faux départ jamais gardé.",
+            ProviderUnavailable("gemini", "erreur", "flux rompu"),
+        ],
+        ("mistral", "ministral-8b-latest"): ["Le texte définitif de la section."],
+    })
+    maj = await nodes.write(_state(project_id=project, plan=plan, cursor=0), transport=stub)
+    texte = " ".join(b.text for b in maj["draft"] if hasattr(b, "text"))
+    assert "faux départ" not in texte
+    assert "texte définitif" in texte
 
 
 async def test_the_critique_returns_a_score_on_ten(project):

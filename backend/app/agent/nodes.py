@@ -8,7 +8,7 @@ from app.agent.state import Fact, SectionRef
 from app.agent.templates import Catalogue, SectionTemplate, load_catalogue
 from app.core.db import connection
 from app.llm.gateway import complete, stream
-from app.llm.types import StreamDone, TextDelta
+from app.llm.types import StreamDone, StreamRestart, TextDelta
 
 # Les deux plafonds du §4.4. Ils bornent des boucles qui, sans eux,
 # tourneraient sur un projet mal renseigné ou un modèle qui s'entête.
@@ -167,9 +167,10 @@ async def formulate_questions(state, transport=None) -> dict:
         schema=prompts.ProposedQuestions,
         transport=transport,
     )
+    # Une clé d'état dédiée (`pending_questions`), pas une entrée réservée
+    # dans `computations` : voir le commentaire sur `EsquisseState`.
     return {"question_rounds": state["question_rounds"] + 1,
-            "computations": {**state["computations"],
-                             "_pending_questions": reponse.parsed}}
+            "pending_questions": reponse.parsed}
 
 
 async def write(state, transport=None) -> dict:
@@ -193,6 +194,11 @@ async def write(state, transport=None) -> dict:
     ):
         if isinstance(event, TextDelta):
             pieces.append(event.text)
+        elif isinstance(event, StreamRestart):
+            # Le flux est reparti entier sur le fournisseur suivant (§5.2) :
+            # ce qui avait déjà été accumulé n'est plus la section, sous
+            # peine de coller un faux départ devant le texte relancé.
+            pieces = []
         elif isinstance(event, StreamDone):
             pass
     return {"draft": prompts.parse_written_text("".join(pieces), tables),
