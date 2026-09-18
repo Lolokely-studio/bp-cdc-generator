@@ -4,21 +4,21 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Le fichier vit dans backend/app/core/ : trois niveaux au-dessus se trouve la
-# racine du dépôt, où README et .env.example placent le `.env`. On ancre le
+# Le fichier vit dans backend/app/core/ : deux niveaux au-dessus se trouve la
+# racine de backend/, où README et .env.example placent le `.env`. On ancre le
 # chemin sur l'emplacement du module plutôt que sur le répertoire courant, car
 # toutes les commandes se lancent depuis `backend/` et un chemin relatif
 # (".env") y pointerait sur `backend/.env`, qui n'existe pas. En conteneur, ce
 # chemin ne trouvera aucun fichier : sans effet, les réglages y viennent de
 # l'environnement de l'hébergeur.
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
     """Réglages de l'application, lus depuis l'environnement (ou `.env`
-    à la racine du dépôt en développement)."""
+    à la racine de backend/ en développement)."""
 
-    model_config = SettingsConfigDict(env_file=_REPO_ROOT / ".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_BACKEND_ROOT / ".env", extra="ignore")
 
     supabase_db_host: str = "localhost"
     supabase_db_port: int = 5433

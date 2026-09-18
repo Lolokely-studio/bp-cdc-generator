@@ -25,8 +25,9 @@ quatre fichiers : le cahier des charges et le business plan, en Word et en PDF.
 Prérequis : Python 3.12, [uv](https://docs.astral.sh/uv/), Docker.
 
 ```bash
+cd backend
+uv sync                          # dépendances
 docker compose up -d db          # base de développement et de test
-cd backend && uv sync            # dépendances
 uv run alembic upgrade head      # migrations
 uv run uvicorn app.main:app --reload --port 8000
 ```
@@ -57,8 +58,8 @@ distante. Aucun test ne joint un fournisseur de modèle.
 
 ### Configuration
 
-Copier `.env.example` en `.env` à la racine et le remplir. Le fichier `.env`
-n'est jamais versionné.
+Copier `backend/.env.example` en `backend/.env` et le remplir. Le fichier
+`.env` n'est jamais versionné.
 
 ### Comptes
 
