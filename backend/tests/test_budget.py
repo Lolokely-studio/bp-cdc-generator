@@ -84,6 +84,20 @@ async def test_a_provider_without_published_ceiling_always_passes():
         assert await budget_available(conn, PROVIDERS["nvidia"], 100_000)
 
 
+async def test_a_refused_budget_writes_nothing():
+    # La première des deux décisions de cette tâche, et la seule chose qui
+    # l'empêche de se perdre : une bascule préventive n'a rien consommé, donc
+    # elle n'écrit pas. Sans ce test, un `insert` glissé un jour dans
+    # `budget_available` ne ferait échouer aucune assertion.
+    await _seed("gemini", rows=15)
+    async with connection() as conn:
+        assert not await budget_available(conn, PROVIDERS["gemini"], 1_000)
+        assert await budget_available(conn, PROVIDERS["groq"], 1_000)
+        async with conn.cursor() as cur:
+            await cur.execute("select count(*) from llm_usage")
+            assert (await cur.fetchone())[0] == 15
+
+
 async def test_record_usage_writes_one_row():
     async with connection() as conn:
         await record_usage(
