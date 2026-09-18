@@ -17,8 +17,10 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        await close_clients()
-        await connection_pool.close()
+        try:
+            await close_clients()
+        finally:
+            await connection_pool.close()
 
 
 def create_app() -> FastAPI:
