@@ -34,6 +34,18 @@ def _default_transport():
     return FakeTransport() if settings().fake_llm else network_transport
 
 
+def _is_fake(transport) -> bool:
+    """Le mode simulé se déduit du transport, pas seulement du réglage.
+
+    Un appelant peut injecter un `FakeTransport` sans poser
+    `ESQUISSE_FAKE_LLM` — c'est le geste naturel dans un test de graphe. Sans
+    cette déduction, les jetons factices s'écriraient sous les vrais noms de
+    fournisseurs et brideraient les exécutions réelles suivantes contre la
+    même base. L'invariant devient structurel au lieu d'être à retenir.
+    """
+    return settings().fake_llm or isinstance(transport, FakeTransport)
+
+
 async def _record(
     *,
     route: str,
@@ -99,7 +111,7 @@ async def complete(
     sur la configuration du moment.
     """
     transport = transport if transport is not None else _default_transport()
-    fake = settings().fake_llm
+    fake = _is_fake(transport)
     estimated = estimate_tokens(messages) + expected_output_tokens
     attempts: list[str] = []
 
@@ -114,8 +126,11 @@ async def complete(
             try:
                 result = await transport.chat(provider, model, messages, schema=schema)
             except ModelUnavailable as error:
+                # `error.tokens` et non zéro : une sortie hors schéma ou une
+                # réponse creuse a tout de même été facturée par le fournisseur.
                 await _record(route=route, provider=provider, model=model,
-                              project_id=project_id, tokens=0, issue="erreur", fake=fake)
+                              project_id=project_id, tokens=error.tokens,
+                              issue="erreur", fake=fake)
                 attempts.append(f"{provider.name}/{model} : {error.reason}")
                 continue
             except ProviderUnavailable as error:
@@ -146,7 +161,7 @@ async def stream(
     évite qu'un paragraphe déjà affiché s'efface.
     """
     transport = transport if transport is not None else _default_transport()
-    fake = settings().fake_llm
+    fake = _is_fake(transport)
     prompt_tokens = estimate_tokens(messages)
     estimated = prompt_tokens + expected_output_tokens
     attempts: list[str] = []
@@ -160,11 +175,16 @@ async def stream(
         for model in provider.models:
             await _pace(provider, fake)
             emitted: list[str] = []
+            # Passe à vrai dès qu'une ligne `llm_usage` a été écrite pour cet
+            # essai. Le `finally` s'en sert pour distinguer les deux fins
+            # normales du cas où le consommateur lâche le flux.
+            settled = False
             try:
                 async for delta in transport.stream_chat(provider, model, messages):
                     emitted.append(delta)
                     yield TextDelta(delta)
             except (ModelUnavailable, ProviderUnavailable) as error:
+                settled = True
                 issue = error.issue if isinstance(error, ProviderUnavailable) else "erreur"
                 written = "".join(emitted)
                 # Le prompt entier est parti et le fournisseur l'a traité,
@@ -190,12 +210,34 @@ async def stream(
                 if isinstance(error, ProviderUnavailable):
                     break
                 continue
-
-            written = "".join(emitted)
-            tokens = prompt_tokens + estimate_tokens([Message("assistant", written)])
-            await _record(route=route, provider=provider, model=model,
-                          project_id=project_id, tokens=tokens, issue="ok", fake=fake)
-            yield StreamDone(provider.name, model, tokens)
-            return
+            else:
+                settled = True
+                written = "".join(emitted)
+                tokens = prompt_tokens + estimate_tokens([Message("assistant", written)])
+                await _record(route=route, provider=provider, model=model,
+                              project_id=project_id, tokens=tokens, issue="ok", fake=fake)
+                yield StreamDone(provider.name, model, tokens)
+                return
+            finally:
+                if not settled:
+                    # Le consommateur a lâché le flux : déconnexion du client,
+                    # `break` dans sa boucle, exception chez lui. Python lance
+                    # alors `GeneratorExit` sur le `yield` ci-dessus — une
+                    # `BaseException`, que le `except` ne voit pas. Sans cette
+                    # branche, l'essai disparaîtrait entièrement des compteurs
+                    # alors que le fournisseur a traité le prompt et diffusé ce
+                    # qu'on a reçu. Le plan 4 expose ce flux en SSE, où la
+                    # déconnexion est le cas ordinaire, pas l'exotique.
+                    #
+                    # Attendre ici est permis pendant la fermeture d'un
+                    # générateur asynchrone ; rendre une valeur ne le serait
+                    # pas, et `_record` ne rend rien.
+                    await _record(
+                        route=route, provider=provider, model=model, project_id=project_id,
+                        tokens=prompt_tokens + estimate_tokens(
+                            [Message("assistant", "".join(emitted))]
+                        ),
+                        issue="erreur", fake=fake,
+                    )
 
     raise NoProviderAvailable(route, attempts)

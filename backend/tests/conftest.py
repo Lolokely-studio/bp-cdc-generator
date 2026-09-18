@@ -37,6 +37,11 @@ if os.environ.get("ESQUISSE_NETWORK_TESTS") != "1":
     ):
         os.environ[_provider_key] = "cle-de-test"
 
+# Même raison pour le drapeau du modèle simulé : un développeur qui laisse
+# `ESQUISSE_FAKE_LLM=true` dans son `.env` ferait tourner une autre suite que
+# celle de l'intégration continue.
+os.environ["ESQUISSE_FAKE_LLM"] = "false"
+
 # Les imports de `app` viennent APRÈS les affectations ci-dessus. Aujourd'hui
 # `settings()` est paresseux et mémoïsé, donc l'ordre ne change rien — mais il
 # suffirait qu'un module appelle `settings()` à l'import pour que la configuration
@@ -89,4 +94,16 @@ def _fresh_rate_limit():
     qui consomme la limite fait échouer le suivant."""
     from app.auth import routes
     routes._account_limiter.reset()
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _fresh_pacers():
+    """L'espacement par seconde vit dans le processus, et le verrou d'un
+    `Pacer` se lie à la boucle d'événements de son premier appel. pytest-asyncio
+    en donne une neuve par test : sans remise à zéro, un test réutiliserait un
+    verrou lié à une boucle fermée et échouerait sans rapport avec son objet."""
+    from app.llm.budget import reset_pacers
+
+    reset_pacers()
     yield

@@ -11,10 +11,16 @@ class ModelUnavailable(LlmError):
     fournisseur courant.
     """
 
-    def __init__(self, model: str, reason: str) -> None:
+    def __init__(self, model: str, reason: str, tokens: int = 0) -> None:
         super().__init__(f"modèle {model} inutilisable : {reason}")
         self.model = model
         self.reason = reason
+        # Ce que l'essai a coûté malgré son échec. Deux des trois façons de
+        # lever cette erreur surviennent APRÈS un 200 : le fournisseur a traité
+        # le prompt et rédigé une réponse, il la facture. Laisser ce coût à
+        # zéro le ferait disparaître de la fenêtre de budget, et la bascule
+        # préventive autoriserait ensuite un appel que le fournisseur refuse.
+        self.tokens = tokens
 
 
 class ProviderUnavailable(LlmError):

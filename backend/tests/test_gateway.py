@@ -161,6 +161,30 @@ async def test_a_failed_attempt_writes_its_issue():
     assert rows[1][4] == "ok"
 
 
+async def test_an_off_schema_answer_records_what_the_attempt_cost():
+    # Zéro ferait mentir la fenêtre au moment précis où elle doit être juste :
+    # sur groq, plafonné à 12 000 jetons la minute, un essai perdu de 2 000
+    # jetons est un sixième du budget.
+    stub = _Stub({
+        ("groq", "groq/compound"): ModelUnavailable("groq/compound", "hors schéma", 250),
+    })
+    await complete("court", MESSAGES, transport=stub)
+    rows = await _usage_rows()
+    assert rows[0] == ("groq", "groq/compound", "court", 250, "erreur")
+
+
+async def test_an_injected_fake_transport_records_under_the_fake_name():
+    # Sans toucher à l'environnement : injecter le simulé suffit. Sinon les
+    # jetons factices s'écriraient sous les vrais noms de fournisseurs et
+    # brideraient les exécutions réelles suivantes contre la même base.
+    from app.llm.fake import FakeTransport
+
+    result = await complete("court", MESSAGES, transport=FakeTransport())
+    assert result.provider == "fake"
+    rows = await _usage_rows()
+    assert rows[0][0] == "fake"
+
+
 async def test_the_stream_yields_its_deltas_then_a_done():
     stub = _StreamStub({("gemini", "gemini-3.1-flash-lite"): ["Le ", "dispositif."]})
     events = [event async for event in stream("redaction", MESSAGES, transport=stub)]
@@ -216,6 +240,27 @@ async def test_a_broken_stream_records_the_prompt_and_what_was_emitted():
     # régression que ce test existe pour attraper.
     expected = estimate_tokens(MESSAGES) + estimate_tokens([Message("assistant", emitted)])
     assert rows[0][3] == expected
+
+
+async def test_a_stream_abandoned_by_its_consumer_is_still_recorded():
+    # Le cas ordinaire du plan 4 : le client SSE se déconnecte. Python lance
+    # GeneratorExit sur le `yield`, une BaseException que le `except` ne voit
+    # pas. Sans le `finally`, l'essai disparaîtrait des compteurs alors que le
+    # fournisseur a traité le prompt et diffusé ce qu'on a reçu.
+    stub = _StreamStub({
+        ("gemini", "gemini-3.1-flash-lite"): ["Un début. ", "Une suite. ", "Une fin."],
+    })
+    events = stream("redaction", MESSAGES, transport=stub)
+    async for event in events:
+        if isinstance(event, TextDelta):
+            break
+    await events.aclose()
+
+    rows = await _usage_rows()
+    assert len(rows) == 1          # l'essai existe : c'est tout l'enjeu
+    assert rows[0][0] == "gemini"
+    assert rows[0][4] == "erreur"
+    assert rows[0][3] > estimate_tokens(MESSAGES)
 
 
 async def test_an_exhausted_route_in_streaming_raises():

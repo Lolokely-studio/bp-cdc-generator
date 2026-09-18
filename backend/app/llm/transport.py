@@ -110,10 +110,13 @@ def _as_payload(messages: Sequence[Message]) -> list[dict]:
     return [{"role": message.role, "content": message.content} for message in messages]
 
 
-def _parse(schema: type[BaseModel], text: str, model: str) -> BaseModel:
+def _parse(schema: type[BaseModel], text: str, model: str, tokens: int) -> BaseModel:
     """Le contenu arrive parfois entouré d'une clôture Markdown : plusieurs
     modèles gratuits en ajoutent une malgré la consigne du prompt. La retirer
-    coûte trois lignes ; la refuser coûterait un modèle par section."""
+    coûte trois lignes ; la refuser coûterait un modèle par section.
+
+    `tokens` accompagne l'échec : une réponse hors schéma a tout de même été
+    facturée, et le compte est déjà connu une ligne plus haut."""
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("\n", 1)[-1] if "\n" in cleaned else ""
@@ -121,7 +124,7 @@ def _parse(schema: type[BaseModel], text: str, model: str) -> BaseModel:
     try:
         return schema.model_validate_json(cleaned)
     except ValidationError as error:
-        raise ModelUnavailable(model, "sortie hors schéma") from error
+        raise ModelUnavailable(model, "sortie hors schéma", tokens) from error
 
 
 async def chat(
@@ -144,13 +147,19 @@ async def chat(
     except OpenAIError as error:
         _fail(provider, model, error)
 
-    # Certains paliers gratuits répondent 200 avec une liste de choix vide.
-    # Sans ce garde-fou, l'`IndexError` remonterait brute et la passerelle
-    # n'aurait rien à quoi se raccrocher : tout échec doit sortir d'ici classé.
-    if not response.choices:
-        raise ModelUnavailable(model, "réponse sans choix")
+    # Certains paliers gratuits répondent 200 avec une carcasse : liste de
+    # choix vide, ou un choix sans `message`. Le SDK construit ses modèles avec
+    # indulgence, si bien que l'attribut manquant vaut `None` et que la lecture
+    # suivante lèverait une `AttributeError` — ni une `OpenAIError`, donc
+    # `_fail` ne la voit pas, ni une erreur de cette couche, donc la passerelle
+    # ne la rattrape pas. Elle emporterait la route entière sans écrire de
+    # ligne ni essayer le modèle suivant, soit exactement l'inverse de ce que
+    # cette couche existe pour faire. Les deux formes se gardent ensemble.
+    choice = response.choices[0] if response.choices else None
+    if choice is None or choice.message is None:
+        raise ModelUnavailable(model, "réponse sans contenu exploitable", estimate_tokens(messages))
 
-    text = response.choices[0].message.content or ""
+    text = choice.message.content or ""
     usage = getattr(response, "usage", None)
     # Plusieurs paliers gratuits omettent `usage`. Sans repli, ces appels
     # resteraient invisibles à la fenêtre de jetons.
@@ -159,7 +168,7 @@ async def chat(
         if usage is not None and usage.total_tokens
         else estimate_tokens(messages) + estimate_tokens([Message("assistant", text)])
     )
-    parsed = _parse(schema, text, model) if schema is not None else None
+    parsed = _parse(schema, text, model, tokens) if schema is not None else None
     return Completion(
         text=text, provider=provider.name, model=model, tokens=tokens, parsed=parsed
     )

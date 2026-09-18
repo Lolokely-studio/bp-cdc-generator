@@ -159,6 +159,30 @@ async def test_an_answer_without_choices_blames_the_model():
         await chat(PROVIDER, MODEL, MESSAGES, http_client=_client(handler))
 
 
+async def test_an_answer_whose_choice_has_no_message_blames_the_model():
+    # Variante de la réponse creuse : le choix existe mais n'a pas de message.
+    # Le SDK construit ses modèles avec indulgence, l'attribut vaut alors None,
+    # et la lecture suivante lèverait une AttributeError que ni `_fail` ni la
+    # passerelle ne rattrapent — elle emporterait la route entière.
+    handler = _replying(200, {
+        "id": "cmpl-1", "object": "chat.completion", "created": 0, "model": MODEL,
+        "choices": [{"index": 0, "finish_reason": "stop"}],
+    })
+    with pytest.raises(ModelUnavailable):
+        await chat(PROVIDER, MODEL, MESSAGES, http_client=_client(handler))
+
+
+async def test_an_off_schema_answer_carries_what_it_cost():
+    # Le fournisseur a traité le prompt et rédigé une réponse : il la facture,
+    # même hors schéma. Le coût est connu une ligne avant le refus ; le perdre
+    # rendrait l'appel invisible à la fenêtre de budget.
+    content = "Je ne suis pas du JSON."
+    handler = _replying(200, _answer(content, usage={"total_tokens": 321}))
+    with pytest.raises(ModelUnavailable) as error:
+        await chat(PROVIDER, MODEL, MESSAGES, schema=Analysis, http_client=_client(handler))
+    assert error.value.tokens == 321
+
+
 async def test_the_client_never_retries_on_its_own():
     # Un repli interne au SDK brûlerait le quota que la bascule préserve, et
     # cacherait à la passerelle l'information qui lui sert à décider.
