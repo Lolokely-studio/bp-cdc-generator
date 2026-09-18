@@ -78,7 +78,7 @@ Les tâches 2, 3 et 4 se dispatchent dans le même message. Elles ne créent auc
 
 **Fichiers :**
 - Créer : `backend/app/llm/__init__.py`, `backend/app/llm/types.py`, `backend/app/llm/errors.py`, `backend/app/llm/tokens.py`, `backend/app/llm/providers.py`
-- Modifier : `backend/app/core/config.py`, `backend/tests/conftest.py`
+- Modifier : `backend/app/core/config.py`, `backend/tests/conftest.py`, `backend/render.yaml`, `docs/mockup.html`, `README.md`
 - Tests : `backend/tests/test_tokens.py`, `backend/tests/test_providers.py`
 
 **Interfaces :**
@@ -91,6 +91,7 @@ Les tâches 2, 3 et 4 se dispatchent dans le même message. Elles ne créent auc
   - `estimate_tokens(messages: Iterable[Message]) -> int`, constante `CHARS_PER_TOKEN`
   - `Limits(rpm, tpm, rpd, tpd, rps)`, `Provider(name, base_url, key_setting, models, limits)`, `PROVIDERS: dict[str, Provider]`, `ROUTES: dict[str, tuple[str, ...]]`, `providers_for_route(route) -> tuple[Provider, ...]`, `api_key_for(provider) -> str`, `is_configured(provider) -> bool`
   - `Settings` gagne `gemini_api_key`, `mistral_ai_api_key`, `openrouter_api_key`, `nvidia_api_key`, `groq_cloud_api_key`
+  - `backend/render.yaml` déclare les cinq clés côté production
 
 **Pourquoi tout cela dans une seule tâche.** Ce sont cinq fichiers déclaratifs, sans branche ni entrée-sortie. Les séparer donnerait cinq relectures qui ne peuvent rien rejeter indépendamment — et retarderait le seul point de synchronisation dont les trois tâches suivantes ont besoin.
 
@@ -568,16 +569,108 @@ if os.environ.get("ESQUISSE_NETWORK_TESTS") != "1":
         os.environ[_provider_key] = "cle-de-test"
 ```
 
-- [ ] **Étape 11 : lancer la suite entière**
+- [ ] **Étape 11 : déclarer les cinq clés côté production**
+
+Sans elles, `is_configured` répondra « non » pour les cinq fournisseurs sur
+Render et la première rédaction lèvera `NoProviderAvailable` — un échec muet
+et parfaitement inutile, puisque les clés existent.
+
+Dans `backend/render.yaml`, à la fin du bloc `envVars` du service
+`esquisse-api` :
+
+```yaml
+      # Paliers gratuits des fournisseurs de modèles. `sync: false` veut dire
+      # « saisie dans le tableau de bord, jamais dans le dépôt ».
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: MISTRAL_AI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: GROQ_CLOUD_API_KEY
+        sync: false
+      # Explicite plutôt qu'implicite : en production le modèle simulé doit
+      # être éteint, et le lire dans le fichier vaut mieux que le déduire.
+      - key: ESQUISSE_FAKE_LLM
+        value: "false"
+```
+
+- [ ] **Étape 12 : corriger l'arborescence de la maquette**
+
+`docs/mockup.html`, onglet Stack, bloc `<pre class="s-tree">` (vers la ligne
+668) : l'arborescence date d'avant la restructuration. Elle montre `api/`,
+un `agent/` qui contient `llm/` et `templates/`, et place `render.yaml` et
+`docker-compose.yml` à la racine — trois choses fausses depuis la
+restructuration. Remplacer le contenu du bloc par :
+
+```
+esquisse/
+├── backend/                Backend FastAPI (Render)
+│   ├── app/
+│   │   ├── core/           Configuration, base, sécurité, garde-fous
+│   │   ├── auth/           Inscription, connexion, jetons, contrôle d'activation
+│   │   ├── projects/       Projets et cloisonnement par propriétaire
+│   │   ├── llm/            Cinq fournisseurs gratuits, trois routes, repli
+│   │   ├── agent/          Graphe principal, sous-graphe de section, outils
+│   │   ├── templates/      Cahier des charges, business plan, catalogue de faits
+│   │   └── export/         Modèle Word, graphiques, appel à Gotenberg
+│   ├── migrations/         Alembic : schéma de la base Supabase
+│   ├── tests/              Suite pytest, graphe avec modèle simulé
+│   ├── pyproject.toml      Dépendances, verrouillées dans uv.lock
+│   ├── Dockerfile          Image du service, uv sync --frozen
+│   ├── docker-compose.yml  Base jetable et Gotenberg en local, uniquement
+│   ├── render.yaml         Les deux services de production
+│   └── .env.example        Variables attendues
+├── web/                    Front Next.js (Vercel)
+│   ├── app/                Projets, parcours guidé, rédaction, exports
+│   └── components/         Cartes d'interaction, éditeur, mémoire du projet
+├── evals/                  Jeux d'évaluation LangSmith
+├── docs/                   Analyses, spec d'implémentation, plans, maquette
+└── .github/workflows/      Intégration continue sur uv sync --frozen
+```
+
+`web/`, `evals/`, `agent/` et `export/` n'existent pas encore : c'est une
+arborescence cible, et elle le restera jusqu'aux plans 3, 5 et 6. Ce qui
+était faux, c'est le reste.
+
+- [ ] **Étape 13 : documenter le déploiement dans le README**
+
+`render.yaml` vit dans `backend/`, et Render cherche le Blueprint à la racine
+du dépôt par défaut. Sans ce réglage, le déploiement échoue avec un message
+qui ne dit pas pourquoi. Ajouter en fin de `README.md` :
+
+```markdown
+## Déploiement sur Render
+
+Le Blueprint est `backend/render.yaml`, pas `render.yaml` : Render le cherche
+à la racine par défaut, il faut donc renseigner **Blueprint Path** =
+`backend/render.yaml` à la création du Blueprint.
+
+Les chemins qu'il contient — `dockerfilePath`, `dockerContext` — restent
+relatifs à la **racine du dépôt** et non au fichier : c'est pourquoi ils
+commencent par `./backend/`.
+
+Les variables marquées `sync: false` se saisissent dans le tableau de bord du
+service. Aucun identifiant de production ne vit dans le dépôt.
+```
+
+- [ ] **Étape 14 : lancer la suite entière**
 
 Run : `uv run pytest -v`
-Attendu : les 59 tests du plan 1 passent toujours, plus ceux de `test_tokens.py` et `test_providers.py`.
+Attendu : les 59 tests du plan 1 passent toujours, plus ceux de
+`test_tokens.py` et `test_providers.py`.
 
-- [ ] **Étape 12 : commit**
+Vérifier aussi que la maquette s'ouvre sans dégât : `open docs/mockup.html`,
+onglet Stack, l'arborescence s'affiche d'un bloc.
+
+- [ ] **Étape 15 : commit**
 
 ```bash
 git add backend/app/llm backend/app/core/config.py backend/tests/conftest.py \
-        backend/tests/test_tokens.py backend/tests/test_providers.py
+        backend/tests/test_tokens.py backend/tests/test_providers.py \
+        backend/render.yaml docs/mockup.html README.md
 git commit -m "feat(llm): catalogue des fournisseurs, routes et vocabulaire de la couche modèles"
 ```
 
