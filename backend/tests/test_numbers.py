@@ -83,12 +83,29 @@ def test_a_grouped_round_figure_is_a_legitimate_rounding(written, known):
     assert orphan_numbers(blocks, {"marche": _fact("marche", known)}, []) == []
 
 
-def test_a_fact_worth_a_hundredth_of_a_figure_does_not_source_it():
-    # La branche pourcentage n'a de sens que pour une fraction. Sans cette
-    # borne, un effectif de 65 personnes rendait « 6 500 € » traçable.
-    blocks = [Paragraph(text="Un investissement de 6 500 € pour le nouveau site.")]
-    orphans = orphan_numbers(blocks, {"effectif": _fact("effectif", 65)}, [])
-    assert [o.value for o in orphans] == [6_500]
+@pytest.mark.parametrize(("text", "fact_value", "expected"), [
+    ("Un investissement de 6 500 € pour le nouveau site.", 65, 6_500),
+    ("Le projet vise 100 salariés d'ici cinq ans.", 1, 100),
+    ("Le tarif du service est de 50 € par mois.", 0.5, 50),
+])
+def test_a_fact_worth_a_hundredth_of_a_figure_does_not_source_it(text, fact_value, expected):
+    """Trois versions du même piège, dont deux qu'une première borne laissait
+    ouvertes.
+
+    Restreindre la forme centuplée aux valeurs de ]0, 1] rétrécissait le trou
+    sans le fermer : un fait valant exactement 1 — « 1 associé », « 1 local » —
+    est la valeur la plus banale qui soit, et elle sourçait « 100 ».
+    """
+    blocks = [Paragraph(text=text)]
+    orphans = orphan_numbers(blocks, {"fait": _fact("fait", fact_value)}, [])
+    assert [o.value for o in orphans] == [expected]
+
+
+def test_a_rate_written_as_a_percentage_is_still_sourced():
+    # L'autre direction : la borne ne doit pas casser le cas qu'elle existe
+    # pour servir.
+    blocks = [Paragraph(text="Le taux de conversion atteint 100 %.")]
+    assert orphan_numbers(blocks, {"taux": _fact("taux", 1.0)}, []) == []
 
 
 def test_an_invented_figure_close_to_a_real_one_is_still_an_orphan():

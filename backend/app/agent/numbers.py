@@ -22,11 +22,17 @@ _CONTEXT_CHARS = 40
 
 @dataclass(frozen=True)
 class Written:
-    """Un nombre tel qu'il apparaît dans le brouillon."""
+    """Un nombre tel qu'il apparaît dans le brouillon.
+
+    `is_percentage` retient si un signe pour cent suit le nombre. C'est la
+    seule chose qui autorise à comparer l'écriture à la forme centuplée d'un
+    taux, et elle vient du texte, pas d'une devinette sur la valeur du fait.
+    """
 
     written: str
     value: float
     context: str
+    is_percentage: bool = False
 
 
 def _to_float(written: str) -> float | None:
@@ -65,8 +71,16 @@ def extract_numbers(blocks: list[Block]) -> list[Written]:
             if valeur is None:
                 continue
             begin = max(0, match.start() - _CONTEXT_CHARS)
-            found.append(Written(written=raw, value=valeur,
-                                   context=text[begin:match.end() + _CONTEXT_CHARS]))
+            # Ce qui suit immédiatement le nombre dit son unité. Seul le signe
+            # pour cent nous intéresse : c'est lui qui autorisera à comparer
+            # l'écriture à la forme centuplée d'un taux.
+            after = text[match.end():].lstrip(_SEPARATORS)
+            found.append(Written(
+                written=raw,
+                value=valeur,
+                context=text[begin:match.end() + _CONTEXT_CHARS],
+                is_percentage=after.startswith("%"),
+            ))
     return found
 
 
@@ -119,17 +133,26 @@ def _matches(candidate: Written, known: float) -> bool:
     par l'exemple.
 
     Un taux stocké en fraction — 0,65 — s'écrit aussi en pourcentage, d'où le
-    second essai sur `known * 100`, réservé aux valeurs entre zéro et un :
-    au-delà, ce n'est pas un taux, et l'essayer quand même ferait passer pour
-    sourcé tout chiffre valant cent fois un fait quelconque.
+    second essai sur `known * 100`. Il n'a lieu que si le texte a bel et bien
+    écrit un pourcentage : c'est l'unité écrite qui le dit, pas la valeur du
+    fait.
     """
     step = _written_step(candidate.written)
     references = [known]
-    # La forme pourcentage n'a de sens que pour une fraction. L'essayer sur
-    # toute valeur rend traçable n'importe quel chiffre qui vaut cent fois un
-    # fait : un effectif de 65 personnes suffisait à faire passer « 6 500 € »
-    # pour un montant sourcé.
-    if 0 < known <= 1:
+    # La forme centuplée ne s'essaie que si le texte écrit un pourcentage.
+    #
+    # Deux règles plus faibles ont été essayées et écartées. L'essayer sur
+    # toute valeur rendait traçable n'importe quel chiffre valant cent fois un
+    # fait : un effectif de 65 personnes faisait passer « 6 500 € » pour un
+    # montant sourcé. La restreindre aux valeurs de ]0, 1] ne faisait que
+    # rétrécir le trou, parce qu'un test numérique remplaçait une question
+    # sémantique — et il se rouvrait tout grand à `known == 1`, la valeur la
+    # plus banale qu'un fait puisse prendre : « 1 associé » suffisait à sourcer
+    # « 100 salariés ».
+    #
+    # L'unité écrite tranche ce que la valeur ne peut pas : « 65 % » se compare
+    # à un taux, « 6 500 € » non.
+    if candidate.is_percentage:
         references.append(known * 100)
     for reference in references:
         gap = abs(candidate.value - reference)
