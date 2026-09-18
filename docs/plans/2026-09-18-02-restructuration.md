@@ -110,9 +110,89 @@ git commit -m "refactor: arborescence cible (backend/, paquet app, templates dan
 
 ---
 
+## Tâche 2 : les quatre fichiers de configuration descendent aussi
+
+**Révision du 18 septembre.** La tâche 1 les laissait à la racine, au motif que
+le `.env` serait partagé et que `render.yaml` décrivait plusieurs services.
+Brice a contesté, et il avait raison sur les deux points :
+
+- Aucune des onze clés du `.env` ne concerne autre chose que le backend — base,
+  stockage, cinq fournisseurs de modèles, suivi, rendu des PDF, sessions. Le
+  service d'export qui devait les partager *est* le backend.
+- `render.yaml` n'est pas tenu d'être à la racine : Render expose un réglage
+  « Blueprint Path » pour le chercher ailleurs. **Conséquence opérationnelle :
+  ce chemin devra être renseigné dans le tableau de bord Render, sans quoi le
+  blueprint ne sera plus trouvé.**
+- `docker-compose.yml` ne contiendra jamais que la base, le backend et
+  Gotenberg. Le front se lance avec ses propres outils, pas avec compose.
+
+**Fichiers :** `.env`, `.env.example`, `docker-compose.yml`, `render.yaml`.
+
+- [ ] **Étape 1 : déplacer**
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+git mv .env.example docker-compose.yml render.yaml backend/
+mv .env backend/.env        # non suivi par git : mv et non git mv
+```
+
+- [ ] **Étape 2 : vérifier immédiatement que le `.env` reste invisible de git**
+
+```bash
+git check-ignore -q backend/.env && echo "ignoré"
+ls -la backend/.env                        # doit toujours faire 794 octets
+git status --porcelain | grep -c "\.env$"   # doit valoir 0
+```
+
+Ce fichier porte les identifiants de la base de production et cinq clés d'API.
+La règle `*.env` du `.gitignore` devrait le couvrir à son nouvel emplacement,
+mais cela se vérifie plutôt que se suppose : un `.env` qui cesserait d'être
+ignoré partirait dans le commit suivant.
+
+- [ ] **Étape 3 : l'ancrage de la configuration**
+
+`backend/app/core/config.py` — le `.env` n'est plus à la racine du dépôt mais à
+celle de `backend/`. L'ancrage passe de `parents[3]` à **`parents[2]`**, et la
+constante devient `_BACKEND_ROOT`, commentaire mis à jour.
+
+Vérifier en affichant la valeur :
+
+```bash
+cd backend && uv run python -c "from app.core.config import _BACKEND_ROOT; print(_BACKEND_ROOT)"
+```
+
+Attendu : le chemin de `backend/`, pas celui de la racine.
+
+- [ ] **Étape 4 : les chemins du blueprint ne bougent pas**
+
+Piège : les chemins d'un blueprint Render restent relatifs à la **racine du
+dépôt**, pas au fichier qui les contient. `dockerfilePath` et `dockerContext`
+gardent donc leur préfixe `./backend/…` bien que `render.yaml` vive désormais
+dans `backend/`. Ne pas les raccourcir.
+
+- [ ] **Étape 5 : le README**
+
+Le bloc « Démarrer » lance `docker compose up -d db`. La commande part
+maintenant de `backend/`. Réécrire le bloc pour que toutes ses commandes
+s'exécutent depuis ce dossier, et les exécuter réellement pour le vérifier.
+
+L'intégration continue n'est pas concernée : elle déclare son propre service
+PostgreSQL et ne lit pas `docker-compose.yml`.
+
+- [ ] **Étape 6 : vérifier et commiter**
+
+```bash
+cd backend && uv run pytest -q | tail -1     # 59 passed
+docker compose up -d db && uv run pytest -q | tail -1
+git add -A && git commit -m "refactor: configuration et orchestration dans backend/"
+```
+
+---
+
 ## Ce que ce plan ne fait pas
 
-`.env`, `.env.example`, `docker-compose.yml` et `render.yaml` restent à la racine. Le premier porte des clés que le service d'export du plan 5 lira aussi ; le troisième orchestrera le backend et Gotenberg au plan 5 ; le quatrième décrit plusieurs services.
+Rien ne reste à la racine hormis `README.md`, `.gitignore`, `.github/` et
+`docs/`. C'est l'état visé.
 
 ## À traiter dans la foulée, pendant qu'on est dans les tests
 
