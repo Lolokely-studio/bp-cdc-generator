@@ -68,8 +68,9 @@ Relecture des consignes et des grilles des 30 sections, plafond par compte, réi
 
 ## État
 
-- [x] Plan 1 — écrit : [2026-09-17-01-socle-backend.md](2026-09-17-01-socle-backend.md)
-- [ ] Plan 2 — à écrire quand le plan 1 est terminé
+- [x] Plan 1 — **livré et fusionné** : [2026-09-17-01-socle-backend.md](2026-09-17-01-socle-backend.md) — 59 tests
+- [x] Restructuration — **livrée et fusionnée** : [2026-09-18-02-restructuration.md](2026-09-18-02-restructuration.md)
+- [ ] Plan 2 — **à écrire** : couche modèles (routes, compteurs de quota, repli, modèle simulé)
 - [ ] Plan 3
 - [ ] Plan 4
 - [ ] Plan 5
