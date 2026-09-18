@@ -1379,11 +1379,15 @@ git commit -m "feat(llm): modèle simulé déterministe pour le graphe hors lign
 **Deux décisions à porter dans le code, avec leur raison :**
 
 1. **`max_retries=0`.** Par défaut le client `openai` réessaie un 429 tout seul. Il brûlerait le quota que la bascule cherche à préserver, et masquerait au passage l'information dont la passerelle a besoin pour changer de fournisseur.
-2. **Un 400 ou un 404 accuse le modèle, pas le fournisseur.** Le pseudo-code du §5.3 range tous les échecs au niveau du fournisseur. C'est trop grossier : un modèle gratuit retiré du catalogue — le cas explicitement prévu dans les parades — répond 404, et basculer de fournisseur abandonnerait les quatre modèles suivants encore valides. 429 et 5xx restent au niveau du fournisseur.
+2. **Un 400, un 404 ou un 410 accuse le modèle, pas le fournisseur.** Le pseudo-code du §5.3 range tous les échecs au niveau du fournisseur. C'est trop grossier : un modèle gratuit retiré du catalogue — le cas explicitement prévu dans les parades — répond 404 ou 410, et basculer de fournisseur abandonnerait les modèles suivants encore valides. 429 et 5xx restent au niveau du fournisseur.
+
+   Le 410 vient de la campagne réseau, qui a trouvé `minimaxai/minimax-m3` répondant « Gone » : c'est littéralement « cette ressource a disparu définitivement », donc exactement le cas que cette règle existe pour traiter.
 
 **Ce qu'on n'envoie pas.** Pas de `response_format={"type": "json_object"}`. Les cinq paliers gratuits ne le gèrent pas de la même façon et un refus se traduirait par un 400, c'est-à-dire un modèle déclaré mort à tort. Le plus petit dénominateur commun est le texte ; la consigne « réponds en JSON » vit dans le prompt et la validation de schéma rattrape le reste — c'est exactement ce que la spec appelle « sortie hors schéma → modèle suivant ».
 
-**Les tests exercent le vrai client.** `httpx.MockTransport` est branché **sous** `AsyncOpenAI` : le découpage des flux, l'analyse des réponses et la classification des statuts passent par le code réel du SDK, pas par une imitation.
+**Les tests exercent le vrai client.** Un `MockTransport` est branché **sous** `AsyncOpenAI` : le découpage des flux, l'analyse des réponses et la classification des statuts passent par le code réel du SDK, pas par une imitation.
+
+**Et il doit venir de la bonne bibliothèque.** `openai` 3.x s'appuie sur **`httpx2`**, pas sur le `httpx` 0.x que la suite utilise par ailleurs pour le transport ASGI de FastAPI. Les deux cohabitent dans le verrou, et le SDK accepte sans broncher un client `httpx` 0.x qu'on lui injecte — ce qui ferait tester une pile HTTP que la production n'emprunte jamais. Le transport et ses tests utilisent donc `httpx2` ; `conftest.py` garde `httpx` pour l'ASGI, ce n'est pas le même usage.
 
 - [ ] **Étape 1 : ajouter la dépendance et le marqueur**
 
@@ -1414,7 +1418,7 @@ addopts = "-m 'not network'"
 ```python
 import json
 
-import httpx
+import httpx2
 import pytest
 from pydantic import BaseModel
 
@@ -1452,13 +1456,13 @@ def _answer(content: str, usage: dict | None = None) -> dict:
     return body
 
 
-def _client(handler) -> httpx.AsyncClient:
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+def _client(handler) -> httpx2.AsyncClient:
+    return httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
 
 
 def _replying(status: int, body: dict):
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(status, json=body)
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(status, json=body)
 
     return handler
 
@@ -1520,6 +1524,16 @@ async def test_a_missing_model_blames_the_model_not_the_provider():
     assert error.value.model == MODEL
 
 
+async def test_a_withdrawn_model_blames_the_model():
+    # 410 Gone : « cette ressource a disparu définitivement ». Constaté en vrai
+    # sur minimaxai/minimax-m3 pendant la campagne réseau. Le traiter au niveau
+    # du fournisseur ferait abandonner ses autres modèles, encore vivants.
+    handler = _replying(410, {"error": {"message": "model retired"}})
+    with pytest.raises(ModelUnavailable) as error:
+        await chat(PROVIDER, MODEL, MESSAGES, http_client=_client(handler))
+    assert error.value.model == MODEL
+
+
 async def test_a_bad_request_blames_the_model():
     handler = _replying(400, {"error": {"message": "unsupported parameter"}})
     with pytest.raises(ModelUnavailable):
@@ -1534,8 +1548,8 @@ async def test_a_server_error_blames_the_provider():
 
 
 async def test_an_unreachable_host_blames_the_provider():
-    def handler(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("injoignable", request=request)
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        raise httpx2.ConnectError("injoignable", request=request)
 
     with pytest.raises(ProviderUnavailable) as error:
         await chat(PROVIDER, MODEL, MESSAGES, http_client=_client(handler))
@@ -1572,8 +1586,8 @@ async def test_the_stream_yields_the_deltas_in_order():
         for piece in chunks
     ) + "data: [DONE]\n\n"
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(
             200, headers={"content-type": "text/event-stream"}, content=events.encode()
         )
 
@@ -1640,7 +1654,7 @@ Attendu : ÉCHEC, `ModuleNotFoundError: No module named 'app.llm.transport'`.
 from collections.abc import AsyncIterator, Sequence
 from typing import NoReturn
 
-import httpx
+import httpx2
 from openai import (
     APIConnectionError,
     APIStatusError,
@@ -1663,7 +1677,7 @@ STREAM_TIMEOUT_SECONDS = 180.0
 
 
 def client_for(
-    provider: Provider, *, timeout: float, http_client: httpx.AsyncClient | None = None
+    provider: Provider, *, timeout: float, http_client: httpx2.AsyncClient | None = None
 ) -> AsyncOpenAI:
     """Un seul adaptateur pour les cinq fournisseurs : tous exposent l'API
     Chat Completions d'OpenAI, seule l'URL de base change.
@@ -1690,10 +1704,13 @@ def _fail(provider: Provider, model: str, error: Exception) -> NoReturn:
     """Traduit une erreur du client en décision de repli.
 
     Le pseudo-code du §5.3 range tous les échecs au niveau du fournisseur.
-    On y ajoute une distinction que l'exploitation impose : un 400 ou un 404
-    désigne **ce modèle-là**. Un modèle gratuit retiré du catalogue — le cas
-    annoncé dans les parades — répond 404, et basculer de fournisseur
-    reviendrait à abandonner ses autres modèles, encore valides.
+    On y ajoute une distinction que l'exploitation impose : un 400, un 404 ou
+    un 410 désigne **ce modèle-là**. Un modèle gratuit retiré du catalogue —
+    le cas annoncé dans les parades — répond 404 ou 410, et basculer de
+    fournisseur reviendrait à abandonner ses autres modèles, encore valides.
+    Le 410 n'est pas théorique : la campagne réseau a trouvé
+    `minimaxai/minimax-m3` répondant « Gone » alors que deux autres modèles
+    NVIDIA marchaient.
 
     `RateLimitError` se teste avant `APIStatusError` : c'en est une
     sous-classe, l'ordre inverse la rendrait inatteignable.
@@ -1705,7 +1722,7 @@ def _fail(provider: Provider, model: str, error: Exception) -> NoReturn:
     if isinstance(error, APIConnectionError):
         raise ProviderUnavailable(provider.name, "erreur", "connexion impossible") from error
     if isinstance(error, APIStatusError):
-        if error.status_code in (400, 404):
+        if error.status_code in (400, 404, 410):
             raise ModelUnavailable(model, f"statut {error.status_code}") from error
         raise ProviderUnavailable(
             provider.name, "erreur", f"statut {error.status_code}"
@@ -1737,7 +1754,7 @@ async def chat(
     messages: Sequence[Message],
     *,
     schema: type[BaseModel] | None = None,
-    http_client: httpx.AsyncClient | None = None,
+    http_client: httpx2.AsyncClient | None = None,
 ) -> Completion:
     """Un appel non diffusé. Aucun `response_format` n'est envoyé : les cinq
     paliers gratuits ne le gèrent pas de la même façon et un refus se
@@ -1771,7 +1788,7 @@ async def stream_chat(
     model: str,
     messages: Sequence[Message],
     *,
-    http_client: httpx.AsyncClient | None = None,
+    http_client: httpx2.AsyncClient | None = None,
 ) -> AsyncIterator[str]:
     """Les fragments, dans l'ordre. Une rupture après le premier fragment est
     traitée par la passerelle, seule à savoir qu'il faut alors repartir sur
