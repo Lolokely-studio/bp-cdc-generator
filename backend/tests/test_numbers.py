@@ -48,6 +48,49 @@ def test_a_percentage_matches_a_rate_stored_as_a_fraction():
     assert orphan_numbers(blocks, {"taux": _fact("taux", 0.65)}, []) == []
 
 
+@pytest.mark.parametrize(("written", "expected"), [
+    ("184 615,38", 0.01),
+    ("184 600", 100.0),
+    ("200 000", 100_000.0),
+    ("10 000", 10_000.0),
+    ("3 450 000", 10_000.0),
+    ("65", 1.0),
+])
+def test_the_step_a_writing_claims(written, expected):
+    """Épingle l'étape elle-même, et pas seulement le verdict final.
+
+    Une première version comptait les zéros de fin sans retirer les
+    séparateurs de milliers : « 200 000 » ne rendait que trois zéros au lieu
+    de cinq. Les tests de verdict passaient quand même, pour la mauvaise
+    raison — l'intervalle échouait là où c'est l'écart relatif qui devait
+    trancher. Un test sur la valeur intermédiaire l'aurait vu tout de suite.
+    """
+    from app.agent.numbers import _written_step
+
+    assert _written_step(written) == expected
+
+
+@pytest.mark.parametrize(("written", "known"), [
+    ("3 450 000", 3_451_234.0),
+    ("1 200 000", 1_205_678.0),
+    ("200 000", 201_500.0),
+])
+def test_a_grouped_round_figure_is_a_legitimate_rounding(written, known):
+    # L'autre direction : resserrer un vérificateur est le moment exact où on
+    # le rend trop strict. Ces trois-là sont des arrondis que n'importe quel
+    # rédacteur écrirait, à moins d'un pour cent de la valeur réelle.
+    blocks = [Paragraph(text=f"Le marché pèse {written} € selon l'étude citée.")]
+    assert orphan_numbers(blocks, {"marche": _fact("marche", known)}, []) == []
+
+
+def test_a_fact_worth_a_hundredth_of_a_figure_does_not_source_it():
+    # La branche pourcentage n'a de sens que pour une fraction. Sans cette
+    # borne, un effectif de 65 personnes rendait « 6 500 € » traçable.
+    blocks = [Paragraph(text="Un investissement de 6 500 € pour le nouveau site.")]
+    orphans = orphan_numbers(blocks, {"effectif": _fact("effectif", 65)}, [])
+    assert [o.value for o in orphans] == [6_500]
+
+
 def test_an_invented_figure_close_to_a_real_one_is_still_an_orphan():
     # Le défaut qu'une première version laissait passer : 62 700 n'est pas un
     # arrondi de 60 000, mais un comparateur qui essayait toutes les précisions

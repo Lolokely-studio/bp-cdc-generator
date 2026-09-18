@@ -88,6 +88,15 @@ def _written_step(written: str) -> float:
     if "," in written:
         return 10 ** -len(written.split(",", 1)[1])
     digits = written.lstrip("-")
+    # Les séparateurs de milliers partent AVANT le comptage. Sans cela,
+    # `rstrip("0")` s'arrête au premier séparateur rencontré depuis la droite :
+    # « 200 000 » ne rendrait que trois zéros de fin au lieu de cinq, et
+    # l'écriture serait créditée d'une précision au millier qu'elle ne
+    # revendique pas. Conséquence mesurée : « 3 450 000 » face à 3 451 234 —
+    # trente-six millièmes de pour cent d'écart, l'arrondi le plus banal qui
+    # soit — était refusé comme chiffre inventé.
+    for separator in _SEPARATORS:
+        digits = digits.replace(separator, "")
     trailing = len(digits) - len(digits.rstrip("0"))
     return float(10 ** trailing)
 
@@ -110,10 +119,19 @@ def _matches(candidate: Written, known: float) -> bool:
     par l'exemple.
 
     Un taux stocké en fraction — 0,65 — s'écrit aussi en pourcentage, d'où le
-    second essai sur `known * 100`.
+    second essai sur `known * 100`, réservé aux valeurs entre zéro et un :
+    au-delà, ce n'est pas un taux, et l'essayer quand même ferait passer pour
+    sourcé tout chiffre valant cent fois un fait quelconque.
     """
     step = _written_step(candidate.written)
-    for reference in (known, known * 100):
+    references = [known]
+    # La forme pourcentage n'a de sens que pour une fraction. L'essayer sur
+    # toute valeur rend traçable n'importe quel chiffre qui vaut cent fois un
+    # fait : un effectif de 65 personnes suffisait à faire passer « 6 500 € »
+    # pour un montant sourcé.
+    if 0 < known <= 1:
+        references.append(known * 100)
+    for reference in references:
         gap = abs(candidate.value - reference)
         if gap > step / 2:
             continue
