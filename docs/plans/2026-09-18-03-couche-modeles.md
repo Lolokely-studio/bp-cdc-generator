@@ -1364,26 +1364,31 @@ git commit -m "feat(llm): modèle simulé déterministe pour le graphe hors lign
 
 **Fichiers :**
 - Créer : `backend/app/llm/transport.py`, `backend/tests/test_transport.py`, `backend/tests/test_network_providers.py`
-- Modifier : `backend/pyproject.toml` (dépendance `openai`, marqueur `network`), `backend/uv.lock` (produit par `uv add`)
+- Modifier : `backend/pyproject.toml` (dépendance `openai`, marqueur `network`), `backend/uv.lock` (produit par `uv add`), `backend/app/main.py` (fermeture des clients au cycle de vie)
 
 **Interfaces :**
 - Consomme (tâche 1) : `Provider`, `api_key_for`, `PROVIDERS` ; `ModelUnavailable`, `ProviderUnavailable` ; `estimate_tokens` ; `Message`, `Completion`.
 - Produit :
   - `REQUEST_TIMEOUT_SECONDS = 60.0`, `STREAM_TIMEOUT_SECONDS = 180.0`
-  - `client_for(provider, *, timeout, http_client=None) -> AsyncOpenAI`
+  - `client_for(provider, *, http_client=None) -> AsyncOpenAI` — mémoïsé par fournisseur
+  - `async close_clients() -> None`
   - `async chat(provider, model, messages, *, schema=None, http_client=None) -> Completion`
   - `async stream_chat(provider, model, messages, *, http_client=None) -> AsyncIterator[str]`
 
 **Les cinq fournisseurs, une seule interface.** Vérifié pour chacun : Gemini expose `…/v1beta/openai/`, Mistral `api.mistral.ai/v1`, Groq `api.groq.com/openai/v1`, NVIDIA `integrate.api.nvidia.com/v1`, OpenRouter `openrouter.ai/api/v1`. Tous parlent *Chat Completions*. Un adaptateur, cinq URL de base.
 
-**Deux décisions à porter dans le code, avec leur raison :**
+**Quatre décisions à porter dans le code, avec leur raison :**
 
-1. **`max_retries=0`.** Par défaut le client `openai` réessaie un 429 tout seul. Il brûlerait le quota que la bascule cherche à préserver, et masquerait au passage l'information dont la passerelle a besoin pour changer de fournisseur.
-2. **Un 400, un 404 ou un 410 accuse le modèle, pas le fournisseur.** Le pseudo-code du §5.3 range tous les échecs au niveau du fournisseur. C'est trop grossier : un modèle gratuit retiré du catalogue — le cas explicitement prévu dans les parades — répond 404 ou 410, et basculer de fournisseur abandonnerait les modèles suivants encore valides. 429 et 5xx restent au niveau du fournisseur.
+1. **Un client par fournisseur, mémoïsé, fermé au cycle de vie.** Un client neuf par appel rouvrirait une connexion TLS à chaque fois — une soixantaine de poignées de main par projet — et laisserait derrière lui un pool de connexions que personne ne ferme. C'est le même raisonnement que `app.core.db.pool()`, et la même forme. Conséquence : le délai ne vit plus dans le client mais sur chaque appel, les deux usages n'ayant pas la même patience.
+
+2. **`max_retries=0`.** Par défaut le client `openai` réessaie un 429 tout seul. Il brûlerait le quota que la bascule cherche à préserver, et masquerait au passage l'information dont la passerelle a besoin pour changer de fournisseur.
+
+3. **Un 400, un 404 ou un 410 accuse le modèle, pas le fournisseur.** Le pseudo-code du §5.3 range tous les échecs au niveau du fournisseur. C'est trop grossier : un modèle gratuit retiré du catalogue — le cas explicitement prévu dans les parades — répond 404 ou 410, et basculer de fournisseur abandonnerait les modèles suivants encore valides. 429 et 5xx restent au niveau du fournisseur.
 
    Le 410 vient de la campagne réseau, qui a trouvé `minimaxai/minimax-m3` répondant « Gone » : c'est littéralement « cette ressource a disparu définitivement », donc exactement le cas que cette règle existe pour traiter.
 
-**Ce qu'on n'envoie pas.** Pas de `response_format={"type": "json_object"}`. Les cinq paliers gratuits ne le gèrent pas de la même façon et un refus se traduirait par un 400, c'est-à-dire un modèle déclaré mort à tort. Le plus petit dénominateur commun est le texte ; la consigne « réponds en JSON » vit dans le prompt et la validation de schéma rattrape le reste — c'est exactement ce que la spec appelle « sortie hors schéma → modèle suivant ».
+
+4. **Tout échec sort d'ici classé.** La passerelle ne sait agir que sur `ModelUnavailable` et `ProviderUnavailable` ; une exception d'une autre nature qui remonterait brute ne lui laisserait rien à quoi se raccrocher. Le flux se garde déjà des trames sans choix ; l'appel simple doit en faire autant, sinon un 200 au `choices` vide sort en `IndexError`.**Ce qu'on n'envoie pas.** Pas de `response_format={"type": "json_object"}`. Les cinq paliers gratuits ne le gèrent pas de la même façon et un refus se traduirait par un 400, c'est-à-dire un modèle déclaré mort à tort. Le plus petit dénominateur commun est le texte ; la consigne « réponds en JSON » vit dans le prompt et la validation de schéma rattrape le reste — c'est exactement ce que la spec appelle « sortie hors schéma → modèle suivant ».
 
 **Les tests exercent le vrai client.** Un `MockTransport` est branché **sous** `AsyncOpenAI` : le découpage des flux, l'analyse des réponses et la classification des statuts passent par le code réel du SDK, pas par une imitation.
 
@@ -1420,11 +1425,12 @@ import json
 
 import httpx2
 import pytest
+import pytest_asyncio
 from pydantic import BaseModel
 
 from app.llm.errors import ModelUnavailable, ProviderUnavailable
 from app.llm.providers import PROVIDERS
-from app.llm.transport import chat, client_for, stream_chat
+from app.llm.transport import chat, client_for, close_clients, stream_chat
 from app.llm.types import Message
 
 PROVIDER = PROVIDERS["groq"]
@@ -1458,6 +1464,15 @@ def _answer(content: str, usage: dict | None = None) -> dict:
 
 def _client(handler) -> httpx2.AsyncClient:
     return httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _close_shared_clients():
+    """Les clients partagés vivent dans le module : sans fermeture entre deux
+    cas, un test en laisserait un ouvert au suivant et le processus finirait
+    avec cinq pools de connexions inutiles."""
+    yield
+    await close_clients()
 
 
 def _replying(status: int, body: dict):
@@ -1556,15 +1571,39 @@ async def test_an_unreachable_host_blames_the_provider():
     assert error.value.issue == "erreur"
 
 
+async def test_an_answer_without_choices_blames_the_model():
+    # Un 200 avec une liste de choix vide arrive sur les paliers gratuits. Il
+    # doit sortir classé comme tout le reste, pas en IndexError.
+    handler = _replying(200, {
+        "id": "cmpl-1", "object": "chat.completion", "created": 0,
+        "model": MODEL, "choices": [],
+    })
+    with pytest.raises(ModelUnavailable):
+        await chat(PROVIDER, MODEL, MESSAGES, http_client=_client(handler))
+
+
 async def test_the_client_never_retries_on_its_own():
     # Un repli interne au SDK brûlerait le quota que la bascule préserve, et
     # cacherait à la passerelle l'information qui lui sert à décider.
-    assert client_for(PROVIDER, timeout=1.0).max_retries == 0
+    assert client_for(PROVIDER).max_retries == 0
+
+
+async def test_the_same_provider_reuses_one_client():
+    # Un client neuf par appel rouvrirait une connexion TLS à chaque fois et
+    # laisserait un pool que personne ne ferme.
+    assert client_for(PROVIDER) is client_for(PROVIDER)
+
+
+async def test_an_injected_transport_is_never_shared():
+    # Le client d'un test lui appartient : le mettre en cache le ferait fuiter
+    # dans le cas suivant.
+    handler = _replying(200, _answer("Une phrase."))
+    assert client_for(PROVIDER, http_client=_client(handler)) is not client_for(PROVIDER)
 
 
 async def test_every_base_url_is_carried_to_the_client():
     for provider in PROVIDERS.values():
-        assert str(client_for(provider, timeout=1.0).base_url).startswith(
+        assert str(client_for(provider).base_url).startswith(
             provider.base_url.rstrip("/")
         )
 
@@ -1676,28 +1715,57 @@ REQUEST_TIMEOUT_SECONDS = 60.0
 STREAM_TIMEOUT_SECONDS = 180.0
 
 
-def client_for(
-    provider: Provider, *, timeout: float, http_client: httpx2.AsyncClient | None = None
-) -> AsyncOpenAI:
-    """Un seul adaptateur pour les cinq fournisseurs : tous exposent l'API
-    Chat Completions d'OpenAI, seule l'URL de base change.
+# Un client par fournisseur, gardé pour la durée du processus. Le construire
+# à chaque appel rouvrirait une connexion TLS à chaque fois et laisserait
+# derrière lui un pool de connexions que personne ne ferme : `close_clients`
+# est le pendant de ce dictionnaire, et le cycle de vie de l'application
+# l'appelle à l'arrêt.
+_clients: dict[str, AsyncOpenAI] = {}
 
-    `max_retries=0` est essentiel. Le client réessaie un 429 par défaut : il
+
+def _build_client(provider: Provider, http_client: httpx2.AsyncClient | None) -> AsyncOpenAI:
+    """`max_retries=0` est essentiel. Le client réessaie un 429 par défaut : il
     brûlerait le quota que la bascule préventive cherche à préserver, et
     cacherait à la passerelle l'information qui lui sert à changer de
     fournisseur. Le repli est notre affaire, pas celle du SDK.
 
-    `http_client` n'est renseigné que par les tests, qui y branchent un
-    transport simulé et exercent ainsi le vrai code du client — découpage des
-    flux et classification des statuts compris.
+    Aucun délai n'est posé ici : un appel court et une rédaction en flux n'ont
+    pas la même patience, et le délai se passe donc à chaque requête.
     """
     return AsyncOpenAI(
         api_key=api_key_for(provider),
         base_url=provider.base_url,
-        timeout=timeout,
         max_retries=0,
         http_client=http_client,
     )
+
+
+def client_for(
+    provider: Provider, *, http_client: httpx2.AsyncClient | None = None
+) -> AsyncOpenAI:
+    """Un seul adaptateur pour les cinq fournisseurs : tous exposent l'API
+    Chat Completions d'OpenAI, seule l'URL de base change.
+
+    `http_client` n'est renseigné que par les tests, qui y branchent un
+    transport simulé et exercent ainsi le vrai code du client — découpage des
+    flux et classification des statuts compris. Un client ainsi fabriqué n'est
+    pas partagé : il appartient au test, qui le jette.
+    """
+    if http_client is not None:
+        return _build_client(provider, http_client)
+    if provider.name not in _clients:
+        _clients[provider.name] = _build_client(provider, None)
+    return _clients[provider.name]
+
+
+async def close_clients() -> None:
+    """Ferme les clients partagés. Appelée à l'arrêt de l'application : sans
+    elle, les pools de connexions survivraient au processus qui les a ouverts.
+    Les tests s'en servent aussi, pour ne pas se passer un client d'un cas à
+    l'autre."""
+    while _clients:
+        _, client = _clients.popitem()
+        await client.close()
 
 
 def _fail(provider: Provider, model: str, error: Exception) -> NoReturn:
@@ -1760,13 +1828,19 @@ async def chat(
     paliers gratuits ne le gèrent pas de la même façon et un refus se
     traduirait par un 400, c'est-à-dire par un modèle déclaré mort à tort.
     La consigne JSON vit dans le prompt, `_parse` rattrape le reste."""
-    client = client_for(provider, timeout=REQUEST_TIMEOUT_SECONDS, http_client=http_client)
+    client = client_for(provider, http_client=http_client)
     try:
         response = await client.chat.completions.create(
-            model=model, messages=_as_payload(messages)
+            model=model, messages=_as_payload(messages), timeout=REQUEST_TIMEOUT_SECONDS
         )
     except OpenAIError as error:
         _fail(provider, model, error)
+
+    # Certains paliers gratuits répondent 200 avec une liste de choix vide.
+    # Sans ce garde-fou, l'`IndexError` remonterait brute et la passerelle
+    # n'aurait rien à quoi se raccrocher : tout échec doit sortir d'ici classé.
+    if not response.choices:
+        raise ModelUnavailable(model, "réponse sans choix")
 
     text = response.choices[0].message.content or ""
     usage = getattr(response, "usage", None)
@@ -1793,10 +1867,13 @@ async def stream_chat(
     """Les fragments, dans l'ordre. Une rupture après le premier fragment est
     traitée par la passerelle, seule à savoir qu'il faut alors repartir sur
     le fournisseur suivant plutôt que sur le modèle suivant."""
-    client = client_for(provider, timeout=STREAM_TIMEOUT_SECONDS, http_client=http_client)
+    client = client_for(provider, http_client=http_client)
     try:
         stream = await client.chat.completions.create(
-            model=model, messages=_as_payload(messages), stream=True
+            model=model,
+            messages=_as_payload(messages),
+            stream=True,
+            timeout=STREAM_TIMEOUT_SECONDS,
         )
     except OpenAIError as error:
         _fail(provider, model, error)
@@ -1814,7 +1891,28 @@ async def stream_chat(
         _fail(provider, model, error)
 ```
 
-- [ ] **Étape 5 : lancer et vérifier le succès**
+- [ ] **Étape 5 : fermer les clients à l'arrêt de l'application**
+
+Sans cela, les pools de connexions des cinq fournisseurs survivent au processus
+qui les a ouverts. `backend/app/main.py` a déjà le point d'accroche : son
+`lifespan` ferme le pool PostgreSQL dans un `finally`. Ajouter la fermeture des
+clients dans le même `finally` :
+
+```python
+    try:
+        yield
+    finally:
+        await close_clients()
+        await connection_pool.close()
+```
+
+et l'import correspondant en tête de fichier :
+
+```python
+from app.llm.transport import close_clients
+```
+
+- [ ] **Étape 6 : lancer et vérifier le succès**
 
 Run : `uv run pytest tests/test_transport.py -v`
 Attendu : tous verts, `test_network_providers.py` non collecté (`addopts` l'exclut).
@@ -1824,11 +1922,12 @@ Vérifier aussi que la campagne réseau se lance bien, sans exiger qu'elle passe
 Run : `ESQUISSE_NETWORK_TESTS=1 uv run pytest -m network -v`
 Attendu : les cinq cas sont collectés. **Reporter le résultat tel quel dans le compte rendu de tâche** — un modèle mort est une information pour le catalogue, pas un échec de la tâche.
 
-- [ ] **Étape 6 : commit**
+- [ ] **Étape 7 : commit**
 
 ```bash
-git add backend/app/llm/transport.py backend/tests/test_transport.py \
-        backend/tests/test_network_providers.py backend/pyproject.toml backend/uv.lock
+git add backend/app/llm/transport.py backend/app/main.py \
+        backend/tests/test_transport.py backend/tests/test_network_providers.py \
+        backend/pyproject.toml backend/uv.lock
 git commit -m "feat(llm): adaptateur compatible OpenAI pour les cinq fournisseurs"
 ```
 
