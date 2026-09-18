@@ -95,12 +95,23 @@ def _gross_margin_rate(facts: dict[str, Fact]) -> float | None:
 
 
 def _investments(facts: dict[str, Fact]) -> float | None:
-    """Les deux montants sont requis par la section qui les demande. Un `or 0.0`
-    y lirait zéro pour une réponse « je ne sais pas » et sous-estimerait
-    l'investissement dans trois tableaux à la fois — dont l'amortissement qui
-    entre au compte de résultat."""
+    """Les deux montants ne pèsent pas pareil, et les templates le disent.
+
+    `investissements_initiaux` est REQUIS par les deux sections qui le
+    demandent : sans lui, on ne calcule pas. `budget_developpement` n'est
+    qu'UTILE, et sa consigne écrit « s'il est fourni » — un restaurant ou un
+    commerce n'a pas de développement technique, et c'est un projet ordinaire,
+    pas une question restée sans réponse. D'où `_optional` pour l'un et
+    `_value` pour l'autre.
+
+    Une première correction les avait rendus requis tous les deux. Elle
+    fermait bien la fuite du « je ne sais pas » lu comme zéro, mais retirait
+    au passage le compte de résultat et les deux plans de financement à tout
+    projet sans budget de développement — sur-correction du même défaut, dans
+    l'autre sens.
+    """
     initial = _value(facts, "investissements_initiaux")
-    development = _value(facts, "budget_developpement")
+    development = _optional(facts, "budget_developpement")
     if initial is None or development is None:
         return None
     return initial + development

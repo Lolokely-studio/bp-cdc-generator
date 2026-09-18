@@ -107,13 +107,30 @@ def test_an_unanswered_required_fact_withholds_the_plan(libelle, surcharge, atte
     assert (result is None) == (attendu is None)
 
 
-def test_a_question_never_asked_reads_as_zero():
-    # L'autre moitié de la règle : un projet sans emprunt est un projet
-    # ordinaire, et la clé peut simplement ne pas être là.
-    facts = {k: v for k, v in COMPLETE.items() if k != "emprunt_montant"}
+@pytest.mark.parametrize("absent", ["emprunt_montant", "aides_subventions", "budget_developpement"])
+def test_a_question_never_asked_reads_as_zero(absent):
+    """L'autre moitié de la règle, et la moitié qu'une première correction
+    avait cassée.
+
+    Un projet sans emprunt, sans subvention ou sans budget de développement
+    est un projet ordinaire — un restaurant, un commerce — et la clé peut
+    simplement ne pas être là. Les trois sont `faits_utiles` et non
+    `faits_requis` dans les templates, et la consigne du budget de
+    développement écrit « s'il est fourni ».
+    """
+    facts = {k: v for k, v in COMPLETE.items() if k != absent}
     assumptions = build_assumptions("plan_financement_initial", facts)
+    assert assumptions is not None, f"un projet sans {absent} perd son plan de financement"
+
+
+def test_a_project_without_a_development_budget_keeps_its_income_statement():
+    # Le chemin que la sur-correction retirait : l'amortissement passe par
+    # `_investments`, donc le compte de résultat disparaissait avec lui.
+    facts = {k: v for k, v in COMPLETE.items() if k != "budget_developpement"}
+    assumptions = build_assumptions("compte_resultat_3ans", facts)
     assert assumptions is not None
-    assert assumptions.loan == 0.0
+    # 20 000 d'investissement initial seul, amorti sur trois ans.
+    assert assumptions.depreciation == pytest.approx(20_000 / 3)
 
 
 def test_the_working_capital_comes_from_the_payment_delay():
