@@ -1,3 +1,5 @@
+import pytest
+
 from app.agent.finance import BreakEvenAssumptions, run_computation
 from app.agent.numbers import extract_numbers, orphan_numbers
 from app.agent.state import BulletList, Fact, Paragraph, Placeholder, Table
@@ -44,6 +46,24 @@ def test_a_rounded_computation_output_is_not_an_orphan():
 def test_a_percentage_matches_a_rate_stored_as_a_fraction():
     blocks = [Paragraph(text="La marge brute atteint 65 %.")]
     assert orphan_numbers(blocks, {"taux": _fact("taux", 0.65)}, []) == []
+
+
+def test_an_invented_figure_close_to_a_real_one_is_still_an_orphan():
+    # Le défaut qu'une première version laissait passer : 62 700 n'est pas un
+    # arrondi de 60 000, mais un comparateur qui essayait toutes les précisions
+    # l'acceptait dans le godet « 6 × 10⁴ ».
+    blocks = [Paragraph(text="Le budget de développement est de 62 700 €.")]
+    orphans = orphan_numbers(blocks, {"budget": _fact("budget", 60_000)}, [])
+    assert [o.value for o in orphans] == [62_700]
+
+
+@pytest.mark.parametrize("invented", ["150 000", "200 000", "249 000"])
+def test_a_figure_in_the_neighbourhood_of_a_computation_is_not_a_rounding(invented):
+    # Les trois que la relecture a exhibés. « 200 000 » est le plus retors :
+    # 184 615,38 tombe bien dans l'intervalle que ses cinq zéros désignent,
+    # mais 8 % d'écart ne se lit pas comme un arrondi.
+    blocks = [Paragraph(text=f"Il faut réaliser {invented} € pour couvrir les charges.")]
+    assert orphan_numbers(blocks, {}, [THRESHOLD])
 
 
 def test_an_invented_number_is_an_orphan():

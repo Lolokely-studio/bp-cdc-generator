@@ -70,33 +70,58 @@ def extract_numbers(blocks: list[Block]) -> list[Written]:
     return found
 
 
-def _decimals(written: str) -> int:
-    _, _, fraction = written.partition(",")
-    return len(fraction)
+# Au-delà de cet écart relatif, un nombre n'est plus l'arrondi d'un autre mais
+# un autre nombre. Le garde-fou existe parce que les zéros de fin sont
+# ambigus : « 200 000 » peut annoncer une précision à la centaine de mille —
+# auquel cas 184 615 tomberait dans son intervalle — ou être exact. On tranche
+# en refusant les écarts que personne ne lirait comme un arrondi.
+_RELATIVE_TOLERANCE = 0.05
+
+
+def _written_step(written: str) -> float:
+    """L'échelle que l'écriture annonce.
+
+    « 184 615,38 » annonce le centième, « 184 600 » la centaine, « 200 000 »
+    la centaine de mille. C'est cette échelle, et non celle de la source, qui
+    dit quel écart le texte revendique.
+    """
+    if "," in written:
+        return 10 ** -len(written.split(",", 1)[1])
+    digits = written.lstrip("-")
+    trailing = len(digits) - len(digits.rstrip("0"))
+    return float(10 ** trailing)
 
 
 def _matches(candidate: Written, known: float) -> bool:
-    """Compare à la précision de ce qui est écrit, pas à celle de la source.
+    """Le nombre écrit est-il une lecture arrondie de la valeur connue ?
 
     Le modèle arrondit, et c'est souhaitable : « environ 184 600 € » se lit
-    mieux que la valeur exacte. On arrondit donc la valeur connue au même
-    nombre de chiffres significatifs que le texte en a retenu, puis on
-    compare. Un taux stocké en fraction — 0,65 — se retrouve aussi écrit en
-    pourcentage, d'où le second essai.
+    mieux que la valeur exacte. Deux conditions, et il faut les deux.
+
+    La première : la valeur connue tombe dans l'intervalle que l'écriture
+    désigne. « 184 600 » désigne [184 550, 184 650[, où 184 615,38 se trouve.
+    « 62 700 » désigne [62 650, 62 750[, où 60 000 ne se trouve pas.
+
+    La seconde : l'écart relatif reste petit. Elle existe pour les zéros de
+    fin, qui sur-annoncent la tolérance — sans elle, « 200 000 » vaudrait pour
+    n'importe quoi entre 150 000 et 250 000, et le vérificateur laisserait
+    passer une bande de ±35 % autour de chaque valeur réelle. C'est le défaut
+    qu'une première version de ce plan avait, et qu'une relecture a démontré
+    par l'exemple.
+
+    Un taux stocké en fraction — 0,65 — s'écrit aussi en pourcentage, d'où le
+    second essai sur `known * 100`.
     """
+    step = _written_step(candidate.written)
     for reference in (known, known * 100):
+        gap = abs(candidate.value - reference)
+        if gap > step / 2:
+            continue
         if reference == 0:
             if candidate.value == 0:
                 return True
             continue
-        decimals = _decimals(candidate.written)
-        # Nombre de chiffres significatifs conservés par le texte.
-        magnitude = len(str(int(abs(reference)))) if abs(reference) >= 1 else 1
-        for kept in range(1, magnitude + 1):
-            factor = 10 ** (magnitude - kept)
-            if round(reference / factor) * factor == round(candidate.value / factor) * factor:
-                return True
-        if round(reference, decimals) == round(candidate.value, decimals):
+        if gap / abs(reference) <= _RELATIVE_TOLERANCE:
             return True
     return False
 

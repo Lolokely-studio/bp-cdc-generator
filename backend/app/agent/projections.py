@@ -135,10 +135,18 @@ async def reproject(
     fusionner. Fusionner reviendrait à faire survivre une donnée que le
     graphe ne connaît plus, ce qui est exactement la divergence qu'on répare.
     """
-    async with conn.cursor() as cur:
-        await cur.execute("delete from facts where project_id = %s", (project_id,))
-        await cur.execute("delete from sections where project_id = %s", (project_id,))
-    await save_facts(conn, project_id, facts)
-    for ref, blocks, statut, note, revisions in sections:
-        await save_section(conn, project_id, ref, blocks=blocks, statut=statut,
-                           note=note, revisions=revisions)
+    # Une seule transaction : la connexion est en `autocommit`, donc sans ce
+    # bloc les effacements et les réécritures seraient validés un par un. Or
+    # cette fonction ne tourne qu'en réparation d'une divergence, c'est-à-dire
+    # dans les circonstances où une coupure est le plus probable — et une
+    # coupure entre les deux moitiés laisserait le projet vide, ni l'ancien
+    # état ni le nouveau. Un seul aller-retour de transaction sur une seule
+    # connexion : le pooler en mode transaction le supporte.
+    async with conn.transaction():
+        async with conn.cursor() as cur:
+            await cur.execute("delete from facts where project_id = %s", (project_id,))
+            await cur.execute("delete from sections where project_id = %s", (project_id,))
+        await save_facts(conn, project_id, facts)
+        for ref, blocks, statut, note, revisions in sections:
+            await save_section(conn, project_id, ref, blocks=blocks, statut=statut,
+                               note=note, revisions=revisions)
