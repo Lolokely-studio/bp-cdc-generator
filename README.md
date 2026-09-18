@@ -32,6 +32,17 @@ uv run alembic upgrade head      # migrations
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
+Ces commandes visent la base jetable de `docker-compose.yml`, qui est aussi la
+valeur par défaut de la configuration : **sans fichier `.env`, tout fonctionne
+en local sans rien régler.**
+
+Si vous placez un `.env` dans `backend/`, il l'emporte sur ces valeurs par
+défaut. S'il pointe vers une base distante, `alembic upgrade head` refusera de
+s'exécuter en nommant l'hôte — c'est voulu, voir « Déployer ». Gardez donc des
+valeurs locales dans votre `.env`, ou pas de `.env` du tout : les identifiants
+de production se renseignent dans le tableau de bord de l'hébergeur, pas sur
+votre disque.
+
 `curl localhost:8000/health` doit répondre `{"statut":"ok"}`.
 
 ### Déployer
