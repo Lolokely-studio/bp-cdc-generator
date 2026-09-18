@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     # préfixe au nom Python.
     fake_llm: bool = Field(default=False, validation_alias="ESQUISSE_FAKE_LLM")
 
+    # Paliers gratuits des cinq fournisseurs de modèles. Le nom d'attribut
+    # donne la variable d'environnement en majuscules : `gemini_api_key` lit
+    # `GEMINI_API_KEY`, conformément au §11 de la spec. Valeur vide par
+    # défaut, ce qui vaut « non configuré » et fait sauter le fournisseur.
+    gemini_api_key: str = ""
+    mistral_ai_api_key: str = ""
+    openrouter_api_key: str = ""
+    nvidia_api_key: str = ""
+    groq_cloud_api_key: str = ""
+
     @property
     def dsn(self) -> str:
         """DSN PostgreSQL construit à partir des variables SUPABASE_DB_*."""

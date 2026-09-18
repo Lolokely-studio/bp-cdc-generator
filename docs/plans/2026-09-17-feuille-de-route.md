@@ -70,7 +70,11 @@ Relecture des consignes et des grilles des 30 sections, plafond par compte, réi
 
 - [x] Plan 1 — **livré et fusionné** : [2026-09-17-01-socle-backend.md](2026-09-17-01-socle-backend.md) — 59 tests
 - [x] Restructuration — **livrée et fusionnée** : [2026-09-18-02-restructuration.md](2026-09-18-02-restructuration.md)
-- [ ] Plan 2 — **à écrire** : couche modèles (routes, compteurs de quota, repli, modèle simulé)
+- [x] Plan 2 — **livré et fusionné** : [2026-09-18-03-couche-modeles.md](2026-09-18-03-couche-modeles.md) — 149 tests
+      Cinq fournisseurs derrière un seul adaptateur compatible OpenAI, trois routes,
+      compteurs sur `llm_usage`, bascule préventive, repli, modèle simulé déterministe.
+      Le catalogue Mistral a été mesuré sur la clé réelle : la famille `mistral-small`
+      répond 429 dès le premier appel, `ministral-8b` et `ministral-3b` répondent.
 - [ ] Plan 3
 - [ ] Plan 4
 - [ ] Plan 5

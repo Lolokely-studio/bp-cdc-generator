@@ -17,6 +17,22 @@ services:
         sync: false
       - key: SUPABASE_DB_NAME
         sync: false
+      # Paliers gratuits des fournisseurs de modèles. `sync: false` veut dire
+      # « saisie dans le tableau de bord, jamais dans le dépôt ».
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: MISTRAL_AI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: GROQ_CLOUD_API_KEY
+        sync: false
+      # Explicite plutôt qu'implicite : en production le modèle simulé doit
+      # être éteint, et le lire dans le fichier vaut mieux que le déduire.
+      - key: ESQUISSE_FAKE_LLM
+        value: "false"
 
   # Image officielle épinglée. Un service déployé depuis une image
   # pré-construite ne se redéploie pas tout seul : c'est voulu ici.

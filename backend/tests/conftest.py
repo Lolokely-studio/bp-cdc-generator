@@ -17,6 +17,31 @@ os.environ["SUPABASE_DB_USER"] = "esquisse"
 os.environ["SUPABASE_DB_PASSWORD"] = "esquisse"
 os.environ["SUPABASE_DB_NAME"] = "esquisse_test"
 
+# Les clés des fournisseurs de modèles subissent le même traitement, pour la
+# même raison : le `.env` en contient de vraies. Aucun test de la suite
+# ordinaire ne joint un fournisseur, mais une valeur fixe rend aussi les
+# assertions déterministes — sans elle, « ce fournisseur est configuré »
+# dépendrait du poste sur lequel la suite tourne.
+#
+# L'exception est la campagne marquée `network`, qui vérifie à la demande que
+# les URL de base et les noms de modèles sont encore valides. Elle réclame
+# les vraies clés et se lance explicitement :
+#     ESQUISSE_NETWORK_TESTS=1 uv run pytest -m network
+if os.environ.get("ESQUISSE_NETWORK_TESTS") != "1":
+    for _provider_key in (
+        "GEMINI_API_KEY",
+        "MISTRAL_AI_API_KEY",
+        "OPENROUTER_API_KEY",
+        "NVIDIA_API_KEY",
+        "GROQ_CLOUD_API_KEY",
+    ):
+        os.environ[_provider_key] = "cle-de-test"
+
+# Même raison pour le drapeau du modèle simulé : un développeur qui laisse
+# `ESQUISSE_FAKE_LLM=true` dans son `.env` ferait tourner une autre suite que
+# celle de l'intégration continue.
+os.environ["ESQUISSE_FAKE_LLM"] = "false"
+
 # Les imports de `app` viennent APRÈS les affectations ci-dessus. Aujourd'hui
 # `settings()` est paresseux et mémoïsé, donc l'ordre ne change rien — mais il
 # suffirait qu'un module appelle `settings()` à l'import pour que la configuration
@@ -69,4 +94,16 @@ def _fresh_rate_limit():
     qui consomme la limite fait échouer le suivant."""
     from app.auth import routes
     routes._account_limiter.reset()
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _fresh_pacers():
+    """L'espacement par seconde vit dans le processus, et le verrou d'un
+    `Pacer` se lie à la boucle d'événements de son premier appel. pytest-asyncio
+    en donne une neuve par test : sans remise à zéro, un test réutiliserait un
+    verrou lié à une boucle fermée et échouerait sans rapport avec son objet."""
+    from app.llm.budget import reset_pacers
+
+    reset_pacers()
     yield

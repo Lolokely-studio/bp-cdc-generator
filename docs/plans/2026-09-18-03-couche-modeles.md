@@ -330,10 +330,16 @@ class ModelUnavailable(LlmError):
     fournisseur courant.
     """
 
-    def __init__(self, model: str, reason: str) -> None:
+    def __init__(self, model: str, reason: str, tokens: int = 0) -> None:
         super().__init__(f"modèle {model} inutilisable : {reason}")
         self.model = model
         self.reason = reason
+        # Ce que l'essai a coûté malgré son échec. Deux des trois façons de
+        # lever cette erreur surviennent APRÈS un 200 : le fournisseur a traité
+        # le prompt et rédigé une réponse, il la facture. Laisser ce coût à
+        # zéro le ferait disparaître de la fenêtre de budget, et la bascule
+        # préventive autoriserait ensuite un appel que le fournisseur refuse.
+        self.tokens = tokens
 
 
 class ProviderUnavailable(LlmError):
@@ -451,11 +457,36 @@ PROVIDERS: dict[str, Provider] = {
         name="mistral",
         base_url="https://api.mistral.ai/v1",
         key_setting="mistral_ai_api_key",
-        models=("mistral-small-latest", "open-mistral-nemo"),
-        # 200 000 est la borne basse de la fourchette 200 000 – 315 000
-        # relevée sur le palier gratuit. On retient la borne basse : un
-        # budget qui sous-estime le plafond bascule trop tôt, l'inverse
-        # coupe une rédaction au milieu.
+        # Relevé à la main sur la clé du compte, contre les quotas publiés
+        # dans la console. Deux choses que la documentation ne dit pas :
+        #
+        # 1. Chez Mistral les plafonds sont PAR MODÈLE, pas par compte — de
+        #    20 000 à 20 000 000 jetons/minute selon le modèle. La structure
+        #    `Limits` les porte au niveau du fournisseur ; l'invariant qui
+        #    rend cette simplification sûre est que le plafond propre de
+        #    chaque modèle listé ici dépasse celui déclaré plus bas.
+        # 2. `mistral-small`, `mistral-medium` et `magistral-small` sont
+        #    exposés par `/v1/models` mais refusent chaque appel en 429, dès
+        #    le premier, sans rien avoir consommé ; `mistral-large` et
+        #    `labs-leanstral` répondent 403. Les trois retenus répondent.
+        #
+        # L'ordre compte doublement : un 429 est classé au niveau du
+        # fournisseur, donc un premier modèle qui refuse toujours ferait
+        # sauter Mistral des deux routes où il figure sans qu'aucun modèle
+        # vivant ne soit jamais essayé.
+        #
+        #   ministral-8b-latest   625 000 jetons/min   3,13 req/s
+        #   ministral-3b-latest 1 300 000 jetons/min  12,50 req/s
+        #   open-mistral-nemo    plafonds non publiés, répond
+        models=("ministral-8b-latest", "ministral-3b-latest", "open-mistral-nemo"),
+        # Un plancher qu'aucun modèle listé ci-dessus ne descend en dessous,
+        # et non une moyenne : le budget déclaré doit rester sous le plafond
+        # réel du modèle le plus contraint, `open-mistral-nemo` ne publiant
+        # pas les siens. Sous-estimer fait basculer un peu tôt, ce qui ne se
+        # voit pas ; surestimer coupe une rédaction au milieu, ce qui se voit.
+        # Même raisonnement pour `rps=1`, en dessous des 3,13 du 8b et des
+        # 12,50 du 3b : l'espacement coûte une seconde par appel sur un
+        # fournisseur qui n'est jamais premier de sa route.
         limits=Limits(tpm=200_000, rps=1),
     ),
     "openrouter": Provider(
@@ -567,6 +598,27 @@ if os.environ.get("ESQUISSE_NETWORK_TESTS") != "1":
         "GROQ_CLOUD_API_KEY",
     ):
         os.environ[_provider_key] = "cle-de-test"
+
+# Même raison pour le drapeau du modèle simulé : un développeur qui laisse
+# `ESQUISSE_FAKE_LLM=true` dans son `.env` ferait tourner une autre suite que
+# celle de l'intégration continue.
+os.environ["ESQUISSE_FAKE_LLM"] = "false"
+```
+
+Et, à la fin du fichier, une remise à zéro de l'espacement — dans `conftest.py`
+et non dans un fichier de tests, pour qu'elle vaille aussi pour ceux du plan 3 :
+
+```python
+@pytest.fixture(autouse=True)
+def _fresh_pacers():
+    """L'espacement par seconde vit dans le processus, et le verrou d'un
+    `Pacer` se lie à la boucle d'événements de son premier appel. pytest-asyncio
+    en donne une neuve par test : sans remise à zéro, un test réutiliserait un
+    verrou lié à une boucle fermée et échouerait sans rapport avec son objet."""
+    from app.llm.budget import reset_pacers
+
+    reset_pacers()
+    yield
 ```
 
 - [ ] **Étape 11 : déclarer les cinq clés côté production**
@@ -787,6 +839,20 @@ async def test_a_provider_without_published_ceiling_always_passes():
     await _seed("nvidia", rows=1, tokens=10_000_000)
     async with connection() as conn:
         assert await budget_available(conn, PROVIDERS["nvidia"], 100_000)
+
+
+async def test_a_refused_budget_writes_nothing():
+    # La première des deux décisions de cette tâche, et la seule chose qui
+    # l'empêche de se perdre : une bascule préventive n'a rien consommé, donc
+    # elle n'écrit pas. Sans ce test, un `insert` glissé un jour dans
+    # `budget_available` ne ferait échouer aucune assertion.
+    await _seed("gemini", rows=15)
+    async with connection() as conn:
+        assert not await budget_available(conn, PROVIDERS["gemini"], 1_000)
+        assert await budget_available(conn, PROVIDERS["groq"], 1_000)
+        async with conn.cursor() as cur:
+            await cur.execute("select count(*) from llm_usage")
+            assert (await cur.fetchone())[0] == 15
 
 
 async def test_record_usage_writes_one_row():
@@ -1349,27 +1415,36 @@ git commit -m "feat(llm): modèle simulé déterministe pour le graphe hors lign
 **Dispatchable en parallèle des tâches 2 et 3. Aucun fichier commun.**
 
 **Fichiers :**
-- Créer : `backend/app/llm/transport.py`, `backend/tests/test_transport.py`, `backend/tests/test_network_providers.py`
-- Modifier : `backend/pyproject.toml` (dépendance `openai`, marqueur `network`), `backend/uv.lock` (produit par `uv add`)
+- Créer : `backend/app/llm/transport.py`, `backend/tests/test_transport.py`, `backend/tests/test_network_providers.py`, `backend/tests/test_lifespan.py`
+- Modifier : `backend/pyproject.toml` (dépendance `openai`, marqueur `network`), `backend/uv.lock` (produit par `uv add`), `backend/app/main.py` (fermeture des clients au cycle de vie)
 
 **Interfaces :**
 - Consomme (tâche 1) : `Provider`, `api_key_for`, `PROVIDERS` ; `ModelUnavailable`, `ProviderUnavailable` ; `estimate_tokens` ; `Message`, `Completion`.
 - Produit :
   - `REQUEST_TIMEOUT_SECONDS = 60.0`, `STREAM_TIMEOUT_SECONDS = 180.0`
-  - `client_for(provider, *, timeout, http_client=None) -> AsyncOpenAI`
+  - `client_for(provider, *, http_client=None) -> AsyncOpenAI` — mémoïsé par fournisseur
+  - `async close_clients() -> None`
   - `async chat(provider, model, messages, *, schema=None, http_client=None) -> Completion`
   - `async stream_chat(provider, model, messages, *, http_client=None) -> AsyncIterator[str]`
 
 **Les cinq fournisseurs, une seule interface.** Vérifié pour chacun : Gemini expose `…/v1beta/openai/`, Mistral `api.mistral.ai/v1`, Groq `api.groq.com/openai/v1`, NVIDIA `integrate.api.nvidia.com/v1`, OpenRouter `openrouter.ai/api/v1`. Tous parlent *Chat Completions*. Un adaptateur, cinq URL de base.
 
-**Deux décisions à porter dans le code, avec leur raison :**
+**Quatre décisions à porter dans le code, avec leur raison :**
 
-1. **`max_retries=0`.** Par défaut le client `openai` réessaie un 429 tout seul. Il brûlerait le quota que la bascule cherche à préserver, et masquerait au passage l'information dont la passerelle a besoin pour changer de fournisseur.
-2. **Un 400 ou un 404 accuse le modèle, pas le fournisseur.** Le pseudo-code du §5.3 range tous les échecs au niveau du fournisseur. C'est trop grossier : un modèle gratuit retiré du catalogue — le cas explicitement prévu dans les parades — répond 404, et basculer de fournisseur abandonnerait les quatre modèles suivants encore valides. 429 et 5xx restent au niveau du fournisseur.
+1. **Un client par fournisseur, mémoïsé, fermé au cycle de vie.** Un client neuf par appel rouvrirait une connexion TLS à chaque fois — une soixantaine de poignées de main par projet — et laisserait derrière lui un pool de connexions que personne ne ferme. C'est le même raisonnement que `app.core.db.pool()`, et la même forme. Conséquence : le délai ne vit plus dans le client mais sur chaque appel, les deux usages n'ayant pas la même patience.
 
-**Ce qu'on n'envoie pas.** Pas de `response_format={"type": "json_object"}`. Les cinq paliers gratuits ne le gèrent pas de la même façon et un refus se traduirait par un 400, c'est-à-dire un modèle déclaré mort à tort. Le plus petit dénominateur commun est le texte ; la consigne « réponds en JSON » vit dans le prompt et la validation de schéma rattrape le reste — c'est exactement ce que la spec appelle « sortie hors schéma → modèle suivant ».
+2. **`max_retries=0`.** Par défaut le client `openai` réessaie un 429 tout seul. Il brûlerait le quota que la bascule cherche à préserver, et masquerait au passage l'information dont la passerelle a besoin pour changer de fournisseur.
 
-**Les tests exercent le vrai client.** `httpx.MockTransport` est branché **sous** `AsyncOpenAI` : le découpage des flux, l'analyse des réponses et la classification des statuts passent par le code réel du SDK, pas par une imitation.
+3. **Un 400, un 404 ou un 410 accuse le modèle, pas le fournisseur.** Le pseudo-code du §5.3 range tous les échecs au niveau du fournisseur. C'est trop grossier : un modèle gratuit retiré du catalogue — le cas explicitement prévu dans les parades — répond 404 ou 410, et basculer de fournisseur abandonnerait les modèles suivants encore valides. 429 et 5xx restent au niveau du fournisseur.
+
+   Le 410 vient de la campagne réseau, qui a trouvé `minimaxai/minimax-m3` répondant « Gone » : c'est littéralement « cette ressource a disparu définitivement », donc exactement le cas que cette règle existe pour traiter.
+
+
+4. **Tout échec sort d'ici classé.** La passerelle ne sait agir que sur `ModelUnavailable` et `ProviderUnavailable` ; une exception d'une autre nature qui remonterait brute ne lui laisserait rien à quoi se raccrocher. Le flux se garde déjà des trames sans choix ; l'appel simple doit en faire autant, sinon un 200 au `choices` vide sort en `IndexError`.**Ce qu'on n'envoie pas.** Pas de `response_format={"type": "json_object"}`. Les cinq paliers gratuits ne le gèrent pas de la même façon et un refus se traduirait par un 400, c'est-à-dire un modèle déclaré mort à tort. Le plus petit dénominateur commun est le texte ; la consigne « réponds en JSON » vit dans le prompt et la validation de schéma rattrape le reste — c'est exactement ce que la spec appelle « sortie hors schéma → modèle suivant ».
+
+**Les tests exercent le vrai client.** Un `MockTransport` est branché **sous** `AsyncOpenAI` : le découpage des flux, l'analyse des réponses et la classification des statuts passent par le code réel du SDK, pas par une imitation.
+
+**Et il doit venir de la bonne bibliothèque.** `openai` 3.x s'appuie sur **`httpx2`**, pas sur le `httpx` 0.x que la suite utilise par ailleurs pour le transport ASGI de FastAPI. Les deux cohabitent dans le verrou, et le SDK accepte sans broncher un client `httpx` 0.x qu'on lui injecte — ce qui ferait tester une pile HTTP que la production n'emprunte jamais. Le transport et ses tests utilisent donc `httpx2` ; `conftest.py` garde `httpx` pour l'ASGI, ce n'est pas le même usage.
 
 - [ ] **Étape 1 : ajouter la dépendance et le marqueur**
 
@@ -1400,13 +1475,14 @@ addopts = "-m 'not network'"
 ```python
 import json
 
-import httpx
+import httpx2
 import pytest
+import pytest_asyncio
 from pydantic import BaseModel
 
 from app.llm.errors import ModelUnavailable, ProviderUnavailable
 from app.llm.providers import PROVIDERS
-from app.llm.transport import chat, client_for, stream_chat
+from app.llm.transport import chat, client_for, close_clients, stream_chat
 from app.llm.types import Message
 
 PROVIDER = PROVIDERS["groq"]
@@ -1438,13 +1514,22 @@ def _answer(content: str, usage: dict | None = None) -> dict:
     return body
 
 
-def _client(handler) -> httpx.AsyncClient:
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+def _client(handler) -> httpx2.AsyncClient:
+    return httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _close_shared_clients():
+    """Les clients partagés vivent dans le module : sans fermeture entre deux
+    cas, un test en laisserait un ouvert au suivant et le processus finirait
+    avec cinq pools de connexions inutiles."""
+    yield
+    await close_clients()
 
 
 def _replying(status: int, body: dict):
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(status, json=body)
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(status, json=body)
 
     return handler
 
@@ -1506,6 +1591,16 @@ async def test_a_missing_model_blames_the_model_not_the_provider():
     assert error.value.model == MODEL
 
 
+async def test_a_withdrawn_model_blames_the_model():
+    # 410 Gone : « cette ressource a disparu définitivement ». Constaté en vrai
+    # sur minimaxai/minimax-m3 pendant la campagne réseau. Le traiter au niveau
+    # du fournisseur ferait abandonner ses autres modèles, encore vivants.
+    handler = _replying(410, {"error": {"message": "model retired"}})
+    with pytest.raises(ModelUnavailable) as error:
+        await chat(PROVIDER, MODEL, MESSAGES, http_client=_client(handler))
+    assert error.value.model == MODEL
+
+
 async def test_a_bad_request_blames_the_model():
     handler = _replying(400, {"error": {"message": "unsupported parameter"}})
     with pytest.raises(ModelUnavailable):
@@ -1520,23 +1615,71 @@ async def test_a_server_error_blames_the_provider():
 
 
 async def test_an_unreachable_host_blames_the_provider():
-    def handler(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("injoignable", request=request)
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        raise httpx2.ConnectError("injoignable", request=request)
 
     with pytest.raises(ProviderUnavailable) as error:
         await chat(PROVIDER, MODEL, MESSAGES, http_client=_client(handler))
     assert error.value.issue == "erreur"
 
 
+async def test_an_answer_without_choices_blames_the_model():
+    # Un 200 avec une liste de choix vide arrive sur les paliers gratuits. Il
+    # doit sortir classé comme tout le reste, pas en IndexError.
+    handler = _replying(200, {
+        "id": "cmpl-1", "object": "chat.completion", "created": 0,
+        "model": MODEL, "choices": [],
+    })
+    with pytest.raises(ModelUnavailable):
+        await chat(PROVIDER, MODEL, MESSAGES, http_client=_client(handler))
+
+
+async def test_an_answer_whose_choice_has_no_message_blames_the_model():
+    # Variante de la réponse creuse : le choix existe mais n'a pas de message.
+    # Le SDK construit ses modèles avec indulgence, l'attribut vaut alors None,
+    # et la lecture suivante lèverait une AttributeError que ni `_fail` ni la
+    # passerelle ne rattrapent — elle emporterait la route entière.
+    handler = _replying(200, {
+        "id": "cmpl-1", "object": "chat.completion", "created": 0, "model": MODEL,
+        "choices": [{"index": 0, "finish_reason": "stop"}],
+    })
+    with pytest.raises(ModelUnavailable):
+        await chat(PROVIDER, MODEL, MESSAGES, http_client=_client(handler))
+
+
+async def test_an_off_schema_answer_carries_what_it_cost():
+    # Le fournisseur a traité le prompt et rédigé une réponse : il la facture,
+    # même hors schéma. Le coût est connu une ligne avant le refus ; le perdre
+    # rendrait l'appel invisible à la fenêtre de budget.
+    content = "Je ne suis pas du JSON."
+    handler = _replying(200, _answer(content, usage={"total_tokens": 321}))
+    with pytest.raises(ModelUnavailable) as error:
+        await chat(PROVIDER, MODEL, MESSAGES, schema=Analysis, http_client=_client(handler))
+    assert error.value.tokens == 321
+
+
 async def test_the_client_never_retries_on_its_own():
     # Un repli interne au SDK brûlerait le quota que la bascule préserve, et
     # cacherait à la passerelle l'information qui lui sert à décider.
-    assert client_for(PROVIDER, timeout=1.0).max_retries == 0
+    assert client_for(PROVIDER).max_retries == 0
+
+
+async def test_the_same_provider_reuses_one_client():
+    # Un client neuf par appel rouvrirait une connexion TLS à chaque fois et
+    # laisserait un pool que personne ne ferme.
+    assert client_for(PROVIDER) is client_for(PROVIDER)
+
+
+async def test_an_injected_transport_is_never_shared():
+    # Le client d'un test lui appartient : le mettre en cache le ferait fuiter
+    # dans le cas suivant.
+    handler = _replying(200, _answer("Une phrase."))
+    assert client_for(PROVIDER, http_client=_client(handler)) is not client_for(PROVIDER)
 
 
 async def test_every_base_url_is_carried_to_the_client():
     for provider in PROVIDERS.values():
-        assert str(client_for(provider, timeout=1.0).base_url).startswith(
+        assert str(client_for(provider).base_url).startswith(
             provider.base_url.rstrip("/")
         )
 
@@ -1558,8 +1701,8 @@ async def test_the_stream_yields_the_deltas_in_order():
         for piece in chunks
     ) + "data: [DONE]\n\n"
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(
             200, headers={"content-type": "text/event-stream"}, content=events.encode()
         )
 
@@ -1626,7 +1769,7 @@ Attendu : ÉCHEC, `ModuleNotFoundError: No module named 'app.llm.transport'`.
 from collections.abc import AsyncIterator, Sequence
 from typing import NoReturn
 
-import httpx
+import httpx2
 from openai import (
     APIConnectionError,
     APIStatusError,
@@ -1648,38 +1791,70 @@ REQUEST_TIMEOUT_SECONDS = 60.0
 STREAM_TIMEOUT_SECONDS = 180.0
 
 
-def client_for(
-    provider: Provider, *, timeout: float, http_client: httpx.AsyncClient | None = None
-) -> AsyncOpenAI:
-    """Un seul adaptateur pour les cinq fournisseurs : tous exposent l'API
-    Chat Completions d'OpenAI, seule l'URL de base change.
+# Un client par fournisseur, gardé pour la durée du processus. Le construire
+# à chaque appel rouvrirait une connexion TLS à chaque fois et laisserait
+# derrière lui un pool de connexions que personne ne ferme : `close_clients`
+# est le pendant de ce dictionnaire, et le cycle de vie de l'application
+# l'appelle à l'arrêt.
+_clients: dict[str, AsyncOpenAI] = {}
 
-    `max_retries=0` est essentiel. Le client réessaie un 429 par défaut : il
+
+def _build_client(provider: Provider, http_client: httpx2.AsyncClient | None) -> AsyncOpenAI:
+    """`max_retries=0` est essentiel. Le client réessaie un 429 par défaut : il
     brûlerait le quota que la bascule préventive cherche à préserver, et
     cacherait à la passerelle l'information qui lui sert à changer de
     fournisseur. Le repli est notre affaire, pas celle du SDK.
 
-    `http_client` n'est renseigné que par les tests, qui y branchent un
-    transport simulé et exercent ainsi le vrai code du client — découpage des
-    flux et classification des statuts compris.
+    Aucun délai n'est posé ici : un appel court et une rédaction en flux n'ont
+    pas la même patience, et le délai se passe donc à chaque requête.
     """
     return AsyncOpenAI(
         api_key=api_key_for(provider),
         base_url=provider.base_url,
-        timeout=timeout,
         max_retries=0,
         http_client=http_client,
     )
+
+
+def client_for(
+    provider: Provider, *, http_client: httpx2.AsyncClient | None = None
+) -> AsyncOpenAI:
+    """Un seul adaptateur pour les cinq fournisseurs : tous exposent l'API
+    Chat Completions d'OpenAI, seule l'URL de base change.
+
+    `http_client` n'est renseigné que par les tests, qui y branchent un
+    transport simulé et exercent ainsi le vrai code du client — découpage des
+    flux et classification des statuts compris. Un client ainsi fabriqué n'est
+    pas partagé : il appartient au test, qui le jette.
+    """
+    if http_client is not None:
+        return _build_client(provider, http_client)
+    if provider.name not in _clients:
+        _clients[provider.name] = _build_client(provider, None)
+    return _clients[provider.name]
+
+
+async def close_clients() -> None:
+    """Ferme les clients partagés. Appelée à l'arrêt de l'application : sans
+    elle, les pools de connexions survivraient au processus qui les a ouverts.
+    Les tests s'en servent aussi, pour ne pas se passer un client d'un cas à
+    l'autre."""
+    while _clients:
+        _, client = _clients.popitem()
+        await client.close()
 
 
 def _fail(provider: Provider, model: str, error: Exception) -> NoReturn:
     """Traduit une erreur du client en décision de repli.
 
     Le pseudo-code du §5.3 range tous les échecs au niveau du fournisseur.
-    On y ajoute une distinction que l'exploitation impose : un 400 ou un 404
-    désigne **ce modèle-là**. Un modèle gratuit retiré du catalogue — le cas
-    annoncé dans les parades — répond 404, et basculer de fournisseur
-    reviendrait à abandonner ses autres modèles, encore valides.
+    On y ajoute une distinction que l'exploitation impose : un 400, un 404 ou
+    un 410 désigne **ce modèle-là**. Un modèle gratuit retiré du catalogue —
+    le cas annoncé dans les parades — répond 404 ou 410, et basculer de
+    fournisseur reviendrait à abandonner ses autres modèles, encore valides.
+    Le 410 n'est pas théorique : la campagne réseau a trouvé
+    `minimaxai/minimax-m3` répondant « Gone » alors que deux autres modèles
+    NVIDIA marchaient.
 
     `RateLimitError` se teste avant `APIStatusError` : c'en est une
     sous-classe, l'ordre inverse la rendrait inatteignable.
@@ -1691,7 +1866,7 @@ def _fail(provider: Provider, model: str, error: Exception) -> NoReturn:
     if isinstance(error, APIConnectionError):
         raise ProviderUnavailable(provider.name, "erreur", "connexion impossible") from error
     if isinstance(error, APIStatusError):
-        if error.status_code in (400, 404):
+        if error.status_code in (400, 404, 410):
             raise ModelUnavailable(model, f"statut {error.status_code}") from error
         raise ProviderUnavailable(
             provider.name, "erreur", f"statut {error.status_code}"
@@ -1703,10 +1878,13 @@ def _as_payload(messages: Sequence[Message]) -> list[dict]:
     return [{"role": message.role, "content": message.content} for message in messages]
 
 
-def _parse(schema: type[BaseModel], text: str, model: str) -> BaseModel:
+def _parse(schema: type[BaseModel], text: str, model: str, tokens: int) -> BaseModel:
     """Le contenu arrive parfois entouré d'une clôture Markdown : plusieurs
     modèles gratuits en ajoutent une malgré la consigne du prompt. La retirer
-    coûte trois lignes ; la refuser coûterait un modèle par section."""
+    coûte trois lignes ; la refuser coûterait un modèle par section.
+
+    `tokens` accompagne l'échec : une réponse hors schéma a tout de même été
+    facturée, et le compte est déjà connu une ligne plus haut."""
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("\n", 1)[-1] if "\n" in cleaned else ""
@@ -1714,7 +1892,7 @@ def _parse(schema: type[BaseModel], text: str, model: str) -> BaseModel:
     try:
         return schema.model_validate_json(cleaned)
     except ValidationError as error:
-        raise ModelUnavailable(model, "sortie hors schéma") from error
+        raise ModelUnavailable(model, "sortie hors schéma", tokens) from error
 
 
 async def chat(
@@ -1723,21 +1901,33 @@ async def chat(
     messages: Sequence[Message],
     *,
     schema: type[BaseModel] | None = None,
-    http_client: httpx.AsyncClient | None = None,
+    http_client: httpx2.AsyncClient | None = None,
 ) -> Completion:
     """Un appel non diffusé. Aucun `response_format` n'est envoyé : les cinq
     paliers gratuits ne le gèrent pas de la même façon et un refus se
     traduirait par un 400, c'est-à-dire par un modèle déclaré mort à tort.
     La consigne JSON vit dans le prompt, `_parse` rattrape le reste."""
-    client = client_for(provider, timeout=REQUEST_TIMEOUT_SECONDS, http_client=http_client)
+    client = client_for(provider, http_client=http_client)
     try:
         response = await client.chat.completions.create(
-            model=model, messages=_as_payload(messages)
+            model=model, messages=_as_payload(messages), timeout=REQUEST_TIMEOUT_SECONDS
         )
     except OpenAIError as error:
         _fail(provider, model, error)
 
-    text = response.choices[0].message.content or ""
+    # Certains paliers gratuits répondent 200 avec une carcasse : liste de
+    # choix vide, ou un choix sans `message`. Le SDK construit ses modèles avec
+    # indulgence, si bien que l'attribut manquant vaut `None` et que la lecture
+    # suivante lèverait une `AttributeError` — ni une `OpenAIError`, donc
+    # `_fail` ne la voit pas, ni une erreur de cette couche, donc la passerelle
+    # ne la rattrape pas. Elle emporterait la route entière sans écrire de
+    # ligne ni essayer le modèle suivant, soit exactement l'inverse de ce que
+    # cette couche existe pour faire. Les deux formes se gardent ensemble.
+    choice = response.choices[0] if response.choices else None
+    if choice is None or choice.message is None:
+        raise ModelUnavailable(model, "réponse sans contenu exploitable", estimate_tokens(messages))
+
+    text = choice.message.content or ""
     usage = getattr(response, "usage", None)
     # Plusieurs paliers gratuits omettent `usage`. Sans repli, ces appels
     # resteraient invisibles à la fenêtre de jetons.
@@ -1746,7 +1936,7 @@ async def chat(
         if usage is not None and usage.total_tokens
         else estimate_tokens(messages) + estimate_tokens([Message("assistant", text)])
     )
-    parsed = _parse(schema, text, model) if schema is not None else None
+    parsed = _parse(schema, text, model, tokens) if schema is not None else None
     return Completion(
         text=text, provider=provider.name, model=model, tokens=tokens, parsed=parsed
     )
@@ -1757,15 +1947,18 @@ async def stream_chat(
     model: str,
     messages: Sequence[Message],
     *,
-    http_client: httpx.AsyncClient | None = None,
+    http_client: httpx2.AsyncClient | None = None,
 ) -> AsyncIterator[str]:
     """Les fragments, dans l'ordre. Une rupture après le premier fragment est
     traitée par la passerelle, seule à savoir qu'il faut alors repartir sur
     le fournisseur suivant plutôt que sur le modèle suivant."""
-    client = client_for(provider, timeout=STREAM_TIMEOUT_SECONDS, http_client=http_client)
+    client = client_for(provider, http_client=http_client)
     try:
         stream = await client.chat.completions.create(
-            model=model, messages=_as_payload(messages), stream=True
+            model=model,
+            messages=_as_payload(messages),
+            stream=True,
+            timeout=STREAM_TIMEOUT_SECONDS,
         )
     except OpenAIError as error:
         _fail(provider, model, error)
@@ -1783,7 +1976,68 @@ async def stream_chat(
         _fail(provider, model, error)
 ```
 
-- [ ] **Étape 5 : lancer et vérifier le succès**
+- [ ] **Étape 5 : fermer les clients à l'arrêt de l'application**
+
+Sans cela, les pools de connexions des cinq fournisseurs survivent au processus
+qui les a ouverts. `backend/app/main.py` a déjà le point d'accroche : son
+`lifespan` ferme le pool PostgreSQL dans un `finally`.
+
+**Les deux fermetures s'imbriquent, elles ne se suivent pas.** Mises à la
+queue leu leu, un client récalcitrant empêcherait le pool de base de se
+fermer — et le pool de base est la ressource la plus chère des deux, celle
+que l'hébergement gratuit compte. Ce qui était garanti avant ce plan doit le
+rester après :
+
+```python
+    try:
+        yield
+    finally:
+        try:
+            await close_clients()
+        finally:
+            await connection_pool.close()
+```
+
+et l'import correspondant en tête de fichier :
+
+```python
+from app.llm.transport import close_clients
+```
+
+Cette garantie se teste, dans un fichier à elle, `backend/tests/test_lifespan.py` :
+
+```python
+import pytest
+
+from app import main
+
+
+async def test_the_database_pool_closes_even_if_a_model_client_refuses(monkeypatch):
+    """Le pool de base se ferme quoi qu'il arrive. Il a toujours eu cette
+    garantie ; l'ajout des clients de modèles ne doit pas la retirer."""
+    closed: list[str] = []
+
+    class _Pool:
+        async def open(self, wait: bool = False) -> None:
+            return None
+
+        async def close(self) -> None:
+            closed.append("pool")
+
+    async def _refuse() -> None:
+        raise RuntimeError("client récalcitrant")
+
+    monkeypatch.setattr(main, "pool", lambda: _Pool())
+    monkeypatch.setattr(main, "close_clients", _refuse)
+
+    with pytest.raises(RuntimeError):
+        async with main.lifespan(object()):
+            pass
+
+    assert closed == ["pool"]
+```
+
+- [ ] **Étape 6 : lancer et vérifier le succès**
 
 Run : `uv run pytest tests/test_transport.py -v`
 Attendu : tous verts, `test_network_providers.py` non collecté (`addopts` l'exclut).
@@ -1793,11 +2047,12 @@ Vérifier aussi que la campagne réseau se lance bien, sans exiger qu'elle passe
 Run : `ESQUISSE_NETWORK_TESTS=1 uv run pytest -m network -v`
 Attendu : les cinq cas sont collectés. **Reporter le résultat tel quel dans le compte rendu de tâche** — un modèle mort est une information pour le catalogue, pas un échec de la tâche.
 
-- [ ] **Étape 6 : commit**
+- [ ] **Étape 7 : commit**
 
 ```bash
-git add backend/app/llm/transport.py backend/tests/test_transport.py \
-        backend/tests/test_network_providers.py backend/pyproject.toml backend/uv.lock
+git add backend/app/llm/transport.py backend/app/main.py \
+        backend/tests/test_transport.py backend/tests/test_network_providers.py \
+        backend/tests/test_lifespan.py backend/pyproject.toml backend/uv.lock
 git commit -m "feat(llm): adaptateur compatible OpenAI pour les cinq fournisseurs"
 ```
 
@@ -1854,6 +2109,7 @@ from app.llm.budget import reset_pacers
 from app.llm.errors import ModelUnavailable, NoProviderAvailable, ProviderUnavailable
 from app.llm.gateway import complete, stream
 from app.llm.providers import PROVIDERS
+from app.llm.tokens import estimate_tokens
 from app.llm.types import Completion, Message, StreamDone, StreamRestart, TextDelta
 
 MESSAGES = [Message("user", "Une plateforme de coaching à domicile.")]
@@ -2005,6 +2261,30 @@ async def test_a_failed_attempt_writes_its_issue():
     assert rows[1][4] == "ok"
 
 
+async def test_an_off_schema_answer_records_what_the_attempt_cost():
+    # Zéro ferait mentir la fenêtre au moment précis où elle doit être juste :
+    # sur groq, plafonné à 12 000 jetons la minute, un essai perdu de 2 000
+    # jetons est un sixième du budget.
+    stub = _Stub({
+        ("groq", "groq/compound"): ModelUnavailable("groq/compound", "hors schéma", 250),
+    })
+    await complete("court", MESSAGES, transport=stub)
+    rows = await _usage_rows()
+    assert rows[0] == ("groq", "groq/compound", "court", 250, "erreur")
+
+
+async def test_an_injected_fake_transport_records_under_the_fake_name():
+    # Sans toucher à l'environnement : injecter le simulé suffit. Sinon les
+    # jetons factices s'écriraient sous les vrais noms de fournisseurs et
+    # brideraient les exécutions réelles suivantes contre la même base.
+    from app.llm.fake import FakeTransport
+
+    result = await complete("court", MESSAGES, transport=FakeTransport())
+    assert result.provider == "fake"
+    rows = await _usage_rows()
+    assert rows[0][0] == "fake"
+
+
 async def test_the_stream_yields_its_deltas_then_a_done():
     stub = _StreamStub({("gemini", "gemini-3.1-flash-lite"): ["Le ", "dispositif."]})
     events = [event async for event in stream("redaction", MESSAGES, transport=stub)]
@@ -2018,7 +2298,7 @@ async def test_a_stream_broken_after_a_delta_restarts_on_the_next_provider():
         ("gemini", "gemini-3.1-flash-lite"): [
             "Le début ", ProviderUnavailable("gemini", "erreur", "flux rompu")
         ],
-        ("mistral", "mistral-small-latest"): ["Tout ", "depuis le début."],
+        ("mistral", "ministral-8b-latest"): ["Tout ", "depuis le début."],
     })
     events = [event async for event in stream("redaction", MESSAGES, transport=stub)]
     restarts = [e for e in events if isinstance(e, StreamRestart)]
@@ -2034,26 +2314,53 @@ async def test_a_stream_that_never_opened_announces_no_restart():
     # Rien n'a été affiché : c'est un essai raté ordinaire, pas une reprise.
     stub = _StreamStub({
         ("gemini", "gemini-3.1-flash-lite"): [ProviderUnavailable("gemini", "quota", "429")],
-        ("mistral", "mistral-small-latest"): ["Une section."],
+        ("mistral", "ministral-8b-latest"): ["Une section."],
     })
     events = [event async for event in stream("redaction", MESSAGES, transport=stub)]
     assert not any(isinstance(e, StreamRestart) for e in events)
     assert events[-1].provider == "mistral"
 
 
-async def test_a_broken_stream_records_what_was_already_emitted():
+async def test_a_broken_stream_records_the_prompt_and_what_was_emitted():
+    emitted = "Un début de section déjà affiché à l'écran."
     stub = _StreamStub({
         ("gemini", "gemini-3.1-flash-lite"): [
-            "Un début de section déjà affiché à l'écran.",
+            emitted,
             ProviderUnavailable("gemini", "erreur", "flux rompu"),
         ],
-        ("mistral", "mistral-small-latest"): ["Tout depuis le début."],
+        ("mistral", "ministral-8b-latest"): ["Tout depuis le début."],
     })
     [event async for event in stream("redaction", MESSAGES, transport=stub)]
     rows = await _usage_rows()
     assert rows[0][0] == "gemini"
     assert rows[0][4] == "erreur"
-    assert rows[0][3] > 0  # les jetons consommés avant la rupture sont payés
+    # Le compte exact, et non « plus que le prompt ». Le texte émis coûte à lui
+    # seul davantage que le prompt : une comparaison large passerait encore si
+    # le terme du prompt venait à disparaître, ce qui est précisément la
+    # régression que ce test existe pour attraper.
+    expected = estimate_tokens(MESSAGES) + estimate_tokens([Message("assistant", emitted)])
+    assert rows[0][3] == expected
+
+
+async def test_a_stream_abandoned_by_its_consumer_is_still_recorded():
+    # Le cas ordinaire du plan 4 : le client SSE se déconnecte. Python lance
+    # GeneratorExit sur le `yield`, une BaseException que le `except` ne voit
+    # pas. Sans le `finally`, l'essai disparaîtrait des compteurs alors que le
+    # fournisseur a traité le prompt et diffusé ce qu'on a reçu.
+    stub = _StreamStub({
+        ("gemini", "gemini-3.1-flash-lite"): ["Un début. ", "Une suite. ", "Une fin."],
+    })
+    events = stream("redaction", MESSAGES, transport=stub)
+    async for event in events:
+        if isinstance(event, TextDelta):
+            break
+    await events.aclose()
+
+    rows = await _usage_rows()
+    assert len(rows) == 1          # l'essai existe : c'est tout l'enjeu
+    assert rows[0][0] == "gemini"
+    assert rows[0][4] == "erreur"
+    assert rows[0][3] > estimate_tokens(MESSAGES)
 
 
 async def test_an_exhausted_route_in_streaming_raises():
@@ -2124,6 +2431,18 @@ def _default_transport():
     return FakeTransport() if settings().fake_llm else network_transport
 
 
+def _is_fake(transport) -> bool:
+    """Le mode simulé se déduit du transport, pas seulement du réglage.
+
+    Un appelant peut injecter un `FakeTransport` sans poser
+    `ESQUISSE_FAKE_LLM` — c'est le geste naturel dans un test de graphe. Sans
+    cette déduction, les jetons factices s'écriraient sous les vrais noms de
+    fournisseurs et brideraient les exécutions réelles suivantes contre la
+    même base. L'invariant devient structurel au lieu d'être à retenir.
+    """
+    return settings().fake_llm or isinstance(transport, FakeTransport)
+
+
 async def _record(
     *,
     route: str,
@@ -2189,7 +2508,7 @@ async def complete(
     sur la configuration du moment.
     """
     transport = transport if transport is not None else _default_transport()
-    fake = settings().fake_llm
+    fake = _is_fake(transport)
     estimated = estimate_tokens(messages) + expected_output_tokens
     attempts: list[str] = []
 
@@ -2204,8 +2523,11 @@ async def complete(
             try:
                 result = await transport.chat(provider, model, messages, schema=schema)
             except ModelUnavailable as error:
+                # `error.tokens` et non zéro : une sortie hors schéma ou une
+                # réponse creuse a tout de même été facturée par le fournisseur.
                 await _record(route=route, provider=provider, model=model,
-                              project_id=project_id, tokens=0, issue="erreur", fake=fake)
+                              project_id=project_id, tokens=error.tokens,
+                              issue="erreur", fake=fake)
                 attempts.append(f"{provider.name}/{model} : {error.reason}")
                 continue
             except ProviderUnavailable as error:
@@ -2236,7 +2558,7 @@ async def stream(
     évite qu'un paragraphe déjà affiché s'efface.
     """
     transport = transport if transport is not None else _default_transport()
-    fake = settings().fake_llm
+    fake = _is_fake(transport)
     prompt_tokens = estimate_tokens(messages)
     estimated = prompt_tokens + expected_output_tokens
     attempts: list[str] = []
@@ -2250,16 +2572,26 @@ async def stream(
         for model in provider.models:
             await _pace(provider, fake)
             emitted: list[str] = []
+            # Passe à vrai dès qu'une ligne `llm_usage` a été écrite pour cet
+            # essai. Le `finally` s'en sert pour distinguer les deux fins
+            # normales du cas où le consommateur lâche le flux.
+            settled = False
             try:
                 async for delta in transport.stream_chat(provider, model, messages):
                     emitted.append(delta)
                     yield TextDelta(delta)
             except (ModelUnavailable, ProviderUnavailable) as error:
+                settled = True
                 issue = error.issue if isinstance(error, ProviderUnavailable) else "erreur"
                 written = "".join(emitted)
+                # Le prompt entier est parti et le fournisseur l'a traité,
+                # même si le flux s'est rompu ensuite. Ne compter que le texte
+                # reçu sous-estimerait la consommation réelle — et c'est la
+                # fenêtre de budget qui se nourrit de ce chiffre, donc
+                # l'erreur se paierait en 429 plus tard.
                 await _record(
                     route=route, provider=provider, model=model, project_id=project_id,
-                    tokens=estimate_tokens([Message("assistant", written)]),
+                    tokens=prompt_tokens + estimate_tokens([Message("assistant", written)]),
                     issue=issue, fake=fake,
                 )
                 attempts.append(f"{provider.name}/{model} : {error.reason}")
@@ -2275,13 +2607,35 @@ async def stream(
                 if isinstance(error, ProviderUnavailable):
                     break
                 continue
-
-            written = "".join(emitted)
-            tokens = prompt_tokens + estimate_tokens([Message("assistant", written)])
-            await _record(route=route, provider=provider, model=model,
-                          project_id=project_id, tokens=tokens, issue="ok", fake=fake)
-            yield StreamDone(provider.name, model, tokens)
-            return
+            else:
+                settled = True
+                written = "".join(emitted)
+                tokens = prompt_tokens + estimate_tokens([Message("assistant", written)])
+                await _record(route=route, provider=provider, model=model,
+                              project_id=project_id, tokens=tokens, issue="ok", fake=fake)
+                yield StreamDone(provider.name, model, tokens)
+                return
+            finally:
+                if not settled:
+                    # Le consommateur a lâché le flux : déconnexion du client,
+                    # `break` dans sa boucle, exception chez lui. Python lance
+                    # alors `GeneratorExit` sur le `yield` ci-dessus — une
+                    # `BaseException`, que le `except` ne voit pas. Sans cette
+                    # branche, l'essai disparaîtrait entièrement des compteurs
+                    # alors que le fournisseur a traité le prompt et diffusé ce
+                    # qu'on a reçu. Le plan 4 expose ce flux en SSE, où la
+                    # déconnexion est le cas ordinaire, pas l'exotique.
+                    #
+                    # Attendre ici est permis pendant la fermeture d'un
+                    # générateur asynchrone ; rendre une valeur ne le serait
+                    # pas, et `_record` ne rend rien.
+                    await _record(
+                        route=route, provider=provider, model=model, project_id=project_id,
+                        tokens=prompt_tokens + estimate_tokens(
+                            [Message("assistant", "".join(emitted))]
+                        ),
+                        issue="erreur", fake=fake,
+                    )
 
     raise NoProviderAvailable(route, attempts)
 ```
@@ -2350,3 +2704,62 @@ git commit -m "feat(llm): passerelle de repli entre les cinq fournisseurs"
 - **Aucun classifieur d'injection.** `meta-llama/llama-prompt-guard-2-86m` filtre l'idée saisie **avant** qu'elle n'entre dans les prompts : sa place est en amont du graphe, pas dans le routage.
 - **Aucune trace LangSmith.** `LANGSMITH_API_KEY` reste inutilisée ici ; l'instrumentation suit le graphe.
 - **Aucun plafond par compte.** C'est une question ouverte du §12 de la spec, pas une tâche en attente.
+
+---
+
+## Correctifs issus de la relecture finale
+
+Les cinq tâches avaient chacune passé sa propre relecture. La relecture de
+branche, seule à voir les coutures, a trouvé trois défauts — tous de la même
+famille : des chemins de comptabilité ou de classement situés **entre** deux
+tâches, qu'aucune relecture de tâche ne pouvait atteindre depuis son périmètre.
+
+**C1 — un 200 dont le choix n'a pas de `message` s'échappait sans classement.**
+La garde ajoutée en cours de route ne couvrait que la liste de choix vide. Un
+choix présent mais sans message donne `None`, et la lecture suivante lève une
+`AttributeError` : ni une `OpenAIError`, donc `_fail` ne la voit pas, ni une
+erreur de cette couche, donc la passerelle ne la rattrape pas. Elle emportait
+la route entière sans écrire de ligne ni essayer le modèle suivant — l'exact
+inverse de ce que la couche existe pour faire. Les deux formes se gardent
+désormais ensemble dans `transport.chat`.
+
+**C2 — `complete()` comptait zéro jeton pour un échec qui suivait un 200
+facturé.** Deux des trois façons de lever `ModelUnavailable` surviennent après
+que le fournisseur a traité le prompt et rédigé une réponse : la réponse creuse
+et la sortie hors schéma. Dans le second cas le coût exact était calculé une
+ligne plus haut, puis jeté. Sur groq, plafonné à 12 000 jetons la minute, un
+essai perdu de 2 000 jetons est un sixième du budget, et la bascule préventive
+autorisait ensuite un appel que le fournisseur refusait. C'est le défaut que la
+branche avait déjà corrigé deux fois dans `stream()` sans voir qu'il existait
+aussi dans `complete()`. `ModelUnavailable` porte maintenant le coût.
+
+**C3 — un flux lâché par son consommateur n'écrivait aucune ligne.** Le `yield`
+de `stream()` reçoit `GeneratorExit` quand le consommateur cesse d'itérer :
+déconnexion SSE, `break`, exception chez lui. C'est une `BaseException`, que le
+`except` ne voit pas. L'essai disparaissait entièrement des compteurs alors que
+le fournisseur avait traité le prompt et diffusé ce qu'on avait reçu. Le plan 4
+expose ce flux en SSE, où la déconnexion est le cas ordinaire. Un `finally`
+enregistre désormais ce qui a été consommé.
+
+S'y ajoutent trois garde-fous qui rendent structurel ce qui n'était que tenu de
+mémoire : le mode simulé se déduit du transport injecté et non du seul réglage
+d'environnement, `reset_pacers()` passe dans `conftest.py`, et
+`ESQUISSE_FAKE_LLM` y est figé comme le sont déjà les identifiants de base.
+
+## Ce que la relecture finale a laissé ouvert
+
+Aucun des douze constats mineurs différés ne bloque la fusion. Deux méritent
+d'être repris plus tard, et par le plan qui les rencontrera :
+
+- **`budget_available` est un « lire puis agir » non atomique.** Sans danger
+  tant que le graphe rédige les sections l'une après l'autre. À rouvrir le jour
+  où le plan 3 les paralléliserait : `openrouter` (50 requêtes par jour) et
+  `groq` (12 000 jetons la minute) n'ont pas de `Pacer` pour les couvrir.
+- **`Literal` et `Enum` rendent toujours la première option dans le modèle
+  simulé.** Les tests de graphe hors ligne ne verront donc jamais l'autre
+  branche d'un `profil`. À traiter quand le plan 3 écrira ces tests.
+
+Et deux remarques pour l'appelant du plan 3 : `stream()` est un générateur
+asynchrone, donc la résolution de route et `NoProviderAvailable` n'arrivent
+qu'au premier `__anext__` ; et une exécution « hors ligne » a tout de même
+besoin de PostgreSQL, puisque chaque essai écrit dans `llm_usage`.
