@@ -31,6 +31,10 @@ class SectionTemplate(BaseModel):
     faits_requis: list[str] = Field(default_factory=list)
     faits_utiles: list[str] = Field(default_factory=list)
     tables: list[str] = Field(default_factory=list)
+    # Outils déterministes appelés avant la rédaction (§ en-tête de bp.yaml).
+    # Absent du cahier des charges, d'où la valeur par défaut vide plutôt
+    # qu'un champ requis.
+    calculs: list[str] = Field(default_factory=list)
     consignes: str
     grille: list[str] = Field(default_factory=list)
 

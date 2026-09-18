@@ -1,0 +1,83 @@
+from app.agent.finance import BreakEvenAssumptions, run_computation
+from app.agent.numbers import extract_numbers, orphan_numbers
+from app.agent.state import BulletList, Fact, Paragraph, Placeholder, Table
+
+
+def _fact(fact_id, value):
+    return Fact(fact_id=fact_id, value=value, source="user")
+
+
+THRESHOLD = run_computation("seuil_rentabilite", BreakEvenAssumptions(
+    fixed_costs=120_000, gross_margin_rate=0.65,
+))  # 184 615,38
+
+
+def test_numbers_are_read_out_of_french_typography():
+    blocks = [Paragraph(text="Le seuil s'établit à 184 615,38 € pour 120 000 € de charges.")]
+    lus = [n.value for n in extract_numbers(blocks)]
+    assert 184_615.38 in lus
+    assert 120_000 in lus
+
+
+def test_thin_and_non_breaking_spaces_are_read_as_thousands():
+    blocks = [Paragraph(text="Un marché de 4 500 000 € et un autre de 90 000 €.")]
+    assert [n.value for n in extract_numbers(blocks)] == [4_500_000, 90_000]
+
+
+def test_a_number_backed_by_a_fact_is_not_an_orphan():
+    blocks = [Paragraph(text="Le budget de développement est de 60 000 €.")]
+    assert orphan_numbers(blocks, {"budget": _fact("budget", 60_000)}, []) == []
+
+
+def test_a_number_backed_by_a_computation_is_not_an_orphan():
+    blocks = [Paragraph(text="Il faut réaliser 184 615,38 € pour couvrir les charges.")]
+    assert orphan_numbers(blocks, {}, [THRESHOLD]) == []
+
+
+def test_a_rounded_computation_output_is_not_an_orphan():
+    # Le modèle arrondit, et c'est souhaitable : « environ 184 600 € » se lit
+    # mieux. Refuser l'arrondi rendrait la rédaction impossible.
+    blocks = [Paragraph(text="Il faut environ 184 600 € de chiffre d'affaires.")]
+    assert orphan_numbers(blocks, {}, [THRESHOLD]) == []
+
+
+def test_a_percentage_matches_a_rate_stored_as_a_fraction():
+    blocks = [Paragraph(text="La marge brute atteint 65 %.")]
+    assert orphan_numbers(blocks, {"taux": _fact("taux", 0.65)}, []) == []
+
+
+def test_an_invented_number_is_an_orphan():
+    # Le cas pour lequel ce nœud existe.
+    blocks = [Paragraph(text="Le marché français pèse 2 400 000 000 € selon nos estimations.")]
+    orphans = orphan_numbers(blocks, {"budget": _fact("budget", 60_000)}, [THRESHOLD])
+    assert [o.value for o in orphans] == [2_400_000_000]
+
+
+def test_small_integers_are_left_alone():
+    # « Année 1 », « trois axes », « douze mois » : structurels, sans fait
+    # derrière. La tolérance est assumée : un budget de 5 € passerait.
+    blocks = [Paragraph(text="Le plan couvre 3 exercices et 12 mois de trésorerie.")]
+    assert orphan_numbers(blocks, {}, []) == []
+
+
+def test_tables_are_not_examined():
+    # Ils viennent tels quels de Computation.rows : traçables par construction.
+    blocks = [Table(number=1, title="Seuil", columns=("Poste",), rows=(("999 999 999 €",),))]
+    assert orphan_numbers(blocks, {}, []) == []
+
+
+def test_list_items_are_examined():
+    blocks = [BulletList(items=["Un investissement de 777 777 € est prévu."])]
+    assert [o.value for o in orphan_numbers(blocks, {}, [])] == [777_777]
+
+
+def test_placeholders_carry_no_numbers_to_check():
+    blocks = [Placeholder(label="Donnée à compléter : chiffre d'affaires 2027")]
+    assert orphan_numbers(blocks, {}, []) == []
+
+
+def test_an_orphan_says_where_it_was_written():
+    blocks = [Paragraph(text="Un chiffre de 2 400 000 000 € surgi de nulle part.")]
+    orphan = orphan_numbers(blocks, {}, [])[0]
+    assert orphan.written == "2 400 000 000"
+    assert "surgi de nulle part" in orphan.context
