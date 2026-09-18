@@ -666,24 +666,28 @@ table.s-table{border-collapse:collapse;width:100%;min-width:720px}
 
   <h2 class="s-h">Organisation du dépôt</h2>
 <pre class="s-tree">esquisse/
+├── backend/                Backend FastAPI (Render)
+│   ├── app/
+│   │   ├── core/           Configuration, base, sécurité, garde-fous
+│   │   ├── auth/           Inscription, connexion, jetons, contrôle d'activation
+│   │   ├── projects/       Projets et cloisonnement par propriétaire
+│   │   ├── llm/            Cinq fournisseurs gratuits, trois routes, repli
+│   │   ├── agent/          Graphe principal, sous-graphe de section, outils
+│   │   ├── templates/      Cahier des charges, business plan, catalogue de faits
+│   │   └── export/         Modèle Word, graphiques, appel à Gotenberg
+│   ├── migrations/         Alembic : schéma de la base Supabase
+│   ├── tests/              Suite pytest, graphe avec modèle simulé
+│   ├── pyproject.toml      Dépendances, verrouillées dans uv.lock
+│   ├── Dockerfile          Image du service, uv sync --frozen
+│   ├── docker-compose.yml  Base jetable et Gotenberg en local, uniquement
+│   ├── render.yaml         Les deux services de production
+│   └── .env.example        Variables attendues
 ├── web/                    Front Next.js (Vercel)
 │   ├── app/                Projets, parcours guidé, rédaction, exports
 │   └── components/         Cartes d'interaction, éditeur, mémoire du projet
-├── api/                    Backend FastAPI (Render)
-│   ├── pyproject.toml      Dépendances, verrouillées dans uv.lock
-│   ├── routes/             Comptes, projets, interactions, progression, exports
-│   ├── auth/               Inscription, connexion, jetons, contrôle d'activation
-│   ├── agent/
-│   │   ├── graph/          Graphe principal et sous-graphe de section
-│   │   ├── nodes/          Intake, questions, rédaction, critique, validation
-│   │   ├── llm/            Fournisseurs gratuits, rôles de modèle et repli
-│   │   ├── templates/      Cahier des charges, business plan, catalogue de faits
-│   │   └── tools/          Calculs financiers, vérificateur de chiffres
-│   ├── export/             Modèle Word, graphiques, appel à Gotenberg
-│   └── tests/              Graphe avec LLM simulé, calculs
 ├── evals/                  Jeux d'évaluation LangSmith
-├── render.yaml             Les deux services de production
-└── docker-compose.yml      Backend et Gotenberg en local, uniquement</pre>
+├── docs/                   Analyses, spec d'implémentation, plans, maquette
+└── .github/workflows/      Intégration continue sur uv sync --frozen</pre>
 </div>
 </section>
 

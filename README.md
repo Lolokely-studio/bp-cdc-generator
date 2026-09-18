@@ -91,3 +91,16 @@ anglais. Les commentaires, les docstrings et la documentation sont en français.
 
 Dépendances gérées par `uv`, jamais `pip`. `pyproject.toml` déclare, `uv.lock`
 verrouille, les deux sont versionnés. Toute commande passe par `uv run`.
+
+## Déploiement sur Render
+
+Le Blueprint est `backend/render.yaml`, pas `render.yaml` : Render le cherche
+à la racine par défaut, il faut donc renseigner **Blueprint Path** =
+`backend/render.yaml` à la création du Blueprint.
+
+Les chemins qu'il contient — `dockerfilePath`, `dockerContext` — restent
+relatifs à la **racine du dépôt** et non au fichier : c'est pourquoi ils
+commencent par `./backend/`.
+
+Les variables marquées `sync: false` se saisissent dans le tableau de bord du
+service. Aucun identifiant de production ne vit dans le dépôt.
