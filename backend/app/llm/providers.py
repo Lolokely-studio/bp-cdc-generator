@@ -46,11 +46,36 @@ PROVIDERS: dict[str, Provider] = {
         name="mistral",
         base_url="https://api.mistral.ai/v1",
         key_setting="mistral_ai_api_key",
-        models=("mistral-small-latest", "open-mistral-nemo"),
-        # 200 000 est la borne basse de la fourchette 200 000 – 315 000
-        # relevée sur le palier gratuit. On retient la borne basse : un
-        # budget qui sous-estime le plafond bascule trop tôt, l'inverse
-        # coupe une rédaction au milieu.
+        # Relevé à la main sur la clé du compte, contre les quotas publiés
+        # dans la console. Deux choses que la documentation ne dit pas :
+        #
+        # 1. Chez Mistral les plafonds sont PAR MODÈLE, pas par compte — de
+        #    20 000 à 20 000 000 jetons/minute selon le modèle. La structure
+        #    `Limits` les porte au niveau du fournisseur ; l'invariant qui
+        #    rend cette simplification sûre est que le plafond propre de
+        #    chaque modèle listé ici dépasse celui déclaré plus bas.
+        # 2. `mistral-small`, `mistral-medium` et `magistral-small` sont
+        #    exposés par `/v1/models` mais refusent chaque appel en 429, dès
+        #    le premier, sans rien avoir consommé ; `mistral-large` et
+        #    `labs-leanstral` répondent 403. Les trois retenus répondent.
+        #
+        # L'ordre compte doublement : un 429 est classé au niveau du
+        # fournisseur, donc un premier modèle qui refuse toujours ferait
+        # sauter Mistral des deux routes où il figure sans qu'aucun modèle
+        # vivant ne soit jamais essayé.
+        #
+        #   ministral-8b-latest   625 000 jetons/min   3,13 req/s
+        #   ministral-3b-latest 1 300 000 jetons/min  12,50 req/s
+        #   open-mistral-nemo    plafonds non publiés, répond
+        models=("ministral-8b-latest", "ministral-3b-latest", "open-mistral-nemo"),
+        # Un plancher qu'aucun modèle listé ci-dessus ne descend en dessous,
+        # et non une moyenne : le budget déclaré doit rester sous le plafond
+        # réel du modèle le plus contraint, `open-mistral-nemo` ne publiant
+        # pas les siens. Sous-estimer fait basculer un peu tôt, ce qui ne se
+        # voit pas ; surestimer coupe une rédaction au milieu, ce qui se voit.
+        # Même raisonnement pour `rps=1`, en dessous des 3,13 du 8b et des
+        # 12,50 du 3b : l'espacement coûte une seconde par appel sur un
+        # fournisseur qui n'est jamais premier de sa route.
         limits=Limits(tpm=200_000, rps=1),
     ),
     "openrouter": Provider(
