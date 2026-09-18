@@ -2238,9 +2238,10 @@ async def test_a_stream_that_never_opened_announces_no_restart():
 
 
 async def test_a_broken_stream_records_the_prompt_and_what_was_emitted():
+    emitted = "Un début de section déjà affiché à l'écran."
     stub = _StreamStub({
         ("gemini", "gemini-3.1-flash-lite"): [
-            "Un début de section déjà affiché à l'écran.",
+            emitted,
             ProviderUnavailable("gemini", "erreur", "flux rompu"),
         ],
         ("mistral", "ministral-8b-latest"): ["Tout depuis le début."],
@@ -2249,10 +2250,12 @@ async def test_a_broken_stream_records_the_prompt_and_what_was_emitted():
     rows = await _usage_rows()
     assert rows[0][0] == "gemini"
     assert rows[0][4] == "erreur"
-    # Strictement plus que le prompt seul : le prompt est parti en entier et le
-    # texte reçu avant la rupture s'y ajoute. Un simple `> 0` laisserait passer
-    # un compte qui oublierait le prompt.
-    assert rows[0][3] > estimate_tokens(MESSAGES)
+    # Le compte exact, et non « plus que le prompt ». Le texte émis coûte à lui
+    # seul davantage que le prompt : une comparaison large passerait encore si
+    # le terme du prompt venait à disparaître, ce qui est précisément la
+    # régression que ce test existe pour attraper.
+    expected = estimate_tokens(MESSAGES) + estimate_tokens([Message("assistant", emitted)])
+    assert rows[0][3] == expected
 
 
 async def test_an_exhausted_route_in_streaming_raises():
