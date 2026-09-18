@@ -222,22 +222,47 @@ async def test_computations_run_from_the_template_alone():
     plan = CATALOGUE.plan_for("bp", None, "banque")
     index = next(i for i, r in enumerate(plan)
                  if "seuil_rentabilite" in CATALOGUE.section(f"bp.{r.section_id}").calculs)
-    # `compute` associe un fait à un champ d'hypothèse par égalité stricte de
-    # nom (`field_name in state["facts"]`, voir `nodes.compute`). Le brief
-    # utilisait ici des identifiants français plausibles mais absents du
-    # catalogue (`charges_fixes_annuelles`, `taux_marge_brute`), qui ne
-    # matchaient ni le catalogue ni les noms de champs anglais de
-    # `BreakEvenAssumptions` (`fixed_costs`, `gross_margin_rate`) : le calcul
-    # ne recevait jamais d'hypothèses et `compute` le sautait toujours,
-    # silencieusement. Défaut documenté dans le rapport ; corrigé ici en
-    # nommant les faits comme le modèle d'hypothèses les attend.
+    # Tâche 6 bis : `compute` n'apparie plus un fait à un champ d'hypothèse
+    # par égalité de nom (les identifiants de faits sont en français, les
+    # champs des modèles pydantic en anglais — aucun appariement n'aboutissait
+    # jamais). Il passe désormais par `app.agent.assumptions.build_assumptions`,
+    # qui dérive les hypothèses des faits réels du catalogue : les charges
+    # fixes annuelles se composent d'un montant mensuel et d'une masse
+    # salariale, le taux de marge se déduit d'un prix et d'un coût variable.
     facts = {
-        "fixed_costs": Fact(fact_id="fixed_costs", value=120_000, source="user"),
-        "gross_margin_rate": Fact(fact_id="gross_margin_rate", value=0.65, source="user"),
+        "charges_fixes_mensuelles": Fact(
+            fact_id="charges_fixes_mensuelles", value=3_000, source="user"),
+        "masse_salariale_an1": Fact(
+            fact_id="masse_salariale_an1", value=84_000, source="user"),
+        "prix_moyen_unite": Fact(fact_id="prix_moyen_unite", value=45, source="user"),
+        "cout_variable_unitaire": Fact(
+            fact_id="cout_variable_unitaire", value=15, source="user"),
     }
     maj = await nodes.compute(_state(documents="bp", profil_cdc=None, plan=plan,
                                     cursor=index, facts=facts))
     assert "seuil_rentabilite" in maj["computations"]
+    result = maj["computations"]["seuil_rentabilite"]
+    # 3 000 x 12 + 84 000 = 120 000 de charges fixes annuelles ; (45 - 15) /
+    # 45 = 2/3 de taux de marge : le pont depuis les faits, pas une coïncidence.
+    assert result.numbers[1] == pytest.approx(120_000)
+    assert result.numbers[2] == pytest.approx(2 / 3)
+
+
+async def test_a_computation_missing_its_facts_is_skipped_silently_but_without_crashing():
+    # La décision du propriétaire pour l'emprunt : sans taux, pas
+    # d'échéancier. `compute` doit sauter ce calcul et continuer, jamais
+    # planter ni inventer un taux.
+    plan = CATALOGUE.plan_for("bp", None, "banque")
+    index = next(i for i, r in enumerate(plan)
+                 if "annuites_credit" in CATALOGUE.section(f"bp.{r.section_id}").calculs)
+    facts = {
+        "emprunt_montant": Fact(fact_id="emprunt_montant", value=50_000, source="user"),
+        "emprunt_duree": Fact(fact_id="emprunt_duree", value=60, source="user"),
+        # Pas de taux_interet_emprunt.
+    }
+    maj = await nodes.compute(_state(documents="bp", profil_cdc=None, plan=plan,
+                                    cursor=index, facts=facts))
+    assert "annuites_credit" not in maj["computations"]
 
 
 async def test_saving_advances_the_cursor_and_writes_the_projection(project):

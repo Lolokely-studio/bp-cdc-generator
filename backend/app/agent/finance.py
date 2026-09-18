@@ -43,31 +43,47 @@ def _rate(value: float) -> str:
 
 
 class MarketAssumptions(BaseModel):
-    total_population: float = Field(gt=0)
-    average_annual_spend: float = Field(gt=0)
-    reachable_share: float = Field(gt=0, le=1)
-    capturable_share: float = Field(gt=0, le=1)
+    """Les trois tailles de marché, telles que l'utilisateur les donne.
+
+    Une version antérieure les reconstruisait depuis une population et une
+    dépense moyenne. Le catalogue demande les trois montants directement, et
+    la grille de la section exige une source pour chacun : les reconstituer
+    reviendrait à produire des chiffres de marché de mémoire, ce que les
+    consignes proscrivent explicitement.
+    """
+
+    total_market: float = Field(gt=0)
+    reachable_market: float = Field(gt=0)
+    capturable_market: float = Field(gt=0)
 
 
 def market_size(a: MarketAssumptions) -> Computation:
-    """TAM, SAM, SOM. On descend du marché total au marché réellement visé,
-    sans saut de raisonnement : c'est ce que la grille de la section exige."""
-    tam = a.total_population * a.average_annual_spend
-    sam = tam * a.reachable_share
-    som = sam * a.capturable_share
+    """TAM, SAM, SOM, et la part que chacun représente du précédent.
+
+    On ne descend pas du marché total au marché visé, on vérifie que la
+    descente tient : un marché atteignable plus grand que le marché total est
+    une saisie fautive, et l'écrire dans un document le rendrait risible.
+    """
+    if not (a.capturable_market <= a.reachable_market <= a.total_market):
+        raise ValueError(
+            "La descente de marché est incohérente : le marché atteignable doit "
+            "tenir dans l'adressable, et l'adressable dans le total."
+        )
+    reachable_share = a.reachable_market / a.total_market
+    capturable_share = a.capturable_market / a.reachable_market
     return Computation(
         name="tam_sam_som",
         title="Taille du marché adressable",
-        columns=("Niveau", "Part retenue", "Valeur annuelle"),
+        columns=("Niveau", "Part du niveau précédent", "Valeur annuelle"),
         rows=(
-            ("Marché total (TAM)", "100 %", _money(tam)),
-            ("Marché adressable (SAM)", _rate(a.reachable_share), _money(sam)),
-            ("Marché atteignable (SOM)", _rate(a.capturable_share), _money(som)),
+            ("Marché total (TAM)", "100 %", _money(a.total_market)),
+            ("Marché adressable (SAM)", _rate(reachable_share), _money(a.reachable_market)),
+            ("Marché atteignable (SOM)", _rate(capturable_share), _money(a.capturable_market)),
         ),
-        # La première ligne affiche « 100 % » en toutes lettres : ce n'est
-        # une hypothèse nulle part ailleurs, donc 1.0 doit figurer ici pour
-        # que ce chiffre reste traçable.
-        numbers=(tam, sam, som, a.reachable_share, a.capturable_share, 1.0),
+        numbers=(
+            a.total_market, a.reachable_market, a.capturable_market,
+            reachable_share, capturable_share, 1.0,
+        ),
     )
 
 

@@ -1,7 +1,8 @@
 from typing import Any
 
 from app.agent import prompts
-from app.agent.finance import COMPUTATIONS, Computation
+from app.agent.assumptions import build_assumptions
+from app.agent.finance import Computation, run_computation
 from app.agent.numbers import orphan_numbers
 from app.agent.projections import save_facts, save_section
 from app.agent.state import Fact, SectionRef
@@ -91,18 +92,17 @@ async def compute(state) -> dict:
     _, section = _current(state)
     results: dict[str, Computation] = dict(state["computations"])
     for name in section.calculs:
-        factory = COMPUTATIONS[name]
-        model_cls = factory.__annotations__["a"]
-        field_values = {
-            field_name: state["facts"][field_name].value
-            for field_name in model_cls.model_fields
-            if field_name in state["facts"] and state["facts"][field_name].value is not None
-        }
+        assumptions = build_assumptions(name, state["facts"])
+        if assumptions is None:
+            # Les faits ne suffisent pas. Le tableau n'existera pas et le texte
+            # portera une donnée à compléter — jamais une valeur par défaut,
+            # qui serait un chiffre inventé de plus.
+            continue
         try:
-            results[name] = factory(model_cls(**field_values))
-        except (TypeError, ValueError):
-            # Hypothèses incomplètes ou aberrantes : on n'invente pas de
-            # valeur par défaut, le tableau manquera et le texte le dira.
+            results[name] = run_computation(name, assumptions)
+        except ValueError:
+            # Hypothèses aberrantes : une descente de marché incohérente, un
+            # taux de marge nul. On n'écrit pas un tableau faux.
             continue
     return {"computations": results}
 

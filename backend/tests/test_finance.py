@@ -30,14 +30,24 @@ def test_every_computation_declared_by_the_templates_exists():
 
 def test_market_size_descends_from_total_to_capturable():
     result = run_computation("tam_sam_som", MarketAssumptions(
-        total_population=500_000, average_annual_spend=600,
-        reachable_share=0.30, capturable_share=0.05,
+        total_market=300_000_000, reachable_market=90_000_000, capturable_market=4_500_000,
     ))
-    # Les trois premiers éléments restent le seuil calculé ; l'invariant
-    # rows/numbers (voir plus bas) en ajoute d'autres à la suite.
-    assert result.numbers[:3] == (300_000_000.0, 90_000_000.0, 4_500_000.0)
+    # Les trois montants rendus tels quels, plus les deux parts déduites :
+    # 90M / 300M = 30 %, et 4,5M / 90M = 5 %.
+    assert result.numbers[:5] == pytest.approx(
+        (300_000_000.0, 90_000_000.0, 4_500_000.0, 0.30, 0.05)
+    )
     assert len(result.rows) == 3
     assert result.title
+
+
+def test_an_incoherent_market_descent_is_refused():
+    # Un marché atteignable plus grand que le marché total est une saisie
+    # fautive. L'écrire dans un document le rendrait risible.
+    with pytest.raises(ValueError):
+        run_computation("tam_sam_som", MarketAssumptions(
+            total_market=1_000, reachable_market=2_000, capturable_market=500,
+        ))
 
 
 def test_unit_margin():
@@ -223,8 +233,7 @@ def test_every_number_shown_in_a_table_is_also_in_numbers(name):
 def test_an_unknown_computation_is_refused():
     with pytest.raises(KeyError):
         run_computation("divination", MarketAssumptions(
-            total_population=1, average_annual_spend=1,
-            reachable_share=0.1, capturable_share=0.1,
+            total_market=1, reachable_market=1, capturable_market=1,
         ))
 
 
@@ -243,8 +252,8 @@ def test_every_result_carries_a_title_columns_and_numbers(name):
 
 # Un jeu d'hypothèses par calcul, partagé par les deux tests paramétrés.
 EXAMPLES = {
-        "tam_sam_som": MarketAssumptions(total_population=1_000, average_annual_spend=10,
-                                         reachable_share=0.5, capturable_share=0.1),
+        "tam_sam_som": MarketAssumptions(
+            total_market=300_000_000, reachable_market=90_000_000, capturable_market=4_500_000),
         "marge_unitaire": UnitAssumptions(unit_price=10, variable_cost_per_unit=4),
         "tableau_investissements": InvestmentAssumptions(
             lines=[InvestmentLine(label="Matériel", amount=1_000, duration_years=2)]),

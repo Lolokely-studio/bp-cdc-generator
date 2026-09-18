@@ -350,6 +350,14 @@ faits:
     deductible: false
     utilise_par: [bp.plan_tresorerie, bp.besoin_financement]
 
+  - id: taux_interet_emprunt
+    libelle: "Taux d'intérêt de l'emprunt"
+    type: pourcentage
+    question: "À quel taux l'emprunt est-il envisagé ?"
+    exemple: "4 % l'an"
+    deductible: false
+    utilise_par: [bp.besoin_financement]
+
   - id: aides_subventions
     libelle: "Aides et subventions"
     type: montant

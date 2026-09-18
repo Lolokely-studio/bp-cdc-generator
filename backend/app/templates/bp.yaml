@@ -342,7 +342,7 @@ sections:
       Chiffrer ce qu'il faut réunir, et en face, d'où cela vient.
     depend_de: [moyens_investissements, plan_tresorerie, seuil_rentabilite]
     longueur_cible: 300-500 mots
-    faits_requis: [investissements_initiaux, apport_fondateurs]
+    faits_requis: [investissements_initiaux, apport_fondateurs, taux_interet_emprunt]
     faits_utiles: [budget_developpement, emprunt_montant, emprunt_duree, aides_subventions, tresorerie_securite, delai_paiement_clients, hypothese_croissance]
     calculs: [plan_financement_initial, plan_financement_3ans, annuites_credit]
     consignes: |

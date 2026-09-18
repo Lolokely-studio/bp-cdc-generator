@@ -44,7 +44,9 @@ def test_the_two_documents_carry_fifteen_sections_each():
 
 
 def test_the_fact_catalogue_is_complete():
-    assert len(CATALOGUE.facts) == 74
+    # Tâche 6 bis : le catalogue gagne `taux_interet_emprunt`, requis par la
+    # section qui porte l'échéancier d'emprunt (75 = 74 + 1).
+    assert len(CATALOGUE.facts) == 75
 
 
 def test_utilise_par_is_exactly_the_inverse_of_what_sections_declare():
