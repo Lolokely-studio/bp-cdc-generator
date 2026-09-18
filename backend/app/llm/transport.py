@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator, Sequence
 from typing import NoReturn
 
-import httpx
+import httpx2
 from openai import (
     APIConnectionError,
     APIStatusError,
@@ -24,7 +24,7 @@ STREAM_TIMEOUT_SECONDS = 180.0
 
 
 def client_for(
-    provider: Provider, *, timeout: float, http_client: httpx.AsyncClient | None = None
+    provider: Provider, *, timeout: float, http_client: httpx2.AsyncClient | None = None
 ) -> AsyncOpenAI:
     """Un seul adaptateur pour les cinq fournisseurs : tous exposent l'API
     Chat Completions d'OpenAI, seule l'URL de base change.
@@ -51,10 +51,13 @@ def _fail(provider: Provider, model: str, error: Exception) -> NoReturn:
     """Traduit une erreur du client en décision de repli.
 
     Le pseudo-code du §5.3 range tous les échecs au niveau du fournisseur.
-    On y ajoute une distinction que l'exploitation impose : un 400 ou un 404
-    désigne **ce modèle-là**. Un modèle gratuit retiré du catalogue — le cas
-    annoncé dans les parades — répond 404, et basculer de fournisseur
-    reviendrait à abandonner ses autres modèles, encore valides.
+    On y ajoute une distinction que l'exploitation impose : un 400, un 404 ou
+    un 410 désigne **ce modèle-là**. Un modèle gratuit retiré du catalogue —
+    le cas annoncé dans les parades — répond 404 ou 410, et basculer de
+    fournisseur reviendrait à abandonner ses autres modèles, encore valides.
+    Le 410 a été constaté en vrai pendant la campagne réseau, sur
+    `minimaxai/minimax-m3` chez NVIDIA, pendant que d'autres modèles du même
+    fournisseur répondaient normalement.
 
     `RateLimitError` se teste avant `APIStatusError` : c'en est une
     sous-classe, l'ordre inverse la rendrait inatteignable.
@@ -66,7 +69,7 @@ def _fail(provider: Provider, model: str, error: Exception) -> NoReturn:
     if isinstance(error, APIConnectionError):
         raise ProviderUnavailable(provider.name, "erreur", "connexion impossible") from error
     if isinstance(error, APIStatusError):
-        if error.status_code in (400, 404):
+        if error.status_code in (400, 404, 410):
             raise ModelUnavailable(model, f"statut {error.status_code}") from error
         raise ProviderUnavailable(
             provider.name, "erreur", f"statut {error.status_code}"
@@ -98,7 +101,7 @@ async def chat(
     messages: Sequence[Message],
     *,
     schema: type[BaseModel] | None = None,
-    http_client: httpx.AsyncClient | None = None,
+    http_client: httpx2.AsyncClient | None = None,
 ) -> Completion:
     """Un appel non diffusé. Aucun `response_format` n'est envoyé : les cinq
     paliers gratuits ne le gèrent pas de la même façon et un refus se
@@ -132,7 +135,7 @@ async def stream_chat(
     model: str,
     messages: Sequence[Message],
     *,
-    http_client: httpx.AsyncClient | None = None,
+    http_client: httpx2.AsyncClient | None = None,
 ) -> AsyncIterator[str]:
     """Les fragments, dans l'ordre. Une rupture après le premier fragment est
     traitée par la passerelle, seule à savoir qu'il faut alors repartir sur

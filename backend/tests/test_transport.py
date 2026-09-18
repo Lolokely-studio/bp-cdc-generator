@@ -1,6 +1,6 @@
 import json
 
-import httpx
+import httpx2
 import pytest
 from pydantic import BaseModel
 
@@ -38,13 +38,13 @@ def _answer(content: str, usage: dict | None = None) -> dict:
     return body
 
 
-def _client(handler) -> httpx.AsyncClient:
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+def _client(handler) -> httpx2.AsyncClient:
+    return httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
 
 
 def _replying(status: int, body: dict):
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(status, json=body)
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(status, json=body)
 
     return handler
 
@@ -106,6 +106,16 @@ async def test_a_missing_model_blames_the_model_not_the_provider():
     assert error.value.model == MODEL
 
 
+async def test_a_withdrawn_model_blames_the_model():
+    # 410 Gone : « cette ressource a disparu définitivement ». Constaté en vrai
+    # sur minimaxai/minimax-m3 pendant la campagne réseau. Le traiter au niveau
+    # du fournisseur ferait abandonner ses autres modèles, encore vivants.
+    handler = _replying(410, {"error": {"message": "model retired"}})
+    with pytest.raises(ModelUnavailable) as error:
+        await chat(PROVIDER, MODEL, MESSAGES, http_client=_client(handler))
+    assert error.value.model == MODEL
+
+
 async def test_a_bad_request_blames_the_model():
     handler = _replying(400, {"error": {"message": "unsupported parameter"}})
     with pytest.raises(ModelUnavailable):
@@ -120,8 +130,8 @@ async def test_a_server_error_blames_the_provider():
 
 
 async def test_an_unreachable_host_blames_the_provider():
-    def handler(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("injoignable", request=request)
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        raise httpx2.ConnectError("injoignable", request=request)
 
     with pytest.raises(ProviderUnavailable) as error:
         await chat(PROVIDER, MODEL, MESSAGES, http_client=_client(handler))
@@ -158,8 +168,8 @@ async def test_the_stream_yields_the_deltas_in_order():
         for piece in chunks
     ) + "data: [DONE]\n\n"
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(
             200, headers={"content-type": "text/event-stream"}, content=events.encode()
         )
 
