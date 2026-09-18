@@ -5,6 +5,7 @@ from enum import Enum
 from types import UnionType
 from typing import Literal, Union, get_args, get_origin
 
+from annotated_types import Ge, Gt, Le, Lt
 from pydantic import BaseModel
 
 from app.llm.providers import Provider
@@ -63,7 +64,27 @@ def _paragraph(seed: int, sentences: int) -> str:
     )
 
 
-def _value_for(annotation, seed: int, path: str):
+def _bounds(metadata, low: float, high: float) -> tuple[float, float]:
+    """Les bornes déclarées sur le champ, à défaut celles par défaut.
+
+    pydantic range les contraintes dans `FieldInfo.metadata` sous la forme
+    d'objets `annotated_types`. Les ignorer ferait produire au simulé des
+    valeurs que le schéma refuse — et l'erreur sortirait du transport sans
+    être classée.
+    """
+    for constraint in metadata:
+        if isinstance(constraint, Ge):
+            low = float(constraint.ge)
+        elif isinstance(constraint, Gt):
+            low = float(constraint.gt) + 1
+        elif isinstance(constraint, Le):
+            high = float(constraint.le)
+        elif isinstance(constraint, Lt):
+            high = float(constraint.lt) - 1
+    return low, high
+
+
+def _value_for(annotation, seed: int, path: str, metadata=()):
     """Une valeur plausible pour une annotation de champ pydantic.
 
     L'ordre des tests compte : `Literal` et les unions se reconnaissent par
@@ -82,17 +103,20 @@ def _value_for(annotation, seed: int, path: str):
             raise FakeUnsupportedType(f"{path} : union sans branche exploitable")
         # On remplit toujours l'optionnel : un champ laissé à `None` ne teste
         # rien en aval, alors qu'une valeur présente traverse le graphe.
-        return _value_for(branches[0], seed, path)
+        return _value_for(branches[0], seed, path, metadata)
 
     if origin in (list, set, frozenset, tuple):
         arguments = [arg for arg in get_args(annotation) if arg is not Ellipsis]
         item = arguments[0] if arguments else str
-        return [_value_for(item, seed + index + 1, f"{path}[{index}]") for index in range(2)]
+        return [
+            _value_for(item, seed + index + 1, f"{path}[{index}]", metadata)
+            for index in range(2)
+        ]
 
     if origin is dict:
         arguments = get_args(annotation)
         value_type = arguments[1] if len(arguments) == 2 else str
-        return {"cle": _value_for(value_type, seed + 1, f"{path}[cle]")}
+        return {"cle": _value_for(value_type, seed + 1, f"{path}[cle]", metadata)}
 
     if isinstance(annotation, type):
         if issubclass(annotation, BaseModel):
@@ -102,9 +126,11 @@ def _value_for(annotation, seed: int, path: str):
         if annotation is bool:
             return bool(seed % 2)
         if annotation is int:
-            return 1_000 + seed % 99_000
+            low, high = _bounds(metadata, 1_000, 100_000)
+            return int(low) + seed % max(1, int(high) - int(low) + 1)
         if annotation is float:
-            return round(1_000 + seed % 99_000 + (seed % 100) / 100, 2)
+            low, high = _bounds(metadata, 1_000.0, 100_000.0)
+            return round(low + (seed % 10_000) / 10_000 * (high - low), 2)
         if annotation is str:
             return _SENTENCES[seed % len(_SENTENCES)]
 
@@ -118,7 +144,7 @@ def _object_for(schema: type[BaseModel], seed: int, path: str) -> dict:
     """Décale la graine par champ : sans cela, tous les champs de même type
     porteraient la même valeur et un test d'interversion passerait."""
     return {
-        name: _value_for(field.annotation, seed + index + 1, f"{path}.{name}")
+        name: _value_for(field.annotation, seed + index + 1, f"{path}.{name}", field.metadata)
         for index, (name, field) in enumerate(schema.model_fields.items())
     }
 

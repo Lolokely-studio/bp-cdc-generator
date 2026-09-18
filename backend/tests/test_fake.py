@@ -91,6 +91,28 @@ async def test_an_unsupported_field_type_is_announced_loudly():
     assert "when" in str(error.value)
 
 
+async def test_a_bounded_integer_stays_within_its_bounds():
+    # Sans cela, une note sur dix sortirait à 43 000 et la ValidationError
+    # remonterait brute à travers la passerelle.
+    from pydantic import Field
+
+    class Note(BaseModel):
+        score: int = Field(ge=0, le=10)
+
+    completion = await FakeTransport().chat(PROVIDER, MODEL, _messages(), schema=Note)
+    assert 0 <= completion.parsed.score <= 10
+
+
+async def test_a_bounded_float_stays_within_its_bounds():
+    from pydantic import Field
+
+    class Confiance(BaseModel):
+        value: float = Field(ge=0, le=1)
+
+    completion = await FakeTransport().chat(PROVIDER, MODEL, _messages(), schema=Confiance)
+    assert 0 <= completion.parsed.value <= 1
+
+
 async def test_the_stream_rebuilds_the_same_text():
     transport = FakeTransport()
     chunks = [chunk async for chunk in transport.stream_chat(PROVIDER, MODEL, _messages())]
