@@ -161,6 +161,31 @@ async def test_fact_id_falls_back_to_filler_without_offered_identifiers():
     )
 
 
+async def test_a_question_list_follows_the_number_of_facts_offered():
+    """Sans cela, un lot de six revenait avec deux questions et la règle du
+    lot n'avait aucun effet."""
+    from app.agent.prompts import ProposedQuestions, questions_prompt
+    from app.agent.templates import load_catalogue
+
+    catalogue = load_catalogue()
+    section = catalogue.section("bp.besoin_financement")
+    demandes = ["emprunt_montant", "emprunt_duree", "aides_subventions"]
+    messages = questions_prompt(section, demandes, catalogue)
+
+    completion = await FakeTransport().chat(PROVIDER, MODEL, messages,
+                                            schema=ProposedQuestions)
+    assert len(completion.parsed.questions) == len(demandes)
+    assert {q.fact_id for q in completion.parsed.questions} <= set(demandes)
+
+
+async def test_another_list_still_gets_two_items():
+    # La règle ne vaut que pour les questions : ailleurs, deux suffit.
+    from app.agent.prompts import Critique
+
+    completion = await FakeTransport().chat(PROVIDER, MODEL, _messages(), schema=Critique)
+    assert len(completion.parsed.problems) == 2
+
+
 async def test_the_stream_rebuilds_the_same_text():
     transport = FakeTransport()
     chunks = [chunk async for chunk in transport.stream_chat(PROVIDER, MODEL, _messages())]

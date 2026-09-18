@@ -129,9 +129,19 @@ def _value_for(annotation, seed: int, path: str, metadata=(), facts: tuple[str, 
     if origin in (list, set, frozenset, tuple):
         arguments = [arg for arg in get_args(annotation) if arg is not Ellipsis]
         item = arguments[0] if arguments else str
+        # Une liste de questions suit le nombre de faits que le prompt offre :
+        # la consigne dit « sans en ajouter ni en retirer », et c'est ce qu'un
+        # vrai modèle fait. Deux éléments quoi qu'il arrive tronquaient chaque
+        # lot à deux, et la règle du lot devenait sans effet.
+        #
+        # Second et dernier cas où ce simulé regarde le nom d'un champ, après
+        # `fact_id`. Les deux se justifient de la même façon : le prompt donne
+        # la réponse à recopier, et un simulé qui l'ignore est moins fidèle
+        # qu'un vrai modèle, pas plus.
+        count = len(facts) if facts and path.endswith(".questions") else 2
         return [
             _value_for(item, seed + index + 1, f"{path}[{index}]", metadata, facts)
-            for index in range(2)
+            for index in range(count)
         ]
 
     if origin is dict:
