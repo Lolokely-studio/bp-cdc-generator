@@ -46,15 +46,19 @@ divergences portaient sur des protections réelles — l'affectation ferme des
 variables de test, un nom de test. Le plan est la source, le brief en dérive :
 l'un sans l'autre est une régression silencieuse.
 
-**Vérifier le plan avant de l'exécuter, pas pendant.** Trois contrôles qui
-auraient épargné des tours de correction au plan 1, à passer une fois le plan
-écrit :
+**Vérifier le plan avant de l'exécuter, pas pendant.** Quatre contrôles qui
+auraient épargné des tours de correction aux plans 1 et 3, à passer une fois le
+plan écrit :
 - analyse syntaxique de chaque bloc de code (`ast.parse`), qui attrape les
   fragments incohérents ;
 - balayage des identifiants, pour que les conventions de nommage soient tenues
   partout et pas seulement dans les définitions ;
 - audit croisé des renvois entre tâches — ce qu'une tâche produit contre ce que
-  la suivante consomme, nom par nom.
+  la suivante consomme, nom par nom ;
+- résolution des noms : tout nom chargé par un bloc de code est lié, importé ou
+  natif. Ajouté après le plan 3, où une passe de renommage automatique avait
+  laissé treize noms morts à l'intérieur de chaînes formatées — invisibles à
+  `ast.parse`, qui les traite comme du texte.
 
 **Ne jamais laisser une édition du plan non commitée pendant qu'un sous-agent
 travaille.** Deux fois, un agent a nettoyé l'arbre de travail et effacé des
@@ -75,7 +79,15 @@ Relecture des consignes et des grilles des 30 sections, plafond par compte, réi
       compteurs sur `llm_usage`, bascule préventive, repli, modèle simulé déterministe.
       Le catalogue Mistral a été mesuré sur la clé réelle : la famille `mistral-small`
       répond 429 dès le premier appel, `ministral-8b` et `ministral-3b` répondent.
-- [ ] Plan 3
+- [x] Plan 3 — **livré et fusionné** : [2026-09-18-04-agent.md](2026-09-18-04-agent.md) — 361 tests
+      Le graphe LangGraph : entretien section par section, interruption à chaque
+      lot de questions, reprise sur points de sauvegarde PostgreSQL, couche
+      d'hypothèses, dix calculs financiers, rédaction en flux, purge.
+      Une exécution de bout en bout hors ligne produit un business plan complet
+      avec ses **dix tableaux sur dix**. Deux défauts de fond n'ont été trouvés
+      qu'en mesurant cette exécution, jamais par les tests unitaires : le modèle
+      simulé inventait les identifiants de faits, et la règle des faits utiles
+      annoncée dans l'en-tête du catalogue n'avait jamais été implémentée.
 - [ ] Plan 4
 - [ ] Plan 5
 - [ ] Plan 6

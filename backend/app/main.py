@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.agent.checkpointer import close_checkpointer
 from app.core.db import pool
 from app.llm.transport import close_clients
 
@@ -18,9 +19,12 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         try:
-            await close_clients()
+            await close_checkpointer()
         finally:
-            await connection_pool.close()
+            try:
+                await close_clients()
+            finally:
+                await connection_pool.close()
 
 
 def create_app() -> FastAPI:
