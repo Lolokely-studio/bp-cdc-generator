@@ -64,7 +64,10 @@ def market_size(a: MarketAssumptions) -> Computation:
             ("Marché adressable (SAM)", _rate(a.reachable_share), _money(sam)),
             ("Marché atteignable (SOM)", _rate(a.capturable_share), _money(som)),
         ),
-        numbers=(tam, sam, som),
+        # La première ligne affiche « 100 % » en toutes lettres : ce n'est
+        # une hypothèse nulle part ailleurs, donc 1.0 doit figurer ici pour
+        # que ce chiffre reste traçable.
+        numbers=(tam, sam, som, a.reachable_share, a.capturable_share, 1.0),
     )
 
 
@@ -86,7 +89,7 @@ def unit_margin(a: UnitAssumptions) -> Computation:
             ("Marge unitaire", _money(margin)),
             ("Taux de marge", _rate(rate)),
         ),
-        numbers=(margin, rate),
+        numbers=(a.unit_price, a.variable_cost_per_unit, margin, rate),
     )
 
 
@@ -116,7 +119,12 @@ def investment_table(a: InvestmentAssumptions) -> Computation:
         title="Investissements et amortissements",
         columns=("Poste", "Montant", "Durée", "Dotation annuelle"),
         rows=rows + (("Total", _money(total), "", _money(depreciation)),),
-        numbers=tuple(line.amount for line in a.lines) + (total, depreciation),
+        numbers=(
+            tuple(line.amount for line in a.lines)
+            + tuple(float(line.duration_years) for line in a.lines)
+            + tuple(line.amount / line.duration_years for line in a.lines)
+            + (total, depreciation)
+        ),
     )
 
 
@@ -143,7 +151,10 @@ def income_statement_3y(a: IncomeAssumptions) -> Computation:
         columns=("Exercice", "Chiffre d'affaires", "Marge brute",
                  "Charges fixes", "Dotations", "Résultat"),
         rows=tuple(rows),
-        numbers=tuple(numbers),
+        # Les charges fixes et les dotations s'affichent à chaque exercice sans
+        # jamais varier : sans elles ici, une phrase qui les reprend passerait
+        # pour un chiffre inventé.
+        numbers=tuple(numbers) + (a.fixed_costs, a.depreciation),
     )
 
 
@@ -167,7 +178,7 @@ def cash_plan_12m(a: CashAssumptions) -> Computation:
         title="Plan de trésorerie sur douze mois",
         columns=("Mois", "Encaissements", "Décaissements", "Solde de fin de mois"),
         rows=tuple(rows),
-        numbers=tuple(numbers),
+        numbers=tuple(numbers) + (a.monthly_inflow, a.monthly_outflow),
     )
 
 
@@ -196,7 +207,7 @@ def break_even_revenue(a: BreakEvenAssumptions) -> Computation:
             ("Taux de marge", _rate(a.gross_margin_rate)),
             ("Chiffre d'affaires nécessaire", _money(threshold)),
         ),
-        numbers=(threshold,),
+        numbers=(threshold, a.fixed_costs, a.gross_margin_rate),
     )
 
 
@@ -219,7 +230,7 @@ def break_even_point(a: BreakEvenAssumptions) -> Computation:
             ("Point mort", f"{months:.2f} mois".replace(".", ",")),
             ("Atteint dans l'exercice", reached),
         ),
-        numbers=(months,),
+        numbers=(months, threshold, a.annual_revenue),
     )
 
 
@@ -252,7 +263,11 @@ def initial_funding_plan(a: FundingAssumptions) -> Computation:
             ("Total des besoins", _money(needs), "Total des ressources", _money(resources)),
             ("Écart", "", "", _money(gap)),
         ),
-        numbers=(needs, resources, gap),
+        numbers=(
+            needs, resources, gap,
+            a.investments, a.working_capital, a.opening_cash,
+            a.equity, a.loan, a.grants,
+        ),
     )
 
 
@@ -293,14 +308,25 @@ def loan_schedule(a: LoanAssumptions) -> Computation:
     else:
         annuity = a.principal * a.annual_rate / (1 - (1 + a.annual_rate) ** -a.years)
     rows, balance = [], a.principal
+    interests, repayments, balances = [], [], []
     for year in range(1, a.years + 1):
         interest = balance * a.annual_rate
         repaid = annuity - interest
         balance -= repaid
-        # Le dernier solde doit tomber sur zéro et non sur un résidu de
-        # virgule flottante : le tableau part dans un document bancaire.
         if year == a.years:
+            # Le dernier solde doit tomber sur zéro et non sur un résidu de
+            # virgule flottante : le tableau part dans un document bancaire.
+            # Mais on regarde avant d'écraser — forcer sans vérifier
+            # imprimerait « 0,00 € » même si la formule était fausse de
+            # plusieurs milliers d'euros, et aucun test n'y verrait rien.
+            if abs(balance) > 0.01:
+                raise ValueError(
+                    f"l'échéancier ne s'amortit pas : {balance:.2f} € de reste"
+                )
             balance = 0.0
+        interests.append(interest)
+        repayments.append(repaid)
+        balances.append(balance)
         rows.append((f"Année {year}", _money(annuity), _money(interest),
                      _money(repaid), _money(balance)))
     return Computation(
@@ -309,7 +335,13 @@ def loan_schedule(a: LoanAssumptions) -> Computation:
         columns=("Exercice", "Annuité", "Intérêts", "Capital remboursé",
                  "Capital restant dû"),
         rows=tuple(rows),
-        numbers=(annuity, annuity * a.years, annuity * a.years - a.principal),
+        # Chaque échéance affiche des intérêts, un capital remboursé et un
+        # solde qui lui sont propres : sans les listes complètes ici, une
+        # phrase qui reprend la troisième annuité passerait pour inventée.
+        numbers=(
+            (annuity, annuity * a.years, annuity * a.years - a.principal)
+            + tuple(interests) + tuple(repayments) + tuple(balances)
+        ),
     )
 
 

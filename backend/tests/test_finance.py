@@ -33,7 +33,9 @@ def test_market_size_descends_from_total_to_capturable():
         total_population=500_000, average_annual_spend=600,
         reachable_share=0.30, capturable_share=0.05,
     ))
-    assert result.numbers == (300_000_000.0, 90_000_000.0, 4_500_000.0)
+    # Les trois premiers éléments restent le seuil calculé ; l'invariant
+    # rows/numbers (voir plus bas) en ajoute d'autres à la suite.
+    assert result.numbers[:3] == (300_000_000.0, 90_000_000.0, 4_500_000.0)
     assert len(result.rows) == 3
     assert result.title
 
@@ -42,7 +44,9 @@ def test_unit_margin():
     result = run_computation("marge_unitaire", UnitAssumptions(
         unit_price=49, variable_cost_per_unit=17.15,
     ))
-    margin, rate = result.numbers
+    # `numbers` porte aussi le prix et le coût variable, pour que l'invariant
+    # rows/numbers couvre les deux premières lignes du tableau.
+    margin, rate = result.numbers[-2:]
     assert margin == pytest.approx(31.85)
     assert rate == pytest.approx(0.65)
 
@@ -64,7 +68,10 @@ def test_income_statement_over_three_years():
     ))
     # Calculées, pas devinées : 180 000 puis +35 % par an, 65 % de marge,
     # 95 000 de charges fixes et 8 000 de dotations.
-    assert result.numbers == pytest.approx(
+    # Les neuf premiers éléments restent les trois exercices ; les charges
+    # fixes et les dotations, constantes d'une année à l'autre, sont ajoutées
+    # à la suite pour que l'invariant rows/numbers les couvre aussi.
+    assert result.numbers[:9] == pytest.approx(
         (180_000, 117_000, 14_000,
          243_000, 157_950, 54_950,
          328_050, 213_232.5, 110_232.5)
@@ -77,9 +84,12 @@ def test_cash_plan_covers_twelve_months_and_flags_the_worst():
     ))
     assert len(result.rows) == 12
     # 30 000 puis −3 500 par mois : le solde reste positif jusqu'au huitième
-    # mois inclus et passe sous zéro au neuvième.
-    assert result.numbers[-1] == pytest.approx(30_000 - 12 * 3_500)
-    assert result.numbers[-1] < 0
+    # mois inclus et passe sous zéro au neuvième. Les douze premiers éléments
+    # sont les soldes mensuels ; les encaissements/décaissements mensuels
+    # suivent, ajoutés pour l'invariant rows/numbers.
+    last_balance = result.numbers[:12][-1]
+    assert last_balance == pytest.approx(30_000 - 12 * 3_500)
+    assert last_balance < 0
 
 
 def test_break_even_revenue():
@@ -114,7 +124,9 @@ def test_initial_funding_plan_balances():
         investments=69_000, working_capital=15_000, opening_cash=10_000,
         equity=30_000, loan=60_000, grants=4_000,
     ))
-    needs, resources, gap = result.numbers[-3:]
+    # Les trois premiers éléments restent besoins/ressources/écart ; le
+    # détail des postes suit, ajouté pour l'invariant rows/numbers.
+    needs, resources, gap = result.numbers[:3]
     assert needs == pytest.approx(94_000)
     assert resources == pytest.approx(94_000)
     assert gap == pytest.approx(0)
@@ -125,7 +137,8 @@ def test_a_funding_plan_that_does_not_balance_says_so():
         investments=69_000, working_capital=15_000, opening_cash=10_000,
         equity=30_000, loan=40_000, grants=0,
     ))
-    assert result.numbers[-1] == pytest.approx(-24_000)
+    # L'écart est le troisième élément (besoins, ressources, écart, ...).
+    assert result.numbers[2] == pytest.approx(-24_000)
 
 
 def test_funding_plan_over_three_years():
@@ -145,8 +158,17 @@ def test_loan_schedule_amortises_to_zero():
     # Annuité constante : P·i / (1 − (1+i)^−n). Calculée, pas estimée.
     assert result.numbers[0] == pytest.approx(11_231.36, abs=0.01)
     assert len(result.rows) == 5
-    # Le capital restant dû du dernier échéancier doit tomber exactement à zéro.
-    assert float(result.rows[-1][-1].replace(" ", "").replace(" ", "").replace(",", ".").rstrip("€")) == pytest.approx(0, abs=0.01)
+
+
+def test_the_capital_repaid_adds_up_to_the_principal():
+    # Non tautologique, contrairement à « le dernier solde vaut zéro » : ce
+    # dernier est forcé par le code, celui-ci se déduit des lignes affichées
+    # et échouerait si la formule d'annuité était fausse.
+    result = run_computation("annuites_credit", LoanAssumptions(
+        principal=50_000, annual_rate=0.04, years=5,
+    ))
+    repaid = sum(_cell_to_float(row[3]) for row in result.rows)
+    assert repaid == pytest.approx(50_000, abs=0.05)
 
 
 def test_a_loan_without_interest_is_a_plain_division():
@@ -154,6 +176,48 @@ def test_a_loan_without_interest_is_a_plain_division():
         principal=50_000, annual_rate=0, years=5,
     ))
     assert result.numbers[0] == pytest.approx(10_000)
+
+
+def _cell_to_float(cell: str) -> float | None:
+    """Relit un nombre mis en forme à la française. `None` si la cellule n'en
+    porte pas — un intitulé, une mention en toutes lettres."""
+    import re
+
+    # Ancré en tête : une cellule numérique commence toujours par le chiffre
+    # (ou son signe), tandis qu'un intitulé ordinal comme « Année 3 » ou
+    # « Mois 7 » porte le chiffre après du texte — il ne doit pas être pris
+    # pour une figure financière.
+    match = re.match(r"-?\d[\d   ]*(?:,\d+)?", cell)
+    if not match:
+        return None
+    raw = match.group()
+    for separator in (" ", " ", " "):
+        raw = raw.replace(separator, "")
+    return float(raw.replace(",", "."))
+
+
+@pytest.mark.parametrize("name", sorted(COMPUTATIONS))
+def test_every_number_shown_in_a_table_is_also_in_numbers(name):
+    """L'invariant qui relie les deux moitiés de `Computation`.
+
+    Le vérificateur de la tâche 4 n'examine pas les tableaux — ils sont
+    traçables par construction — mais il examine la prose, et la prose reprend
+    les chiffres des tableaux. Un chiffre affiché ici mais absent de `numbers`
+    serait signalé comme inventé dès que le modèle l'écrirait dans une phrase.
+    Un test générique vaut mieux que dix relectures à la main.
+    """
+    result = run_computation(name, EXAMPLES[name])
+    known = {round(n, 2) for n in result.numbers}
+    known |= {round(n * 100, 2) for n in result.numbers}  # un taux s'affiche en pourcentage
+    for row in result.rows:
+        for cell in row:
+            shown = _cell_to_float(cell)
+            if shown is None:
+                continue
+            assert round(shown, 2) in known, (
+                f"{name} : {shown} est affiché dans le tableau mais absent de "
+                f"`numbers` — le vérificateur le prendra pour un chiffre inventé"
+            )
 
 
 def test_an_unknown_computation_is_refused():
@@ -169,7 +233,16 @@ def test_every_result_carries_a_title_columns_and_numbers(name):
     # Le tableau part tel quel dans le document et les nombres partent au
     # vérificateur : un calcul qui ne rendrait ni l'un ni l'autre passerait
     # inaperçu jusqu'à l'export.
-    exemples = {
+    result = run_computation(name, EXAMPLES[name])
+    assert result.name == name
+    assert result.title
+    assert result.columns
+    assert result.rows
+    assert result.numbers
+
+
+# Un jeu d'hypothèses par calcul, partagé par les deux tests paramétrés.
+EXAMPLES = {
         "tam_sam_som": MarketAssumptions(total_population=1_000, average_annual_spend=10,
                                          reachable_share=0.5, capturable_share=0.1),
         "marge_unitaire": UnitAssumptions(unit_price=10, variable_cost_per_unit=4),
@@ -190,11 +263,5 @@ def test_every_result_carries_a_title_columns_and_numbers(name):
             investments=100, working_capital=10, opening_cash=10,
             equity=60, loan=60, grants=0,
             yearly_cash_flow=[10, 20, 30], yearly_loan_repayment=[5, 5, 5]),
-        "annuites_credit": LoanAssumptions(principal=1_000, annual_rate=0.02, years=2),
-    }
-    result = run_computation(name, exemples[name])
-    assert result.name == name
-    assert result.title
-    assert result.columns
-    assert result.rows
-    assert result.numbers
+    "annuites_credit": LoanAssumptions(principal=1_000, annual_rate=0.02, years=2),
+}
