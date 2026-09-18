@@ -1,4 +1,4 @@
-from esquisse.db import connection
+from app.core.db import connection
 
 
 async def _token_for(client, email: str) -> str:

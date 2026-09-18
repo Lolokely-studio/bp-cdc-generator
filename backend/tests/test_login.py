@@ -1,6 +1,6 @@
 import hashlib
 
-from esquisse.db import connection
+from app.core.db import connection
 
 
 async def _register_and_activate(client, email: str, active: bool) -> None:

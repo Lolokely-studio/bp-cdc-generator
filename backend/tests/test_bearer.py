@@ -1,6 +1,6 @@
 import pytest
 
-from esquisse.auth.bearer import bearer_token
+from app.auth.bearer import bearer_token
 
 
 @pytest.mark.parametrize(

@@ -2,13 +2,13 @@ import anyio
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
 
-from esquisse.auth import repository
-from esquisse.auth.bearer import bearer_token
-from esquisse.auth.dependencies import active_user
-from esquisse.config import settings
-from esquisse.db import connection
-from esquisse.rate_limit import SlidingWindowCounter
-from esquisse.security import hash_password, new_token, token_hash, verify_password
+from app.auth import repository
+from app.auth.bearer import bearer_token
+from app.auth.dependencies import active_user
+from app.core.config import settings
+from app.core.db import connection
+from app.core.rate_limit import SlidingWindowCounter
+from app.core.security import hash_password, new_token, token_hash, verify_password
 
 router = APIRouter(prefix="/auth", tags=["comptes"])
 me_router = APIRouter(tags=["comptes"])

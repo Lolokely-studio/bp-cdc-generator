@@ -1,6 +1,6 @@
 import time
 
-from esquisse.security import hash_password, verify_password, new_token, token_hash
+from app.core.security import hash_password, verify_password, new_token, token_hash
 
 
 def test_hash_does_not_contain_password():

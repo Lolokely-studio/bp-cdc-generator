@@ -1,6 +1,6 @@
 import pytest
 
-from esquisse.safety import RemoteMigrationRefused, ensure_migration_target_allowed
+from app.core.safety import RemoteMigrationRefused, ensure_migration_target_allowed
 
 LOCAL = "postgresql://u:p@localhost:5433/esquisse_test"
 DISTANT = "postgresql://u:p@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"

@@ -20,12 +20,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - name: Installer les dépendances
-        working-directory: api
+        working-directory: backend
         # --frozen : le verrou fait foi. Une dépendance qui dérive fait
         # échouer la construction au lieu d'être résolue autrement.
         run: uv sync --frozen
       - name: Tests
-        working-directory: api
+        working-directory: backend
         env:
           SUPABASE_DB_HOST: localhost
           SUPABASE_DB_PORT: "5433"

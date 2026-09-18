@@ -2,8 +2,8 @@ from alembic import context
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 
-from esquisse.config import settings
-from esquisse.safety import ensure_migration_target_allowed
+from app.core.config import settings
+from app.core.safety import ensure_migration_target_allowed
 
 
 def run_migrations_online() -> None:

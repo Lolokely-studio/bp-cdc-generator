@@ -1,4 +1,4 @@
-from esquisse.config import Settings
+from app.core.config import Settings
 
 
 def test_env_var_overrides_env_file(tmp_path, monkeypatch):

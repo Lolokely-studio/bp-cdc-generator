@@ -4,14 +4,14 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Le fichier vit dans api/esquisse/ : deux niveaux au-dessus se trouve la racine
-# du dépôt, où README et .env.example placent le `.env`. On ancre le chemin sur
-# l'emplacement du module plutôt que sur le répertoire courant, car toutes les
-# commandes se lancent depuis `api/` et un chemin relatif (".env") y pointerait
-# sur `api/.env`, qui n'existe pas. En conteneur, ce chemin ne trouvera aucun
-# fichier : sans effet, les réglages y viennent de l'environnement de
-# l'hébergeur.
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+# Le fichier vit dans backend/app/core/ : trois niveaux au-dessus se trouve la
+# racine du dépôt, où README et .env.example placent le `.env`. On ancre le
+# chemin sur l'emplacement du module plutôt que sur le répertoire courant, car
+# toutes les commandes se lancent depuis `backend/` et un chemin relatif
+# (".env") y pointerait sur `backend/.env`, qui n'existe pas. En conteneur, ce
+# chemin ne trouvera aucun fichier : sans effet, les réglages y viennent de
+# l'environnement de l'hébergeur.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):

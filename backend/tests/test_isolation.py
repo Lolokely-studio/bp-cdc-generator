@@ -4,8 +4,8 @@ from uuid import uuid4
 
 import pytest
 
-from esquisse.db import connection
-from esquisse.projects.repository import (
+from app.core.db import connection
+from app.projects.repository import (
     ProjectNotFound,
     create_project,
     project_for_user,
@@ -89,8 +89,8 @@ def test_the_guard_catches_every_shape(snippet):
 @pytest.mark.parametrize(
     "snippet",
     [
-        "from esquisse.projects.repository import project_for_user",
-        "import esquisse.projects",
+        "from app.projects.repository import project_for_user",
+        "import app.projects",
         "select * from sections where project_id = %s",
     ],
 )
@@ -101,7 +101,7 @@ def test_the_guard_does_not_cry_wolf(snippet):
 def test_no_projects_query_outside_repository():
     """Le cloisonnement ne vaut que si personne ne contourne le dépôt. Ce test
     casse dès qu'un autre fichier écrit son propre SQL sur la table."""
-    root = Path(__file__).resolve().parents[1] / "esquisse"
+    root = Path(__file__).resolve().parents[1] / "app"
     allowed = root / "projects" / "repository.py"
     offenders = [
         f for f in root.rglob("*.py")

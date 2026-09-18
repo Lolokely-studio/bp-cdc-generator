@@ -1,5 +1,5 @@
 import pytest
-from esquisse.rate_limit import SlidingWindowCounter
+from app.core.rate_limit import SlidingWindowCounter
 
 
 def test_allows_up_to_limit():
@@ -50,12 +50,19 @@ async def test_rate_limit_ignores_the_caller_supplied_prefix(client, migrated_db
 
 
 async def test_rate_limit_separates_distinct_forwarded_addresses(client, migrated_db):
+    """Deux entrées par en-tête, comme pour le test jumeau : une seule entrée
+    ne distinguerait pas une implémentation qui retiendrait la première de
+    celle qui retient la dernière, puisqu'il n'y en aurait qu'une. Le préfixe
+    est constant ici, seule la dernière entrée change : une implémentation qui
+    lirait à tort la première verrait toujours la même adresse et bloquerait,
+    alors que la bonne implémentation traite ces deux appelants comme
+    distincts."""
     corps = {"email": "x@exemple.fr", "mot_de_passe": "motdepasse123"}
     for _ in range(10):
         await client.post(
-            "/auth/login", json=corps, headers={"X-Forwarded-For": "1.1.1.1"}
+            "/auth/login", json=corps, headers={"X-Forwarded-For": "9.9.9.9, 1.1.1.1"}
         )
     autre = await client.post(
-        "/auth/login", json=corps, headers={"X-Forwarded-For": "2.2.2.2"}
+        "/auth/login", json=corps, headers={"X-Forwarded-For": "9.9.9.9, 2.2.2.2"}
     )
     assert autre.status_code != 429

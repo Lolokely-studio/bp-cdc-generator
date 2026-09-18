@@ -1,4 +1,4 @@
-from esquisse.db import connection
+from app.core.db import connection
 
 
 async def test_register_creates_inactive_account(client, migrated_db):

@@ -1,4 +1,4 @@
-from esquisse.db import connection
+from app.core.db import connection
 
 
 async def test_account_tables_exist(migrated_db):
