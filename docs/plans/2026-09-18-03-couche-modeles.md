@@ -451,7 +451,15 @@ PROVIDERS: dict[str, Provider] = {
         name="mistral",
         base_url="https://api.mistral.ai/v1",
         key_setting="mistral_ai_api_key",
-        models=("mistral-small-latest", "open-mistral-nemo"),
+        # Relevé à la main sur la clé du compte : toute la famille
+        # `mistral-small*` — y compris `mistral-small-latest` et
+        # `magistral-small-latest` — est exposée par `/v1/models` mais refuse
+        # chaque appel en 429, dès le premier, sans rien avoir consommé. Les
+        # trois ci-dessous répondent. L'ordre compte doublement : un 429 est
+        # classé au niveau du fournisseur, donc un premier modèle qui refuse
+        # toujours ferait sauter Mistral des deux routes où il figure, sans
+        # qu'aucun modèle vivant ne soit jamais essayé.
+        models=("open-mistral-nemo", "ministral-8b-latest", "ministral-3b-latest"),
         # 200 000 est la borne basse de la fourchette 200 000 – 315 000
         # relevée sur le palier gratuit. On retient la borne basse : un
         # budget qui sous-estime le plafond bascule trop tôt, l'inverse
@@ -2148,7 +2156,7 @@ async def test_a_stream_broken_after_a_delta_restarts_on_the_next_provider():
         ("gemini", "gemini-3.1-flash-lite"): [
             "Le début ", ProviderUnavailable("gemini", "erreur", "flux rompu")
         ],
-        ("mistral", "mistral-small-latest"): ["Tout ", "depuis le début."],
+        ("mistral", "open-mistral-nemo"): ["Tout ", "depuis le début."],
     })
     events = [event async for event in stream("redaction", MESSAGES, transport=stub)]
     restarts = [e for e in events if isinstance(e, StreamRestart)]
@@ -2164,7 +2172,7 @@ async def test_a_stream_that_never_opened_announces_no_restart():
     # Rien n'a été affiché : c'est un essai raté ordinaire, pas une reprise.
     stub = _StreamStub({
         ("gemini", "gemini-3.1-flash-lite"): [ProviderUnavailable("gemini", "quota", "429")],
-        ("mistral", "mistral-small-latest"): ["Une section."],
+        ("mistral", "open-mistral-nemo"): ["Une section."],
     })
     events = [event async for event in stream("redaction", MESSAGES, transport=stub)]
     assert not any(isinstance(e, StreamRestart) for e in events)
@@ -2177,7 +2185,7 @@ async def test_a_broken_stream_records_what_was_already_emitted():
             "Un début de section déjà affiché à l'écran.",
             ProviderUnavailable("gemini", "erreur", "flux rompu"),
         ],
-        ("mistral", "mistral-small-latest"): ["Tout depuis le début."],
+        ("mistral", "open-mistral-nemo"): ["Tout depuis le début."],
     })
     [event async for event in stream("redaction", MESSAGES, transport=stub)]
     rows = await _usage_rows()
