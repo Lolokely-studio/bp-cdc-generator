@@ -74,6 +74,51 @@ def test_two_rounds_of_questions_are_enough():
     assert nodes.route_after_gaps(_state(question_rounds=2)) != "formulate_questions"
 
 
+def test_the_question_batch_puts_the_required_facts_first():
+    # Un fait requis bloque la section ; un fait utile l'enrichit. L'ordre
+    # n'est pas cosmétique : c'est lui qui décide de ce qui tient dans le lot.
+    plan = CATALOGUE.plan_for("bp", None, "banque")
+    index = next(i for i, r in enumerate(plan)
+                 if CATALOGUE.section(f"bp.{r.section_id}").faits_utiles)
+    section = CATALOGUE.section(f"bp.{plan[index].section_id}")
+    batch = nodes.question_batch(_state(documents="bp", profil_cdc=None,
+                                        plan=plan, cursor=index))
+    requis_demandes = [f for f in batch if f in section.faits_requis]
+    assert batch[:len(requis_demandes)] == requis_demandes
+
+
+def test_the_question_batch_fills_the_remaining_places_with_useful_facts():
+    # La moitié de la règle qui n'avait jamais été écrite.
+    plan = CATALOGUE.plan_for("bp", None, "banque")
+    index = next(i for i, r in enumerate(plan)
+                 if CATALOGUE.section(f"bp.{r.section_id}").faits_utiles)
+    section = CATALOGUE.section(f"bp.{plan[index].section_id}")
+    batch = nodes.question_batch(_state(documents="bp", profil_cdc=None,
+                                        plan=plan, cursor=index))
+    assert any(f in section.faits_utiles for f in batch), (
+        "aucun fait utile dans le lot : ils ne seront jamais demandés"
+    )
+
+
+def test_the_question_batch_is_capped():
+    plan = CATALOGUE.plan_for("bp", None, "banque")
+    for index in range(len(plan)):
+        batch = nodes.question_batch(_state(documents="bp", profil_cdc=None,
+                                            plan=plan, cursor=index))
+        assert len(batch) <= nodes.QUESTION_BATCH_SIZE
+
+
+def test_a_fact_already_known_never_returns_to_the_batch():
+    # « Je ne sais pas » comprise : c'est une réponse.
+    plan = CATALOGUE.plan_for("bp", None, "banque")
+    section = CATALOGUE.section(f"bp.{plan[0].section_id}")
+    connus = {f: Fact(fact_id=f, value=None, source="user")
+              for f in (*section.faits_requis, *section.faits_utiles)}
+    batch = nodes.question_batch(_state(documents="bp", profil_cdc=None,
+                                        plan=plan, cursor=0, facts=connus))
+    assert batch == []
+
+
 def test_a_section_declaring_computations_goes_through_them():
     plan = CATALOGUE.plan_for("bp", None, "banque")
     index = next(i for i, r in enumerate(plan)

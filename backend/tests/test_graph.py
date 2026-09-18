@@ -208,9 +208,12 @@ async def test_a_business_plan_run_produces_tables(project_bp):
 
     assert sections, "aucune section enregistrée"
     tables = [b for s in sections for b in s["blocks"] if b.kind == "table"]
-    assert tables, (
-        "aucun tableau dans tout un business plan : la chaîne qui va du fait "
-        "chiffré au bloc Table n'est pas parcourue"
+    # Avant la règle du lot, quatre tableaux sortaient sur dix calculs
+    # possibles : les faits qui alimentent les six autres n'étaient jamais
+    # demandés. Le seuil est là pour que la régression se voie.
+    assert len(tables) >= 6, (
+        f"{len(tables)} tableaux seulement : les faits utiles ne sont "
+        "probablement plus demandés"
     )
     # Chaque tableau porte un titre et des lignes : un tableau vide serait un
     # trou dans le document, pas une réussite.

@@ -113,6 +113,54 @@ async def test_a_bounded_float_stays_within_its_bounds():
     assert 0 <= completion.parsed.value <= 1
 
 
+def _prompt_offering(*fact_ids: str) -> list[Message]:
+    lines = "\n".join(f"- {fact_id} (Libellé quelconque) : « Une question ? »"
+                      for fact_id in fact_ids)
+    return [Message("system", "Tu poses des questions."), Message("user", lines)]
+
+
+async def test_a_field_named_fact_id_gets_an_identifier_from_the_prompt():
+    class ProposedQuestion(BaseModel):
+        fact_id: str
+        question: str
+
+    class ProposedQuestions(BaseModel):
+        questions: list[ProposedQuestion]
+
+    offered = ("prix_moyen_unite", "volume_ventes_an1")
+    completion = await FakeTransport().chat(
+        PROVIDER, MODEL, _prompt_offering(*offered), schema=ProposedQuestions
+    )
+    assert all(q.fact_id in offered for q in completion.parsed.questions)
+
+
+async def test_a_field_merely_named_like_fact_id_is_left_alone():
+    # `fact_identifier` ressemble à `fact_id` mais n'en est pas un : il doit
+    # recevoir le remplissage générique, jamais un identifiant du catalogue.
+    class WithLookalikeField(BaseModel):
+        fact_identifier: str
+
+    offered = ("prix_moyen_unite", "volume_ventes_an1")
+    completion = await FakeTransport().chat(
+        PROVIDER, MODEL, _prompt_offering(*offered), schema=WithLookalikeField
+    )
+    assert completion.parsed.fact_identifier not in offered
+
+
+async def test_fact_id_falls_back_to_filler_without_offered_identifiers():
+    class ProposedQuestion(BaseModel):
+        fact_id: str
+
+    completion = await FakeTransport().chat(
+        PROVIDER, MODEL, _messages(), schema=ProposedQuestion
+    )
+    # Aucun identifiant offert dans le prompt : le remplissage générique
+    # s'applique, comme pour n'importe quel autre champ `str`.
+    assert completion.parsed.fact_id not in (
+        "prix_moyen_unite", "volume_ventes_an1"
+    )
+
+
 async def test_the_stream_rebuilds_the_same_text():
     transport = FakeTransport()
     chunks = [chunk async for chunk in transport.stream_chat(PROVIDER, MODEL, _messages())]

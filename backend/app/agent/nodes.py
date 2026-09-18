@@ -20,6 +20,16 @@ MAX_REVISIONS = 2
 # templates. Les deux font deux choses différentes et ne se confondent pas.
 REWRITE_SCORE = 7
 
+# Taille du lot de questions d'une section. Les faits requis le remplissent
+# d'abord, les faits utiles prennent les places qui restent — c'est la règle
+# que l'en-tête du catalogue décrit et qui n'avait jamais été écrite.
+#
+# Six : simulé sur le plan complet du business plan, ce chiffre récupère les
+# sept faits utiles dont les calculs financiers ont besoin, en quarante-sept
+# questions réparties sur quinze sections. Assez pour servir, trop peu pour
+# ressembler à un interrogatoire.
+QUESTION_BATCH_SIZE = 6
+
 
 def _catalogue() -> Catalogue:
     return load_catalogue()
@@ -38,6 +48,25 @@ def missing_required_facts(state) -> list[str]:
     """
     _, section = _current(state)
     return [f for f in section.faits_requis if f not in state["facts"]]
+
+
+def question_batch(state) -> list[str]:
+    """Ce qu'on demande à l'utilisateur pour la section courante.
+
+    Les faits requis d'abord — sans eux la section ne s'écrit pas — puis les
+    faits utiles dans les places qui restent. Un fait déjà connu n'y revient
+    jamais, « je ne sais pas » compris : c'est une réponse.
+
+    Un lot ne se forme que si un fait requis manque. Une section entièrement
+    renseignée ne pose donc rien, et ses faits utiles restent sans réponse :
+    c'est la lecture littérale de la règle, et elle suffit en pratique.
+    """
+    _, section = _current(state)
+    required = [f for f in section.faits_requis if f not in state["facts"]]
+    useful = [f for f in section.faits_utiles if f not in state["facts"]]
+    if not required:
+        return []
+    return (required + useful)[:QUESTION_BATCH_SIZE]
 
 
 # ------------------------------------------------------------- routage
@@ -162,7 +191,7 @@ async def formulate_questions(state, transport=None) -> dict:
     _, section = _current(state)
     reponse = await complete(
         "court",
-        prompts.questions_prompt(section, missing_required_facts(state), _catalogue()),
+        prompts.questions_prompt(section, question_batch(state), _catalogue()),
         project_id=state["project_id"],
         schema=prompts.ProposedQuestions,
         transport=transport,
