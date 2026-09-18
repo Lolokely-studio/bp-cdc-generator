@@ -27,3 +27,7 @@ __pycache__/
 .vscode/
 # Sorties des outils de navigation automatisée
 .playwright-mcp/
+
+# Espace de travail des plans d'exécution : ledger, briefs, rapports,
+# paquets de relecture. Utile pendant le travail, sans valeur après.
+.superpowers/
