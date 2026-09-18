@@ -87,6 +87,35 @@ def test_an_unknown_answer_counts_as_missing():
     assert build_assumptions("annuites_credit", facts) is None
 
 
+@pytest.mark.parametrize(("libelle", "surcharge", "attendu"), [
+    ("un investissement inconnu retire le plan", {"investissements_initiaux": None}, None),
+    ("un délai client inconnu retire le plan", {"delai_paiement_clients": None}, None),
+    ("un emprunt inconnu retire le plan", {"emprunt_montant": None}, None),
+    ("un investissement nul et assumé le garde", {"investissements_initiaux": 0}, "produit"),
+])
+def test_an_unanswered_required_fact_withholds_the_plan(libelle, surcharge, attendu):
+    """La distinction qui manquait : « je ne sais pas » n'est pas zéro.
+
+    Une première version écrivait `or 0.0` et produisait un plan de financement
+    qui s'équilibrait en comptant un besoin inconnu pour zéro. Le document part
+    à la banque : mieux vaut pas de tableau qu'un tableau faux.
+    """
+    facts = {**COMPLETE}
+    for fact_id, value in surcharge.items():
+        facts[fact_id] = Fact(fact_id=fact_id, value=value, source="user")
+    result = build_assumptions("plan_financement_initial", facts)
+    assert (result is None) == (attendu is None)
+
+
+def test_a_question_never_asked_reads_as_zero():
+    # L'autre moitié de la règle : un projet sans emprunt est un projet
+    # ordinaire, et la clé peut simplement ne pas être là.
+    facts = {k: v for k, v in COMPLETE.items() if k != "emprunt_montant"}
+    assumptions = build_assumptions("plan_financement_initial", facts)
+    assert assumptions is not None
+    assert assumptions.loan == 0.0
+
+
 def test_the_working_capital_comes_from_the_payment_delay():
     # 45 x 4 000 = 180 000 de chiffre d'affaires, 30 jours de délai : un mois.
     assumptions = build_assumptions("plan_financement_initial", COMPLETE)

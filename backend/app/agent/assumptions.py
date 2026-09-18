@@ -36,6 +36,22 @@ def _value(facts: dict[str, Fact], fact_id: str) -> float | None:
     return float(fact.value)
 
 
+def _optional(facts: dict[str, Fact], fact_id: str) -> float | None:
+    """Zéro quand la question n'a jamais été posée, rien quand l'utilisateur
+    a dit l'ignorer. Les deux ne se lisent pas de la même façon.
+
+    Une clé absente veut dire que le parcours n'a pas posé la question — pas
+    d'emprunt, pas de subvention : zéro est la bonne lecture. Une clé présente
+    à `None` veut dire « je ne sais pas », et y lire zéro serait inventer un
+    chiffre, celui-là même que cette couche existe pour empêcher. Un plan de
+    financement qui compte un besoin inconnu pour zéro s'équilibre en
+    apparence, et c'est un document qui part à la banque.
+    """
+    if fact_id not in facts:
+        return 0.0
+    return _value(facts, fact_id)
+
+
 def _rate(facts: dict[str, Fact], fact_id: str) -> float | None:
     """Un taux, ramené à une fraction.
 
@@ -79,11 +95,15 @@ def _gross_margin_rate(facts: dict[str, Fact]) -> float | None:
 
 
 def _investments(facts: dict[str, Fact]) -> float | None:
+    """Les deux montants sont requis par la section qui les demande. Un `or 0.0`
+    y lirait zéro pour une réponse « je ne sais pas » et sous-estimerait
+    l'investissement dans trois tableaux à la fois — dont l'amortissement qui
+    entre au compte de résultat."""
     initial = _value(facts, "investissements_initiaux")
     development = _value(facts, "budget_developpement")
-    if initial is None and development is None:
+    if initial is None or development is None:
         return None
-    return (initial or 0.0) + (development or 0.0)
+    return initial + development
 
 
 def _working_capital(facts: dict[str, Fact]) -> float | None:
@@ -180,17 +200,20 @@ def _funding(facts: dict[str, Fact]) -> BaseModel | None:
     working_capital = _working_capital(facts)
     opening = _value(facts, "tresorerie_securite")
     equity = _value(facts, "apport_fondateurs")
-    loan = _value(facts, "emprunt_montant")
-    grants = _value(facts, "aides_subventions")
-    if investments is None or opening is None or equity is None:
+    # `_optional` et non `_value` pour ces deux-là seulement : un projet sans
+    # emprunt ni subvention est un projet ordinaire, et la question peut ne pas
+    # avoir été posée. Mais un « je ne sais pas » y reste un refus de calculer.
+    loan = _optional(facts, "emprunt_montant")
+    grants = _optional(facts, "aides_subventions")
+    if None in (investments, working_capital, opening, equity, loan, grants):
         return None
     return finance.FundingAssumptions(
         investments=investments,
-        working_capital=working_capital or 0.0,
+        working_capital=working_capital,
         opening_cash=opening,
         equity=equity,
-        loan=loan or 0.0,
-        grants=grants or 0.0,
+        loan=loan,
+        grants=grants,
     )
 
 
