@@ -3,7 +3,7 @@ name = "esquisse"
 version = "0.1.0"
 description = "Générateur de cahier des charges et de business plan"
 authors = [
-    { name = "Aroniaina Manevatiana Lalaharisoa", email = "manevalalaharisoa@gmail.com" }
+    { name = "Brice Dubois", email = "brice.dubois@etail-agency.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
