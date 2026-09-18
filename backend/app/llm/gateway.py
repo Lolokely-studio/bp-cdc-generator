@@ -167,9 +167,14 @@ async def stream(
             except (ModelUnavailable, ProviderUnavailable) as error:
                 issue = error.issue if isinstance(error, ProviderUnavailable) else "erreur"
                 written = "".join(emitted)
+                # Le prompt entier est parti et le fournisseur l'a traité,
+                # même si le flux s'est rompu ensuite. Ne compter que le texte
+                # reçu sous-estimerait la consommation réelle — et c'est la
+                # fenêtre de budget qui se nourrit de ce chiffre, donc
+                # l'erreur se paierait en 429 plus tard.
                 await _record(
                     route=route, provider=provider, model=model, project_id=project_id,
-                    tokens=estimate_tokens([Message("assistant", written)]),
+                    tokens=prompt_tokens + estimate_tokens([Message("assistant", written)]),
                     issue=issue, fake=fake,
                 )
                 attempts.append(f"{provider.name}/{model} : {error.reason}")
