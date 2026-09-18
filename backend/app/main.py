@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.core.db import pool
+from app.llm.transport import close_clients
 
 
 @asynccontextmanager
@@ -16,6 +17,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await close_clients()
         await connection_pool.close()
 
 

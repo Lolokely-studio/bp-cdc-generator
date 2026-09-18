@@ -2,11 +2,12 @@ import json
 
 import httpx2
 import pytest
+import pytest_asyncio
 from pydantic import BaseModel
 
 from app.llm.errors import ModelUnavailable, ProviderUnavailable
 from app.llm.providers import PROVIDERS
-from app.llm.transport import chat, client_for, stream_chat
+from app.llm.transport import chat, client_for, close_clients, stream_chat
 from app.llm.types import Message
 
 PROVIDER = PROVIDERS["groq"]
@@ -40,6 +41,15 @@ def _answer(content: str, usage: dict | None = None) -> dict:
 
 def _client(handler) -> httpx2.AsyncClient:
     return httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _close_shared_clients():
+    """Les clients partagés vivent dans le module : sans fermeture entre deux
+    cas, un test en laisserait un ouvert au suivant et le processus finirait
+    avec cinq pools de connexions inutiles."""
+    yield
+    await close_clients()
 
 
 def _replying(status: int, body: dict):
@@ -138,15 +148,39 @@ async def test_an_unreachable_host_blames_the_provider():
     assert error.value.issue == "erreur"
 
 
+async def test_an_answer_without_choices_blames_the_model():
+    # Un 200 avec une liste de choix vide arrive sur les paliers gratuits. Il
+    # doit sortir classé comme tout le reste, pas en IndexError.
+    handler = _replying(200, {
+        "id": "cmpl-1", "object": "chat.completion", "created": 0,
+        "model": MODEL, "choices": [],
+    })
+    with pytest.raises(ModelUnavailable):
+        await chat(PROVIDER, MODEL, MESSAGES, http_client=_client(handler))
+
+
 async def test_the_client_never_retries_on_its_own():
     # Un repli interne au SDK brûlerait le quota que la bascule préserve, et
     # cacherait à la passerelle l'information qui lui sert à décider.
-    assert client_for(PROVIDER, timeout=1.0).max_retries == 0
+    assert client_for(PROVIDER).max_retries == 0
+
+
+async def test_the_same_provider_reuses_one_client():
+    # Un client neuf par appel rouvrirait une connexion TLS à chaque fois et
+    # laisserait un pool que personne ne ferme.
+    assert client_for(PROVIDER) is client_for(PROVIDER)
+
+
+async def test_an_injected_transport_is_never_shared():
+    # Le client d'un test lui appartient : le mettre en cache le ferait fuiter
+    # dans le cas suivant.
+    handler = _replying(200, _answer("Une phrase."))
+    assert client_for(PROVIDER, http_client=_client(handler)) is not client_for(PROVIDER)
 
 
 async def test_every_base_url_is_carried_to_the_client():
     for provider in PROVIDERS.values():
-        assert str(client_for(provider, timeout=1.0).base_url).startswith(
+        assert str(client_for(provider).base_url).startswith(
             provider.base_url.rstrip("/")
         )
 

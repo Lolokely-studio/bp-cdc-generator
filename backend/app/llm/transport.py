@@ -23,28 +23,57 @@ REQUEST_TIMEOUT_SECONDS = 60.0
 STREAM_TIMEOUT_SECONDS = 180.0
 
 
-def client_for(
-    provider: Provider, *, timeout: float, http_client: httpx2.AsyncClient | None = None
-) -> AsyncOpenAI:
-    """Un seul adaptateur pour les cinq fournisseurs : tous exposent l'API
-    Chat Completions d'OpenAI, seule l'URL de base change.
+# Un client par fournisseur, gardé pour la durée du processus. Le construire
+# à chaque appel rouvrirait une connexion TLS à chaque fois et laisserait
+# derrière lui un pool de connexions que personne ne ferme : `close_clients`
+# est le pendant de ce dictionnaire, et le cycle de vie de l'application
+# l'appelle à l'arrêt.
+_clients: dict[str, AsyncOpenAI] = {}
 
-    `max_retries=0` est essentiel. Le client réessaie un 429 par défaut : il
+
+def _build_client(provider: Provider, http_client: httpx2.AsyncClient | None) -> AsyncOpenAI:
+    """`max_retries=0` est essentiel. Le client réessaie un 429 par défaut : il
     brûlerait le quota que la bascule préventive cherche à préserver, et
     cacherait à la passerelle l'information qui lui sert à changer de
     fournisseur. Le repli est notre affaire, pas celle du SDK.
 
-    `http_client` n'est renseigné que par les tests, qui y branchent un
-    transport simulé et exercent ainsi le vrai code du client — découpage des
-    flux et classification des statuts compris.
+    Aucun délai n'est posé ici : un appel court et une rédaction en flux n'ont
+    pas la même patience, et le délai se passe donc à chaque requête.
     """
     return AsyncOpenAI(
         api_key=api_key_for(provider),
         base_url=provider.base_url,
-        timeout=timeout,
         max_retries=0,
         http_client=http_client,
     )
+
+
+def client_for(
+    provider: Provider, *, http_client: httpx2.AsyncClient | None = None
+) -> AsyncOpenAI:
+    """Un seul adaptateur pour les cinq fournisseurs : tous exposent l'API
+    Chat Completions d'OpenAI, seule l'URL de base change.
+
+    `http_client` n'est renseigné que par les tests, qui y branchent un
+    transport simulé et exercent ainsi le vrai code du client — découpage des
+    flux et classification des statuts compris. Un client ainsi fabriqué n'est
+    pas partagé : il appartient au test, qui le jette.
+    """
+    if http_client is not None:
+        return _build_client(provider, http_client)
+    if provider.name not in _clients:
+        _clients[provider.name] = _build_client(provider, None)
+    return _clients[provider.name]
+
+
+async def close_clients() -> None:
+    """Ferme les clients partagés. Appelée à l'arrêt de l'application : sans
+    elle, les pools de connexions survivraient au processus qui les a ouverts.
+    Les tests s'en servent aussi, pour ne pas se passer un client d'un cas à
+    l'autre."""
+    while _clients:
+        _, client = _clients.popitem()
+        await client.close()
 
 
 def _fail(provider: Provider, model: str, error: Exception) -> NoReturn:
@@ -107,13 +136,19 @@ async def chat(
     paliers gratuits ne le gèrent pas de la même façon et un refus se
     traduirait par un 400, c'est-à-dire par un modèle déclaré mort à tort.
     La consigne JSON vit dans le prompt, `_parse` rattrape le reste."""
-    client = client_for(provider, timeout=REQUEST_TIMEOUT_SECONDS, http_client=http_client)
+    client = client_for(provider, http_client=http_client)
     try:
         response = await client.chat.completions.create(
-            model=model, messages=_as_payload(messages)
+            model=model, messages=_as_payload(messages), timeout=REQUEST_TIMEOUT_SECONDS
         )
     except OpenAIError as error:
         _fail(provider, model, error)
+
+    # Certains paliers gratuits répondent 200 avec une liste de choix vide.
+    # Sans ce garde-fou, l'`IndexError` remonterait brute et la passerelle
+    # n'aurait rien à quoi se raccrocher : tout échec doit sortir d'ici classé.
+    if not response.choices:
+        raise ModelUnavailable(model, "réponse sans choix")
 
     text = response.choices[0].message.content or ""
     usage = getattr(response, "usage", None)
@@ -140,10 +175,13 @@ async def stream_chat(
     """Les fragments, dans l'ordre. Une rupture après le premier fragment est
     traitée par la passerelle, seule à savoir qu'il faut alors repartir sur
     le fournisseur suivant plutôt que sur le modèle suivant."""
-    client = client_for(provider, timeout=STREAM_TIMEOUT_SECONDS, http_client=http_client)
+    client = client_for(provider, http_client=http_client)
     try:
         stream = await client.chat.completions.create(
-            model=model, messages=_as_payload(messages), stream=True
+            model=model,
+            messages=_as_payload(messages),
+            stream=True,
+            timeout=STREAM_TIMEOUT_SECONDS,
         )
     except OpenAIError as error:
         _fail(provider, model, error)
