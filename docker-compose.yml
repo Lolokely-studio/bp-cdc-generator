@@ -1,8 +1,0 @@
-services:
-  db:
-    image: postgres:17
-    environment:
-      POSTGRES_PASSWORD: esquisse
-      POSTGRES_USER: esquisse
-      POSTGRES_DB: esquisse_test
-    ports: ["5433:5432"]

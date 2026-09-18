@@ -16,7 +16,7 @@ quatre fichiers : le cahier des charges et le business plan, en Word et en PDF.
 |---|---|
 | [docs/mockup.html](docs/mockup.html) | Prototype cliquable, workflow en 18 étapes, stack technique. À ouvrir dans un navigateur. |
 | [docs/analyse-cdc-bp.md](docs/analyse-cdc-bp.md) | Ce que doivent contenir les deux documents, d'après les normes et d'après de vrais documents. Sources en fin de page. |
-| [docs/templates/](docs/templates/) | 30 sections et 74 faits, en YAML. Le cœur de valeur du produit. |
+| [backend/app/templates/](backend/app/templates/) | 30 sections et 74 faits, en YAML. Le cœur de valeur du produit. |
 | [docs/spec-implementation.md](docs/spec-implementation.md) | Spécification technique. |
 | [docs/plans/](docs/plans/) | Feuille de route et plans d'implémentation. |
 
@@ -25,11 +25,23 @@ quatre fichiers : le cahier des charges et le business plan, en Word et en PDF.
 Prérequis : Python 3.12, [uv](https://docs.astral.sh/uv/), Docker.
 
 ```bash
+cd backend
+uv sync                          # dépendances
 docker compose up -d db          # base de développement et de test
-cd api && uv sync                # dépendances
 uv run alembic upgrade head      # migrations
-uv run uvicorn esquisse.app:app --reload --port 8000
+uv run uvicorn app.main:app --reload --port 8000
 ```
+
+Ces commandes visent la base jetable de `docker-compose.yml`, qui est aussi la
+valeur par défaut de la configuration : **sans fichier `.env`, tout fonctionne
+en local sans rien régler.**
+
+Si vous placez un `.env` dans `backend/`, il l'emporte sur ces valeurs par
+défaut. S'il pointe vers une base distante, `alembic upgrade head` refusera de
+s'exécuter en nommant l'hôte — c'est voulu, voir « Déployer ». Gardez donc des
+valeurs locales dans votre `.env`, ou pas de `.env` du tout : les identifiants
+de production se renseignent dans le tableau de bord de l'hébergeur, pas sur
+votre disque.
 
 `curl localhost:8000/health` doit répondre `{"statut":"ok"}`.
 
@@ -40,7 +52,7 @@ sur la base réelle est un geste délibéré, pas un effet de bord d'un réveil.
 Avant un déploiement qui change le schéma, depuis votre poste :
 
 ```bash
-cd api && ESQUISSE_ALLOW_REMOTE_MIGRATIONS=1 uv run alembic upgrade head
+cd backend && ESQUISSE_ALLOW_REMOTE_MIGRATIONS=1 uv run alembic upgrade head
 ```
 
 Sans cette variable, la commande refuse de s'exécuter contre autre chose qu'une
@@ -49,7 +61,7 @@ base locale, et nomme l'hôte qu'elle a refusé.
 ### Tests
 
 ```bash
-cd api && uv run pytest -v
+cd backend && uv run pytest -v
 ```
 
 Les tests utilisent la base jetable de `docker-compose.yml`, jamais la base
@@ -57,8 +69,8 @@ distante. Aucun test ne joint un fournisseur de modèle.
 
 ### Configuration
 
-Copier `.env.example` en `.env` à la racine et le remplir. Le fichier `.env`
-n'est jamais versionné.
+Copier `backend/.env.example` en `backend/.env` et le remplir. Le fichier
+`.env` n'est jamais versionné.
 
 ### Comptes
 

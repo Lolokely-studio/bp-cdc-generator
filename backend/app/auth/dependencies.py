@@ -1,8 +1,8 @@
 from fastapi import Header, HTTPException
 
-from esquisse.auth.bearer import bearer_token
-from esquisse.db import connection
-from esquisse.security import token_hash
+from app.auth.bearer import bearer_token
+from app.core.db import connection
+from app.core.security import token_hash
 
 
 async def active_user(authorization: str = Header(default="")) -> dict:

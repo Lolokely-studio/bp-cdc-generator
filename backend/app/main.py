@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from esquisse.db import pool
+from app.core.db import pool
 
 
 @asynccontextmanager
@@ -31,10 +31,10 @@ def create_app() -> FastAPI:
         d'attente le temps du redémarrage."""
         return {"statut": "ok"}
 
-    from esquisse.auth.routes import router as auth_router
+    from app.auth.routes import router as auth_router
     app.include_router(auth_router)
 
-    from esquisse.auth.routes import me_router
+    from app.auth.routes import me_router
     app.include_router(me_router)
 
     return app

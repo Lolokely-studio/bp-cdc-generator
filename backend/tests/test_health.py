@@ -1,6 +1,6 @@
 import httpx
 import pytest
-from esquisse.app import create_app
+from app.main import create_app
 
 
 async def test_health_returns_ok():

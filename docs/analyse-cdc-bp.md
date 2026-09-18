@@ -180,7 +180,7 @@ Les lignes « budget de développement » et « date de lancement » sont exacte
 
 Arrêté sur un exemple avant d'en produire une trentaine.
 
-Les trois fichiers vivent dans `docs/templates/` : `cdc.yaml`, `bp.yaml` et `catalogue-faits.yaml`.
+Les trois fichiers vivent dans `backend/app/templates/` : `cdc.yaml`, `bp.yaml` et `catalogue-faits.yaml`.
 
 > `utilise_par` est **dérivé**, pas écrit à la main : il est l'inverse exact de ce que les sections déclarent. Il doit être régénéré à chaque fois qu'une section change de faits.
 
@@ -258,7 +258,7 @@ Les faits de type `montant`, `nombre` et `pourcentage` sont ceux que le vérific
 
 ## 7. Ce que la mise en templates a révélé
 
-Les trois fichiers de `docs/templates/` matérialisent tout ce qui précède : **30 sections** (15 pour le BP, 15 pour le CDC) et **74 faits**, dont 12 seulement sont déductibles de l'idée saisie. Tous les renvois croisés sont vérifiés dans les deux sens : aucun fait orphelin, aucune dépendance vers une section générée plus tard.
+Les trois fichiers de `backend/app/templates/` matérialisent tout ce qui précède : **30 sections** (15 pour le BP, 15 pour le CDC) et **74 faits**, dont 12 seulement sont déductibles de l'idée saisie. Tous les renvois croisés sont vérifiés dans les deux sens : aucun fait orphelin, aucune dépendance vers une section générée plus tard.
 
 **Charge de questions.** Sur les 74 faits, **42 sont requis** par au moins une section et 32 ne sont demandés que si le budget de questions de la section le permet. Parmi les 42 requis, 7 sont déductibles de l'idée saisie et ne demandent qu'une confirmation : il reste donc **35 questions réellement ouvertes** pour produire les deux documents complets.
 

@@ -1,0 +1,15 @@
+# Nom de projet explicite. Sans lui, Compose le dérive du dossier qui contient
+# ce fichier : le déplacement dans backend/ l'a fait passer de « bp-cdc-generator »
+# à « backend », un nom assez générique pour entrer en collision avec un autre
+# projet de la machine. L'épingler rend les conteneurs identifiables et stables
+# quel que soit l'emplacement du fichier.
+name: esquisse
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: esquisse
+      POSTGRES_USER: esquisse
+      POSTGRES_DB: esquisse_test
+    ports: ["5433:5432"]

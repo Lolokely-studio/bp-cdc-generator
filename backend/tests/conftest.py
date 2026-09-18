@@ -17,14 +17,14 @@ os.environ["SUPABASE_DB_USER"] = "esquisse"
 os.environ["SUPABASE_DB_PASSWORD"] = "esquisse"
 os.environ["SUPABASE_DB_NAME"] = "esquisse_test"
 
-# Les imports de `esquisse` viennent APRÈS les affectations ci-dessus. Aujourd'hui
+# Les imports de `app` viennent APRÈS les affectations ci-dessus. Aujourd'hui
 # `settings()` est paresseux et mémoïsé, donc l'ordre ne change rien — mais il
 # suffirait qu'un module appelle `settings()` à l'import pour que la configuration
 # se fige sur le `.env` de production. On ne fait pas reposer sur la chance ce que
 # l'ordre garantit.
 import httpx
 import pytest_asyncio
-from esquisse.app import create_app
+from app.main import create_app
 
 
 @pytest.fixture(scope="session")
@@ -32,7 +32,7 @@ def migrated_db():
     """Applique les migrations sur la base jetable avant la suite de tests.
     Même chemin qu'en production : si une migration casse, les tests cassent.
 
-    Le sous-processus doit s'exécuter depuis `api/` (là où vit `alembic.ini`),
+    Le sous-processus doit s'exécuter depuis `backend/` (là où vit `alembic.ini`),
     jamais depuis le répertoire courant du lancement de pytest : on calcule
     ce chemin à partir de `__file__` plutôt que de le supposer.
     """
@@ -67,6 +67,6 @@ async def client():
 def _fresh_rate_limit():
     """Le compteur vit dans le processus : sans remise à zéro, un test
     qui consomme la limite fait échouer le suivant."""
-    from esquisse.auth import routes
+    from app.auth import routes
     routes._account_limiter.reset()
     yield
