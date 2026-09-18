@@ -86,7 +86,15 @@ class Catalogue(BaseModel):
         return self.cdc.seuil_relecture
 
     def _document(self, document: str) -> DocumentTemplate:
-        return self.cdc if document == "cdc" else self.bp
+        """Refuse un document inconnu plutôt que de rendre le business plan par
+        défaut : l'annotation `Literal` ne contraint rien à l'exécution, et
+        rendre silencieusement le mauvais document produirait un plan complet
+        et faux."""
+        if document == "cdc":
+            return self.cdc
+        if document == "bp":
+            return self.bp
+        raise KeyError(f"document inconnu : {document}")
 
     def section(self, qualified_id: str) -> SectionTemplate:
         """`qualified_id` est de la forme `bp.compte_resultat`. Les
@@ -104,7 +112,13 @@ class Catalogue(BaseModel):
         """L'inverse exact de ce que les sections déclarent, requis et utiles
         confondus. C'est la valeur de référence contre laquelle le champ écrit
         dans le catalogue est vérifié."""
-        derive: dict[str, set[str]] = defaultdict(set)
+        # Amorcé sur TOUS les faits, et non seulement sur ceux qu'une section
+        # cite. Un fait catalogué que personne n'utilise encore a un
+        # `utilise_par` vide : sans cette amorce, le dérivé n'aurait pas la clé
+        # tandis que l'écrit l'aurait à `set()`, l'égalité de dictionnaires
+        # échouerait, et le message d'erreur afficherait une différence vide —
+        # un échec indiagnosticable.
+        derive: dict[str, set[str]] = defaultdict(set, {f: set() for f in self.facts})
         for document in (self.cdc, self.bp):
             for section in document.sections:
                 for fact_id in (*section.faits_requis, *section.faits_utiles):

@@ -1,8 +1,41 @@
 import pytest
 
-from app.agent.templates import load_catalogue
+from app.agent.templates import (
+    Catalogue,
+    DocumentTemplate,
+    FactDefinition,
+    SectionTemplate,
+    load_catalogue,
+)
 
 CATALOGUE = load_catalogue()
+
+
+def _minimal_document(document: str, sections: list[SectionTemplate]) -> DocumentTemplate:
+    return DocumentTemplate(
+        version="0.1",
+        statut="brouillon",
+        seuil_relecture=8,
+        document=document,
+        profils_disponibles={"profil": "test"},
+        sections=sections,
+    )
+
+
+def _minimal_section(section_id: str, faits_requis: list[str]) -> SectionTemplate:
+    return SectionTemplate(
+        id=section_id,
+        titre="Section de test",
+        ordre=1,
+        ordre_lecture=1,
+        profils=["profil"],
+        validation="toujours",
+        objectif="Objectif de test.",
+        longueur_cible="100 mots",
+        faits_requis=faits_requis,
+        consignes="Consignes de test.",
+        grille=["Critère de test"],
+    )
 
 
 def test_the_two_documents_carry_fifteen_sections_each():
@@ -28,6 +61,29 @@ def test_utilise_par_is_exactly_the_inverse_of_what_sections_declare():
     )
 
 
+def test_derived_utilise_par_seeds_a_key_for_a_fact_no_section_uses():
+    # Garde-fou du correctif : un fait catalogué mais pas encore cité par une
+    # section doit apparaître dans le dérivé avec un ensemble vide. Sans
+    # amorce sur tous les faits, la clé manquerait côté dérivé tandis que
+    # l'écrit la porterait à `set()`, et l'égalité de dictionnaires échouerait
+    # pour une différence que le message d'erreur ne saurait pas montrer.
+    catalogue = Catalogue(
+        cdc=_minimal_document("cdc", [_minimal_section("section_test", ["fait_utilise"])]),
+        bp=_minimal_document("bp", []),
+        facts={
+            "fait_utilise": FactDefinition(
+                id="fait_utilise", libelle="Utilisé", type="texte_court", question="?"
+            ),
+            "fait_orphelin": FactDefinition(
+                id="fait_orphelin", libelle="Orphelin", type="texte_court", question="?"
+            ),
+        },
+    )
+    derive = catalogue.derived_utilise_par()
+    assert derive["fait_orphelin"] == set()
+    assert derive["fait_utilise"] == {"cdc.section_test"}
+
+
 @pytest.mark.parametrize("document", ["cdc", "bp"])
 def test_every_fact_a_section_asks_for_exists(document):
     template = getattr(CATALOGUE, document)
@@ -37,7 +93,7 @@ def test_every_fact_a_section_asks_for_exists(document):
         for fact_id in (*section.faits_requis, *section.faits_utiles)
         if fact_id not in CATALOGUE.facts
     }
-    assert not unknown, f"{document} réclame des faits absents du catalogue : {inconnus}"
+    assert not unknown, f"{document} réclame des faits absents du catalogue : {unknown}"
 
 
 @pytest.mark.parametrize("document", ["cdc", "bp"])
