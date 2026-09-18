@@ -2049,6 +2049,7 @@ from app.llm.budget import reset_pacers
 from app.llm.errors import ModelUnavailable, NoProviderAvailable, ProviderUnavailable
 from app.llm.gateway import complete, stream
 from app.llm.providers import PROVIDERS
+from app.llm.tokens import estimate_tokens
 from app.llm.types import Completion, Message, StreamDone, StreamRestart, TextDelta
 
 MESSAGES = [Message("user", "Une plateforme de coaching à domicile.")]
@@ -2236,7 +2237,7 @@ async def test_a_stream_that_never_opened_announces_no_restart():
     assert events[-1].provider == "mistral"
 
 
-async def test_a_broken_stream_records_what_was_already_emitted():
+async def test_a_broken_stream_records_the_prompt_and_what_was_emitted():
     stub = _StreamStub({
         ("gemini", "gemini-3.1-flash-lite"): [
             "Un début de section déjà affiché à l'écran.",
@@ -2248,7 +2249,10 @@ async def test_a_broken_stream_records_what_was_already_emitted():
     rows = await _usage_rows()
     assert rows[0][0] == "gemini"
     assert rows[0][4] == "erreur"
-    assert rows[0][3] > 0  # les jetons consommés avant la rupture sont payés
+    # Strictement plus que le prompt seul : le prompt est parti en entier et le
+    # texte reçu avant la rupture s'y ajoute. Un simple `> 0` laisserait passer
+    # un compte qui oublierait le prompt.
+    assert rows[0][3] > estimate_tokens(MESSAGES)
 
 
 async def test_an_exhausted_route_in_streaming_raises():
@@ -2452,9 +2456,14 @@ async def stream(
             except (ModelUnavailable, ProviderUnavailable) as error:
                 issue = error.issue if isinstance(error, ProviderUnavailable) else "erreur"
                 written = "".join(emitted)
+                # Le prompt entier est parti et le fournisseur l'a traité,
+                # même si le flux s'est rompu ensuite. Ne compter que le texte
+                # reçu sous-estimerait la consommation réelle — et c'est la
+                # fenêtre de budget qui se nourrit de ce chiffre, donc
+                # l'erreur se paierait en 429 plus tard.
                 await _record(
                     route=route, provider=provider, model=model, project_id=project_id,
-                    tokens=estimate_tokens([Message("assistant", written)]),
+                    tokens=prompt_tokens + estimate_tokens([Message("assistant", written)]),
                     issue=issue, fake=fake,
                 )
                 attempts.append(f"{provider.name}/{model} : {error.reason}")
