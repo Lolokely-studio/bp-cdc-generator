@@ -1371,7 +1371,7 @@ git commit -m "feat(llm): modèle simulé déterministe pour le graphe hors lign
 **Dispatchable en parallèle des tâches 2 et 3. Aucun fichier commun.**
 
 **Fichiers :**
-- Créer : `backend/app/llm/transport.py`, `backend/tests/test_transport.py`, `backend/tests/test_network_providers.py`
+- Créer : `backend/app/llm/transport.py`, `backend/tests/test_transport.py`, `backend/tests/test_network_providers.py`, `backend/tests/test_lifespan.py`
 - Modifier : `backend/pyproject.toml` (dépendance `openai`, marqueur `network`), `backend/uv.lock` (produit par `uv add`), `backend/app/main.py` (fermeture des clients au cycle de vie)
 
 **Interfaces :**
@@ -1903,21 +1903,61 @@ async def stream_chat(
 
 Sans cela, les pools de connexions des cinq fournisseurs survivent au processus
 qui les a ouverts. `backend/app/main.py` a déjà le point d'accroche : son
-`lifespan` ferme le pool PostgreSQL dans un `finally`. Ajouter la fermeture des
-clients dans le même `finally` :
+`lifespan` ferme le pool PostgreSQL dans un `finally`.
+
+**Les deux fermetures s'imbriquent, elles ne se suivent pas.** Mises à la
+queue leu leu, un client récalcitrant empêcherait le pool de base de se
+fermer — et le pool de base est la ressource la plus chère des deux, celle
+que l'hébergement gratuit compte. Ce qui était garanti avant ce plan doit le
+rester après :
 
 ```python
     try:
         yield
     finally:
-        await close_clients()
-        await connection_pool.close()
+        try:
+            await close_clients()
+        finally:
+            await connection_pool.close()
 ```
 
 et l'import correspondant en tête de fichier :
 
 ```python
 from app.llm.transport import close_clients
+```
+
+Cette garantie se teste, dans un fichier à elle, `backend/tests/test_lifespan.py` :
+
+```python
+import pytest
+
+from app import main
+
+
+async def test_the_database_pool_closes_even_if_a_model_client_refuses(monkeypatch):
+    """Le pool de base se ferme quoi qu'il arrive. Il a toujours eu cette
+    garantie ; l'ajout des clients de modèles ne doit pas la retirer."""
+    closed: list[str] = []
+
+    class _Pool:
+        async def open(self, wait: bool = False) -> None:
+            return None
+
+        async def close(self) -> None:
+            closed.append("pool")
+
+    async def _refuse() -> None:
+        raise RuntimeError("client récalcitrant")
+
+    monkeypatch.setattr(main, "pool", lambda: _Pool())
+    monkeypatch.setattr(main, "close_clients", _refuse)
+
+    with pytest.raises(RuntimeError):
+        async with main.lifespan(object()):
+            pass
+
+    assert closed == ["pool"]
 ```
 
 - [ ] **Étape 6 : lancer et vérifier le succès**
@@ -1935,7 +1975,7 @@ Attendu : les cinq cas sont collectés. **Reporter le résultat tel quel dans le
 ```bash
 git add backend/app/llm/transport.py backend/app/main.py \
         backend/tests/test_transport.py backend/tests/test_network_providers.py \
-        backend/pyproject.toml backend/uv.lock
+        backend/tests/test_lifespan.py backend/pyproject.toml backend/uv.lock
 git commit -m "feat(llm): adaptateur compatible OpenAI pour les cinq fournisseurs"
 ```
 
