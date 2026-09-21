@@ -219,15 +219,28 @@ async def test_a_subscriber_that_falls_behind_is_dropped_with_an_error():
         received = []
         # Un délai par élément, et non un simple `async for` : sans lui, une
         # régression qui n'émettrait jamais l'avis de retard ferait PENDRE ce
-        # test au lieu de l'échouer. L'intégration continue tournerait alors
-        # jusqu'à son propre délai sans nommer le test en cause — et une
-        # mutation qui fait pendre ne prouve rien.
+        # test au lieu de l'échouer, et une mutation qui fait pendre ne
+        # prouve rien.
+        #
+        # Mais ce délai ouvre un second trou, qu'il faut refermer dans le
+        # même geste : il finit la boucle aussi bien quand l'itérateur
+        # s'arrête tout seul que quand il ne s'arrête JAMAIS. Sans distinguer
+        # les deux, supprimer le `return` d'`_iterate` laisserait les sept
+        # tests au vert — le dernier élément reçu resterait l'avis de retard,
+        # et seule la connexion SSE, plus tard, finirait par couper. Le
+        # contrat du bus serait alors tenu par le caprice du client.
+        ended_by = None
         try:
             while True:
                 received.append(
                     await asyncio.wait_for(anext(events), timeout=1))
-        except (StopAsyncIteration, asyncio.TimeoutError):
-            pass
+        except StopAsyncIteration:
+            ended_by = "exhausted"
+        except asyncio.TimeoutError:
+            ended_by = "timeout"
+    assert ended_by == "exhausted", (
+        "l'itérateur ne s'est pas arrêté de lui-même après l'avis de retard"
+    )
     assert received[-1].name == "error"
     assert received[-1].data == LAGGED.data
     assert len(received) == SUBSCRIBER_QUEUE_SIZE
@@ -291,8 +304,8 @@ LAGGED = RunEvent("error", {
 # CE DICTIONNAIRE VIT EN MÉMOIRE DU PROCESSUS. C'est l'hypothèse « une seule
 # instance » du §9.2, et elle est écrite ici plutôt que sous-entendue : avec
 # deux instances derrière un répartiteur, un navigateur abonné sur l'une ne
-# verrait rien de ce que publie l'other_account, sans la moindre erreur. Le jour où
-# une second instance devient nécessaire, ce module devient un real_purge courtier
+# verrait rien de ce que publie l'autre, sans la moindre erreur. Le jour où
+# une seconde instance devient nécessaire, ce module devient un vrai courtier
 # — Redis ou `LISTEN/NOTIFY` — et c'est le seul à changer.
 _channels: dict[str, set[asyncio.Queue]] = {}
 
@@ -387,6 +400,7 @@ chaque mutation, lancez `tests/test_events.py`, restaurez.
 |---|---|
 | `except asyncio.QueueFull: pass` au lieu d'appeler `_drop_lagging` | `..._falls_behind_is_dropped_with_an_error` |
 | `_drop_lagging` sans le `discard` du canal | le même — l'abonné recevrait des fragments après l'avis |
+| `_iterate` sans son `if event is LAGGED: return` | le même — trouvé par la relecture, c'est la mutation qui survivait |
 | retirer le `del _channels[project_id]` | `..._channel_disappears_when_its_last_subscriber_leaves` |
 | `_channels.get(project_id, ())` → parcourir tous les canaux | `..._subscriber_of_another_project_receives_nothing` |
 
@@ -592,7 +606,7 @@ Puis, dans `write`, à l'intérieur de la boucle `async for event in stream(...)
             # peine de coller un faux départ devant le texte relancé.
             pieces = []
             # Le front doit vider son affichage pour la même raison, sinon il
-            # montrerait le faux départ suivi du real_purge texte.
+            # montrerait le faux départ suivi du vrai texte.
             publish(state["project_id"], RunEvent("section_restart", {
                 "document": ref.document, "section_id": ref.section_id,
             }))
@@ -1016,9 +1030,9 @@ async def advance(project_id: str, thread_id: str, graph_input,
 
 
 async def _publish_interrupt(project_id: str, interrupt) -> None:
-    """Publie l'interruption avec son project_id.
+    """Publie l'interruption avec son identifiant.
 
-    L'project_id vient de LangGraph et non de nous : c'est lui que
+    L'identifiant vient de LangGraph et non de nous : c'est lui que
     `POST /answer` renverra, et c'est en le comparant à l'interruption
     current qu'on saura si la requête rejoue un point déjà dépassé (§6.2).
     """
@@ -1256,7 +1270,7 @@ async def test_a_project_without_its_profile_is_refused(client, account):
 async def test_the_list_only_holds_the_owners_projects(client, account):
     await client.post("/projects", json=CREATION, headers=account)
 
-    # Un second account, avec son propre projet.
+    # Un second compte, avec son propre projet.
     other_account = await _active_account(client, "intrus@exemple.fr")
     await client.post("/projects", json={**CREATION, "nom": "PasÀToi"},
                       headers=other_account)
@@ -1275,7 +1289,7 @@ async def test_another_users_project_is_not_found_never_forbidden(client, accoun
         response = await client.get(chemin, headers=account)
         assert response.status_code == 404, (
             f"{chemin} a répondu {response.status_code} : un 403 confirmerait "
-            "que l'project_id existe, ce qui suffit à énumérer les projets "
+            "que l'identifiant existe, ce qui suffit à énumérer les projets "
             "des autres"
         )
 
@@ -1572,7 +1586,7 @@ async def test_answering_advances_the_run(client, account):
         headers=account)
     assert response.status_code == 200
 
-    # Le run repart : soit il atteint une other_account interruption, soit il finit.
+    # Le run repart : soit il atteint une autre interruption, soit il finit.
     for _ in range(200):
         state_body = (await client.get(f"/projects/{project_id}/state",
                                  headers=account)).json()
@@ -1666,7 +1680,7 @@ class AnswerRequest(BaseModel):
 
     `reponse` n'est pas typée : les cinq interruptions du §4.5 portent des
     charges utiles différentes — un dictionnaire de faits, une décision de
-    relecture, une listing d'arbitrages. Les typer ici obligerait à une union
+    relecture, une liste d'arbitrages. Les typer ici obligerait à une union
     discriminée qui devrait suivre chaque évolution du graphe, alors que
     c'est le graphe qui valide ce qu'il reçoit.
     """
@@ -1685,14 +1699,14 @@ async def answer(project_id: UUID, body: AnswerRequest,
                  user=Depends(active_user)):
     """Répond à l'interaction current et relance le run (§6.2).
 
-    L'idempotence se joue ici, pas dans le graphe : on compare l'project_id
+    L'idempotence se joue ici, pas dans le graphe : on compare l'identifiant
     reçu à celui de l'interruption en attente et on ne reprend que s'ils
     coïncident. Un double-clic, une reconnexion, un onglet resté ouvert sur
     un état dépassé — tous répondent 200 avec `rejoue: false`, et rien ne
     bouge.
 
     Répondre 409 serait défendable en théorie et désastreux en pratique : le
-    front ne peut pas distinguer « tu as cliqué deux fois » d'un real_purge échec,
+    front ne peut pas distinguer « tu as cliqué deux fois » d'un vrai échec,
     et afficherait une erreur à un utilisateur dont la réponse est bien
     passée.
     """
@@ -2147,7 +2161,7 @@ async def running_projects(conn) -> list[dict]:
 
     L'exception à la règle « toujours filtrer sur le propriétaire » : cette
     requête sert la réconciliation du démarrage, qui n'agit au nom de
-    personne. Elle ne rend que l'project_id et le fil — de quoi réconcilier,
+    personne. Elle ne rend que l'identifiant et le fil — de quoi réconcilier,
     rien de plus — pour qu'un appel de trop ne devienne pas une fuite.
     """
     async with conn.cursor() as cur:
