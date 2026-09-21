@@ -217,8 +217,17 @@ async def test_a_subscriber_that_falls_behind_is_dropped_with_an_error():
         for index in range(SUBSCRIBER_QUEUE_SIZE + 10):
             publish("projet-f", RunEvent("token", {"text": str(index)}))
         received = []
-        async for event in events:
-            received.append(event)
+        # Un délai par élément, et non un simple `async for` : sans lui, une
+        # régression qui n'émettrait jamais l'avis de retard ferait PENDRE ce
+        # test au lieu de l'échouer. L'intégration continue tournerait alors
+        # jusqu'à son propre délai sans nommer le test en cause — et une
+        # mutation qui fait pendre ne prouve rien.
+        try:
+            while True:
+                received.append(
+                    await asyncio.wait_for(anext(events), timeout=1))
+        except (StopAsyncIteration, asyncio.TimeoutError):
+            pass
     assert received[-1].name == "error"
     assert received[-1].data == LAGGED.data
     assert len(received) == SUBSCRIBER_QUEUE_SIZE
@@ -292,27 +301,36 @@ def publish(project_id: str, event: RunEvent) -> None:
     """Publie sans bloquer et sans rien attendre de personne.
 
     Synchrone à dessein : les nœuds du graphe l'appellent au milieu d'un flux
-    de tokens, et un `await` de plus par fragment coûterait une bascule de
+    de fragments, et un `await` de plus par fragment coûterait une bascule de
     tâche par mot rédigé. `put_nowait` sur une file bornée suffit.
     """
-    for queue in _channels.get(project_id, ()):
+    subscribers = _channels.get(project_id)
+    if not subscribers:
+        return
+    # Une copie : `_drop_lagging` retire l'abonné du canal, et muter un
+    # ensemble qu'on parcourt lèverait une `RuntimeError`.
+    for queue in list(subscribers):
         try:
             queue.put_nowait(event)
         except asyncio.QueueFull:
-            # L'abonné est trop lent. On ne jette pas d'événement au hasard :
-            # on le coupe proprement. `_close` se charge du reste ; ici on ne
-            # peut pas muter l'ensemble qu'on parcourt.
-            _mark_lagged(queue)
+            _drop_lagging(project_id, queue)
 
 
-def _mark_lagged(queue: asyncio.Queue) -> None:
-    """Remplace le plus ancien élément par l'avis de retard.
+def _drop_lagging(project_id: str, queue: asyncio.Queue) -> None:
+    """Coupe l'abonné en retard, une fois pour toutes.
+
+    Le retirer du canal AVANT de poser l'avis est ce qui rend l'opération
+    idempotente, et ce n'est pas une élégance : sans cela, chaque publication
+    suivante retrouverait la file pleine, sortirait un fragment de plus et
+    glisserait un nouvel avis derrière. L'abonné recevrait alors des
+    fragments amputés AVANT de voir le premier avis — exactement ce que
+    cette branche existe pour éviter.
 
     La file est pleine par définition : pour y glisser `LAGGED`, il faut
     d'abord faire de la place. On sort le plus ancien, ce qui est le moins
-    mauvais choix — l'abonné sera coupé de toute façon, autant qu'il reçoive
-    l'avis le plus tôt possible.
+    mauvais choix — l'abonné sera coupé de toute façon.
     """
+    _channels.get(project_id, set()).discard(queue)
     try:
         queue.get_nowait()
     except asyncio.QueueEmpty:  # pragma: no cover — la file est pleine
@@ -367,7 +385,8 @@ chaque mutation, lancez `tests/test_events.py`, restaurez.
 
 | Mutation | Doit faire tomber |
 |---|---|
-| `except asyncio.QueueFull: pass` au lieu d'appeler `_mark_lagged` | `..._falls_behind_is_dropped_with_an_error` |
+| `except asyncio.QueueFull: pass` au lieu d'appeler `_drop_lagging` | `..._falls_behind_is_dropped_with_an_error` |
+| `_drop_lagging` sans le `discard` du canal | le même — l'abonné recevrait des fragments après l'avis |
 | retirer le `del _channels[project_id]` | `..._channel_disappears_when_its_last_subscriber_leaves` |
 | `_channels.get(project_id, ())` → parcourir tous les canaux | `..._subscriber_of_another_project_receives_nothing` |
 
