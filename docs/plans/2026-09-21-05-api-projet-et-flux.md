@@ -1456,7 +1456,7 @@ async def _publish_interrupt(project_id: str, interrupt) -> None:
 
     L'identifiant vient de LangGraph et non de nous : c'est lui que
     `POST /answer` renverra, et c'est en le comparant à l'interruption
-    current qu'on saura si la requête rejoue un point déjà dépassé (§6.2).
+    courante qu'on saura si la requête rejoue un point déjà dépassé (§6.2).
     """
     publish(project_id, RunEvent("interaction", {
         "id": interrupt.id,
@@ -2350,11 +2350,28 @@ async def test_answering_twice_does_not_advance_twice(client, account):
              "reponse": _answer_for(interaction)}
 
     first = await client.post(f"/projects/{project_id}/answer",
-                                 json=body, headers=account)
-    second = await client.post(f"/projects/{project_id}/answer",
-                                json=body, headers=account)
-
+                              json=body, headers=account)
     assert first.status_code == 200
+
+    # Le second appel n'est envoyé qu'une fois le run passé à autre chose.
+    # Un aller-retour immédiat serait absorbé par le registre
+    # (`RunAlreadyRunning`, tâche 3) parce que le premier run tourne
+    # encore : ce test passerait alors pour CETTE raison-là, et non parce
+    # que l'identifiant est reconnu comme périmé. Constaté par mutation —
+    # retirer la comparaison d'identifiant ne faisait tomber que le test
+    # voisin, celui-ci restait vert pour la mauvaise raison.
+    for _ in range(200):
+        state_body = (await client.get(f"/projects/{project_id}/state",
+                                       headers=account)).json()
+        current = state_body["interaction"]
+        if current is None or current["id"] != interaction["id"]:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le run n'a pas dépassé l'interruption répondue")
+
+    second = await client.post(f"/projects/{project_id}/answer",
+                               json=body, headers=account)
     assert second.status_code == 200, (
         "une réponse déjà consommée doit renvoyer l'état courant, pas une "
         "erreur : le front ne peut pas distinguer un double-clic d'un échec"
@@ -2435,7 +2452,7 @@ class AnswerRequest(BaseModel):
 @router.post("/{project_id}/answer")
 async def answer(project_id: UUID, body: AnswerRequest,
                  user=Depends(active_user)):
-    """Répond à l'interaction current et relance le run (§6.2).
+    """Répond à l'interaction courante et relance le run (§6.2).
 
     L'idempotence se joue ici, pas dans le graphe : on compare l'identifiant
     reçu à celui de l'interruption en attente et on ne reprend que s'ils
@@ -2503,11 +2520,273 @@ cd backend && uv run pytest -m "not network" -q
 | Mutation | Doit faire tomber |
 |---|---|
 | retirer la comparaison `en_attente.id != corps.interaction_id` | `..._twice_does_not_advance_twice` **et** `..._stale_interaction_id_changes_nothing` |
-| `Command(resume=corps.reponse)` au lieu du dictionnaire | `..._answering_advances_the_run` |
+| `Command(resume=body.reponse)` au lieu du dictionnaire | **aucun test, et c'est normal** — voir ci-dessous |
 | répondre `409` au lieu de `200` sur une réponse périmée | `..._twice_does_not_advance_twice` |
 
 Si la première mutation ne fait tomber qu'**un seul** des deux tests,
 l'autre passe pour une mauvaise raison — corrigez-le avant de continuer.
+C'est arrivé : le double-clic était absorbé par le registre au lieu d'être
+reconnu comme périmé, d'où l'attente ajoutée au test ci-dessus.
+
+**La forme à dictionnaire n'est pas testable sur ce graphe, et le dire vaut
+mieux que l'inventer.** Le graphe est strictement linéaire :
+`ask_questions`, `review` et `arbitrate` n'interrompent jamais en parallèle,
+donc `snapshot.interrupts` ne porte jamais plus d'une entrée. Or une valeur
+simple vise « la prochaine interruption », qui est ici la seule qui existe :
+les deux formes sont donc rigoureusement équivalentes aujourd'hui, et aucune
+mutation ne peut les distinguer.
+
+On garde le dictionnaire quand même, pour deux raisons. Il dit explicitement
+à quoi l'on répond, ce qui est la seule lecture correcte de la route. Et le
+jour où un nœud interrompra en parallèle — un arbitrage par incohérence,
+par exemple — la forme simple deviendrait fausse en silence, sur un chemin
+que personne ne rejoue.
+
+
+- [ ] **Étape 7 bis : une réponse mal formée ne doit pas condamner le projet**
+
+Le constat le plus grave du plan, trouvé par la relecture et reproduit deux
+fois. `POST /answer` accepte `"reponse"` de n'importe quelle forme — le
+schéma la type `Any` au motif que « c'est le graphe qui valide ». C'est faux
+sur ce chemin : `ask_questions` fait `(answers or {}).items()`, donc une
+liste, une chaîne ou un nombre y lèvent une `AttributeError`. La route a déjà
+répondu `200 {"rejoue": true}`, le run meurt, `run_status` passe à `failed`.
+
+Le pire vient après. L'interruption reste en attente au point de reprise, et
+LangGraph **rejoue la valeur stockée** : une reprise correcte replante donc à
+l'identique, trois fois sur trois. Le projet est coincé pour de bon, sans
+aucun chemin de retour par l'API — et le `/resume` de la tâche 7 rejouerait
+le même poison.
+
+On corrige à deux niveaux, parce qu'ils ne font pas le même travail.
+
+**Le nœud ne doit jamais mourir sur ce que le client envoie.** Dans
+`backend/app/agent/graph.py`, ajouter en tête `import logging` et
+`logger = logging.getLogger(__name__)`, puis dans `ask_questions`, juste
+après l'`interrupt` :
+
+```python
+    # `answers` vient du client par `Command(resume=…)` et n'est validé par
+    # personne avant d'arriver ici. Une liste, une chaîne ou un nombre y
+    # produisaient une `AttributeError` qui tuait le run — et, LangGraph
+    # rejouant la valeur stockée au point de reprise, une reprise correcte
+    # replantait à l'identique. Le projet restait coincé pour de bon.
+    #
+    # `review` porte déjà ce garde (`isinstance(feedback, dict)`) ; il
+    # manquait ici. On ignore ce qu'on ne sait pas lire plutôt que de mourir
+    # dessus : la section reposera ses questions au tour suivant. C'est
+    # aussi ce qui désempoisonne un point de reprise déjà corrompu.
+    if not isinstance(answers, dict):
+        if answers is not None:
+            logger.warning("réponse ignorée, forme inattendue : %s",
+                           type(answers).__name__)
+        answers = {}
+```
+
+et remplacer `(answers or {}).items()` par `answers.items()`.
+
+**La route refuse au seuil ce qu'elle peut voir de travers.** Ignorer
+silencieusement ferait disparaître la réponse d'un utilisateur sans rien lui
+dire ; un 422 est honnête, puisque rien n'a été consommé et qu'il peut
+renvoyer. Dans `backend/app/projects/routes.py`, au-dessus de la route :
+
+```python
+# La forme que chaque interruption attend, telle que les nœuds la lisent.
+# `ask_questions` veut une correspondance fait → valeur, `review` un
+# dictionnaire d'action, `arbitrate` une liste d'arbitrages.
+_EXPECTED_ANSWER = {"questions": dict, "review": dict, "inconsistencies": list}
+```
+
+et, dans `answer`, juste après la comparaison d'identifiant :
+
+```python
+    expected = _EXPECTED_ANSWER.get(pending.value.get("kind"))
+    if (expected is not None and body.reponse is not None
+            and not isinstance(body.reponse, expected)):
+        # Refuser ici plutôt que de laisser le nœud s'en étrangler. Rien n'a
+        # été consommé : l'interruption reste en attente et le client peut
+        # renvoyer. `Any` sur le schéma reste le bon choix — les cinq
+        # interruptions portent des charges utiles différentes — mais « le
+        # graphe valide ce qu'il reçoit » n'était vrai que de `review`.
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            {"code": "reponse_mal_formee"})
+```
+
+- [ ] **Étape 7 ter : huit mutations survivaient, dont le défaut du §6.2 lui-même**
+
+Onze mutations jouées par la relecture, **huit survivantes**. La plus grave :
+la branche « périmé » peut reprendre le run *quand même* tout en répondant
+`rejoue: False`, et les quatre tests restent verts. Le test du double-clic
+passe donc au vert pendant que le graphe avance deux fois — précisément ce
+que sa propre docstring décrit comme le défaut à empêcher.
+
+Deux raisons : il n'assertait que le drapeau, jamais le graphe ; et
+l'assertion d'état du test voisin lisait `/state` **immédiatement** après la
+requête, donc elle gagnait une course au lieu de vérifier quoi que ce soit.
+
+Corriger les deux tests existants. Dans
+`test_a_stale_interaction_id_changes_nothing`, avant l'assertion finale :
+
+```python
+    # L'attente n'est pas du confort. Sans elle, la tâche de fond n'a pas
+    # bougé quand on lit, et l'assertion gagne une course au lieu de
+    # vérifier quelque chose : avec l'attente elle passe sur le code livré
+    # et TOMBE sur une route qui reprendrait malgré l'identifiant périmé.
+    await asyncio.sleep(1)
+```
+
+Dans `test_answering_twice_does_not_advance_twice`, après le second appel :
+
+```python
+    # Le drapeau ne suffit pas : une route qui reprend quand même tout en
+    # répondant `rejoue: False` le laissait au vert. On regarde donc le
+    # graphe, pas la réponse.
+    after = (await client.get(f"/projects/{project_id}/state",
+                              headers=account)).json()["interaction"]
+    assert after is None or after["id"] == current["id"], (
+        "le second appel a fait avancer le graphe"
+    )
+```
+
+Puis **cinq tests neufs** :
+
+```python
+async def test_a_malformed_answer_is_refused_and_consumes_nothing(client, account):
+    """Le constat le plus grave du plan, réduit à un test.
+
+    Une liste au lieu d'une correspondance tuait le run, et le point de
+    reprise gardant la valeur, une reprise correcte replantait à
+    l'identique : le projet ne revenait plus jamais.
+    """
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    interaction = await _wait_for_interaction(client, project_id, account)
+
+    refused = await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": interaction["id"], "reponse": ["a", "b"]},
+        headers=account)
+    assert refused.status_code == 422
+
+    # Rien n'a été consommé : la même interruption attend toujours, et une
+    # réponse correcte passe.
+    state_body = (await client.get(f"/projects/{project_id}/state",
+                                   headers=account)).json()
+    assert state_body["interaction"]["id"] == interaction["id"]
+    accepted = await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": interaction["id"],
+              "reponse": _answer_for(interaction)},
+        headers=account)
+    assert accepted.status_code == 200
+    assert accepted.json()["rejoue"] is True
+
+
+async def test_the_answer_reaches_the_graph_unchanged(client, account, monkeypatch):
+    """Rien ne vérifiait que la réponse de l'utilisateur arrive au graphe.
+
+    Reprendre avec une charge vide laissait les quatre tests verts. On
+    intercepte donc le `Command` remis au pilote — les faits répondus ne
+    sont projetés qu'au nœud `save`, bien plus tard, donc `/state` ne peut
+    pas servir de témoin ici.
+    """
+    from app.projects import routes
+
+    captured = []
+    real_start_run = routes.start_run
+    monkeypatch.setattr(routes, "start_run",
+                        lambda pid, tid, gi: captured.append(gi))
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    interaction = await _wait_for_interaction(client, project_id, account)
+    payload = _answer_for(interaction)
+    await client.post(f"/projects/{project_id}/answer",
+                      json={"interaction_id": interaction["id"],
+                            "reponse": payload},
+                      headers=account)
+
+    assert captured, "le pilote n'a pas été appelé"
+    assert captured[-1].resume == {interaction["id"]: payload}
+
+
+async def test_a_race_on_the_same_answer_is_absorbed(client, account, monkeypatch):
+    """La seule branche écrite pour une vraie course, et rien ne l'exerçait.
+
+    Supprimer son `except` laissait les 414 tests verts, alors qu'un vrai
+    double-clic simultané rend alors un 500.
+    """
+    from app.projects import routes
+    from app.runs.runner import RunAlreadyRunning
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    interaction = await _wait_for_interaction(client, project_id, account)
+
+    def _already(project_id, thread_id, graph_input):
+        raise RunAlreadyRunning(project_id)
+
+    monkeypatch.setattr(routes, "start_run", _already)
+    response = await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": interaction["id"],
+              "reponse": _answer_for(interaction)},
+        headers=account)
+
+    assert response.status_code == 200
+    assert response.json() == {"rejoue": False, "run_status": "running"}
+
+
+async def test_every_answer_reports_the_run_status(client, account):
+    """La moitié du contrat de réponse n'était assertée nulle part : retirer
+    `run_status` des trois retours laissait la suite verte."""
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    interaction = await _wait_for_interaction(client, project_id, account)
+
+    stale = (await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": "depuis-longtemps-perime", "reponse": {}},
+        headers=account)).json()
+    assert set(stale) == {"rejoue", "run_status"}
+    assert stale["run_status"] in {"idle", "running", "waiting", "failed", "done"}
+
+    fresh = (await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": interaction["id"],
+              "reponse": _answer_for(interaction)},
+        headers=account)).json()
+    assert set(fresh) == {"rejoue", "run_status"}
+
+
+async def test_the_request_body_and_the_token_are_both_required(client, account):
+    """Ni le 401 ni le 422 n'étaient couverts."""
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+
+    assert (await client.post(f"/projects/{project_id}/answer",
+                              json={"reponse": {}})).status_code in (401, 403)
+    assert (await client.post(f"/projects/{project_id}/answer",
+                              json={"reponse": {}},
+                              headers=account)).status_code == 422
+    assert (await client.post(f"/projects/{project_id}/answer",
+                              json={"interaction_id": "", "reponse": {}},
+                              headers=account)).status_code == 422
+```
+
+Les mutations à rejouer, toutes survivantes avant cette correction :
+
+| Mutation | Doit faire tomber |
+|---|---|
+| la branche « périmé » reprend quand même, en annonçant `rejoue: False` | `..._twice_does_not_advance_twice` **et** `..._stale_interaction_id_changes_nothing` |
+| `Command(resume={id: None})` — la charge de l'utilisateur jetée | `..._answer_reaches_the_graph_unchanged` |
+| `resume` indexé sur `pending.id` au lieu de `body.interaction_id` | le même |
+| supprimer l'`except RunAlreadyRunning` | `..._race_on_the_same_answer_is_absorbed` |
+| retirer `run_status` des trois retours | `..._every_answer_reports_the_run_status` |
+| la branche « périmé » annonce `run_status: "done"` | le même |
+| `interaction_id: str \| None = None` | `..._request_body_and_the_token_are_both_required` |
+| retirer `Field(min_length=1)` | le même |
+| `ask_questions` sans son garde de forme | `..._malformed_answer_is_refused_and_consumes_nothing` |
 
 - [ ] **Étape 8 : commiter**
 

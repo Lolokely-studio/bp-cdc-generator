@@ -128,6 +128,23 @@ async def test_answering_twice_does_not_advance_twice(client, account):
         "erreur : le front ne peut pas distinguer un double-clic d'un échec"
     )
     assert second.json()["rejoue"] is False
+    # Le drapeau ne suffit pas : une route qui reprend quand même tout en
+    # répondant `rejoue: False` le laissait au vert. On regarde donc le
+    # graphe, pas la réponse.
+    #
+    # L'attente n'est pas du confort, ici non plus : `start_run` rend la
+    # main avant que la tâche de fond ait avancé (même mécanique que
+    # `test_a_stale_interaction_id_changes_nothing`). Sans elle, la lecture
+    # de `/state` gagne une course contre la reprise fautive au lieu de la
+    # débusquer — constaté par mutation : la branche « périmé » reprenant
+    # quand même laissait ce test vert à tous les coups tant que cette
+    # attente manquait.
+    await asyncio.sleep(1)
+    after = (await client.get(f"/projects/{project_id}/state",
+                              headers=account)).json()["interaction"]
+    assert after is None or after["id"] == current["id"], (
+        "le second appel a fait avancer le graphe"
+    )
 
 
 async def test_a_stale_interaction_id_changes_nothing(client, account):
@@ -142,6 +159,12 @@ async def test_a_stale_interaction_id_changes_nothing(client, account):
         headers=account)
     assert response.status_code == 200
     assert response.json()["rejoue"] is False
+
+    # L'attente n'est pas du confort. Sans elle, la tâche de fond n'a pas
+    # bougé quand on lit, et l'assertion gagne une course au lieu de
+    # vérifier quelque chose : avec l'attente elle passe sur le code livré
+    # et TOMBE sur une route qui reprendrait malgré l'identifiant périmé.
+    await asyncio.sleep(1)
 
     state_body = (await client.get(f"/projects/{project_id}/state",
                              headers=account)).json()
@@ -160,3 +183,174 @@ async def test_answering_another_users_project_is_not_found(client, account):
         json={"interaction_id": "peu-importe", "reponse": {}},
         headers=account)
     assert response.status_code == 404
+
+
+async def test_a_malformed_answer_is_refused_and_consumes_nothing(client, account):
+    """Le constat le plus grave du plan, réduit à un test.
+
+    Une liste au lieu d'une correspondance tuait le run, et le point de
+    reprise gardant la valeur, une reprise correcte replantait à
+    l'identique : le projet ne revenait plus jamais.
+    """
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    interaction = await _wait_for_interaction(client, project_id, account)
+
+    refused = await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": interaction["id"], "reponse": ["a", "b"]},
+        headers=account)
+    assert refused.status_code == 422
+
+    # Rien n'a été consommé : la même interruption attend toujours, et une
+    # réponse correcte passe.
+    state_body = (await client.get(f"/projects/{project_id}/state",
+                                   headers=account)).json()
+    assert state_body["interaction"]["id"] == interaction["id"]
+    accepted = await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": interaction["id"],
+              "reponse": _answer_for(interaction)},
+        headers=account)
+    assert accepted.status_code == 200
+    assert accepted.json()["rejoue"] is True
+
+
+async def test_a_null_answer_does_not_kill_the_node(client, account):
+    """Le garde de `ask_questions` n'est pas redondant avec le 422 de la
+    route : il défend une porte que la route laisse volontairement ouverte.
+
+    `_EXPECTED_ANSWER` de la route ne s'applique QUE si `reponse` n'est pas
+    `None` — `AnswerRequest.reponse` vaut `Any = None`, et une réponse
+    explicitement nulle n'est pas une malformation qu'on veut refuser au
+    seuil. Elle atteint donc le nœud tel quelle. Retirer le garde du nœud ne
+    fait tomber AUCUN test si l'on ne teste que le cas de la liste — la
+    route bloque déjà les listes avant que le nœud ne les voie — d'où ce
+    test séparé, constaté par mutation : sans lui, le garde de `ask_questions`
+    pouvait disparaître sans que rien ne le remarque.
+    """
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    interaction = await _wait_for_interaction(client, project_id, account)
+    assert interaction["kind"] == "questions"
+
+    response = await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": interaction["id"], "reponse": None},
+        headers=account)
+    assert response.status_code == 200
+
+    await asyncio.sleep(1)
+    state_body = (await client.get(f"/projects/{project_id}/state",
+                                   headers=account)).json()
+    assert state_body["projet"]["run_status"] != "failed", (
+        "une réponse nulle a tué le run : le garde du nœud a manqué"
+    )
+
+
+async def test_the_answer_reaches_the_graph_unchanged(client, account, monkeypatch):
+    """Rien ne vérifiait que la réponse de l'utilisateur arrive au graphe.
+
+    Reprendre avec une charge vide laissait les quatre tests verts. On
+    intercepte donc le `Command` remis au pilote — les faits répondus ne
+    sont projetés qu'au nœud `save`, bien plus tard, donc `/state` ne peut
+    pas servir de témoin ici.
+    """
+    from app.projects import routes
+
+    captured = []
+    real_start_run = routes.start_run
+
+    def _spying_start_run(pid, tid, gi):
+        # On espionne, on ne remplace pas : un simple `captured.append` sans
+        # relais vers `real_start_run` empêchait le run de départ d'avancer
+        # (la création de projet appelle aussi `start_run`), donc
+        # `_wait_for_interaction` n'atteignait jamais d'interruption et le
+        # test échouait avant même d'exercer ce qu'il veut vérifier.
+        captured.append(gi)
+        return real_start_run(pid, tid, gi)
+
+    monkeypatch.setattr(routes, "start_run", _spying_start_run)
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    interaction = await _wait_for_interaction(client, project_id, account)
+    payload = _answer_for(interaction)
+    await client.post(f"/projects/{project_id}/answer",
+                      json={"interaction_id": interaction["id"],
+                            "reponse": payload},
+                      headers=account)
+
+    assert captured, "le pilote n'a pas été appelé"
+    assert captured[-1].resume == {interaction["id"]: payload}
+
+
+async def test_a_race_on_the_same_answer_is_absorbed(client, account, monkeypatch):
+    """La seule branche écrite pour une vraie course, et rien ne l'exerçait.
+
+    Supprimer son `except` laissait les 414 tests verts, alors qu'un vrai
+    double-clic simultané rend alors un 500.
+    """
+    from app.projects import routes
+    from app.runs.runner import RunAlreadyRunning
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    interaction = await _wait_for_interaction(client, project_id, account)
+
+    def _already(project_id, thread_id, graph_input):
+        raise RunAlreadyRunning(project_id)
+
+    monkeypatch.setattr(routes, "start_run", _already)
+    response = await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": interaction["id"],
+              "reponse": _answer_for(interaction)},
+        headers=account)
+
+    assert response.status_code == 200
+    assert response.json() == {"rejoue": False, "run_status": "running"}
+
+
+async def test_every_answer_reports_the_run_status(client, account):
+    """La moitié du contrat de réponse n'était assertée nulle part : retirer
+    `run_status` des trois retours laissait la suite verte."""
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    interaction = await _wait_for_interaction(client, project_id, account)
+
+    stale = (await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": "depuis-longtemps-perime", "reponse": {}},
+        headers=account)).json()
+    assert set(stale) == {"rejoue", "run_status"}
+    # `in {...}` seul laissait passer une valeur inventée du moment qu'elle
+    # figure dans l'énumération — `"done"` y était, alors que le projet
+    # attend toujours sa première interruption. `advance` écrit `waiting`
+    # en base AVANT de publier l'interruption (`runner.py`), et cette
+    # écriture est achevée avant que `_wait_for_interaction` ne voie
+    # l'interruption au point de reprise : le statut réel est donc connu et
+    # vérifiable, pas seulement plausible.
+    assert stale["run_status"] == "waiting"
+
+    fresh = (await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": interaction["id"],
+              "reponse": _answer_for(interaction)},
+        headers=account)).json()
+    assert set(fresh) == {"rejoue", "run_status"}
+
+
+async def test_the_request_body_and_the_token_are_both_required(client, account):
+    """Ni le 401 ni le 422 n'étaient couverts."""
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+
+    assert (await client.post(f"/projects/{project_id}/answer",
+                              json={"reponse": {}})).status_code in (401, 403)
+    assert (await client.post(f"/projects/{project_id}/answer",
+                              json={"reponse": {}},
+                              headers=account)).status_code == 422
+    assert (await client.post(f"/projects/{project_id}/answer",
+                              json={"interaction_id": "", "reponse": {}},
+                              headers=account)).status_code == 422

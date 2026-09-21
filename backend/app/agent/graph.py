@@ -1,3 +1,5 @@
+import logging
+
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
@@ -5,6 +7,8 @@ from app.agent import nodes
 from app.agent.checkpointer import saver
 from app.agent.state import EsquisseState, Fact
 from app.agent.templates import load_catalogue
+
+logger = logging.getLogger(__name__)
 
 
 # Ce que porte `problems` quand l'utilisateur demande une réécriture sans
@@ -35,6 +39,21 @@ async def ask_questions(state) -> dict:
     proposed = state.get("pending_questions")
     questions = [q.model_dump() for q in proposed.questions] if proposed else []
     answers = interrupt({"kind": "questions", "questions": questions})
+    # `answers` vient du client par `Command(resume=…)` et n'est validé par
+    # personne avant d'arriver ici. Une liste, une chaîne ou un nombre y
+    # produisaient une `AttributeError` qui tuait le run — et, LangGraph
+    # rejouant la valeur stockée au point de reprise, une reprise correcte
+    # replantait à l'identique. Le projet restait coincé pour de bon.
+    #
+    # `review` porte déjà ce garde (`isinstance(feedback, dict)`) ; il
+    # manquait ici. On ignore ce qu'on ne sait pas lire plutôt que de mourir
+    # dessus : la section reposera ses questions au tour suivant. C'est
+    # aussi ce qui désempoisonne un point de reprise déjà corrompu.
+    if not isinstance(answers, dict):
+        if answers is not None:
+            logger.warning("réponse ignorée, forme inattendue : %s",
+                           type(answers).__name__)
+        answers = {}
     # Les réponses sont filtrées contre le catalogue, exactement comme
     # `extract_facts` filtre ce que le modèle propose. C'était la seule des
     # deux portes d'entrée des faits à n'avoir aucun loquet, et l'écart
@@ -48,7 +67,7 @@ async def ask_questions(state) -> dict:
     known = load_catalogue().facts
     facts = {
         fact_id: Fact(fact_id=fact_id, value=value, source="user")
-        for fact_id, value in (answers or {}).items()
+        for fact_id, value in answers.items()
         if fact_id in known
     }
     return {"facts": facts, "pending_questions": None}

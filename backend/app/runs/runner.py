@@ -113,7 +113,7 @@ async def _publish_interrupt(project_id: str, interrupt) -> None:
 
     L'identifiant vient de LangGraph et non de nous : c'est lui que
     `POST /answer` renverra, et c'est en le comparant à l'interruption
-    current qu'on saura si la requête rejoue un point déjà dépassé (§6.2).
+    courante qu'on saura si la requête rejoue un point déjà dépassé (§6.2).
     """
     publish(project_id, RunEvent("interaction", {
         "id": interrupt.id,

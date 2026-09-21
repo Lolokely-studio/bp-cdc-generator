@@ -24,6 +24,11 @@ from app.runs.runner import RunAlreadyRunning, start_run
 
 router = APIRouter(prefix="/projects", tags=["projets"])
 
+# La forme que chaque interruption attend, telle que les nœuds la lisent.
+# `ask_questions` veut une correspondance fait → valeur, `review` un
+# dictionnaire d'action, `arbitrate` une liste d'arbitrages.
+_EXPECTED_ANSWER = {"questions": dict, "review": dict, "inconsistencies": list}
+
 
 async def _owned(project_id: UUID, user) -> dict:
     """Le projet, ou 404.
@@ -146,7 +151,7 @@ async def state(project_id: UUID, user=Depends(active_user)):
 @router.post("/{project_id}/answer")
 async def answer(project_id: UUID, body: AnswerRequest,
                  user=Depends(active_user)):
-    """Répond à l'interaction current et relance le run (§6.2).
+    """Répond à l'interaction courante et relance le run (§6.2).
 
     L'idempotence se joue ici, pas dans le graphe : on compare l'identifiant
     reçu à celui de l'interruption en attente et on ne reprend que s'ils
@@ -179,6 +184,17 @@ async def answer(project_id: UUID, body: AnswerRequest,
     pending = snapshot.interrupts[0] if snapshot.interrupts else None
     if pending is None or pending.id != body.interaction_id:
         return {"rejoue": False, "run_status": row["run_status"]}
+
+    expected = _EXPECTED_ANSWER.get(pending.value.get("kind"))
+    if (expected is not None and body.reponse is not None
+            and not isinstance(body.reponse, expected)):
+        # Refuser ici plutôt que de laisser le nœud s'en étrangler. Rien n'a
+        # été consommé : l'interruption reste en attente et le client peut
+        # renvoyer. `Any` sur le schéma reste le bon choix — les cinq
+        # interruptions portent des charges utiles différentes — mais « le
+        # graphe valide ce qu'il reçoit » n'était vrai que de `review`.
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            {"code": "reponse_mal_formee"})
 
     try:
         start_run(str(project_id), row["thread_id"],
