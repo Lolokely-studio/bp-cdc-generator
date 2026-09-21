@@ -10,6 +10,7 @@ from app.agent.templates import Catalogue, SectionTemplate, load_catalogue
 from app.core.db import connection
 from app.llm.gateway import complete, stream
 from app.llm.types import StreamDone, StreamRestart, TextDelta
+from app.runs.events import RunEvent, publish
 
 # Les deux plafonds du §4.4. Ils bornent des boucles qui, sans eux,
 # tourneraient sur un projet mal renseigné ou un modèle qui s'entête.
@@ -191,6 +192,15 @@ async def save(state) -> dict:
         await save_section(conn, state["project_id"], ref,
                            blocks=state["draft"] or [], statut="done",
                            note=state["score"], revisions=state["revisions"])
+    publish(state["project_id"], RunEvent("section_saved", {
+        "document": ref.document,
+        "section_id": ref.section_id,
+        "score": state["score"],
+    }))
+    publish(state["project_id"], RunEvent("progress", {
+        "cursor": state["cursor"] + 1,
+        "total": len(state["plan"]),
+    }))
     return {"cursor": state["cursor"] + 1, "draft": None, "score": None,
             "problems": [], "revisions": 0, "question_rounds": 0}
 
@@ -255,11 +265,20 @@ async def write(state, transport=None) -> dict:
     ):
         if isinstance(event, TextDelta):
             pieces.append(event.text)
+            # Publier ici et non après la boucle : c'est tout l'intérêt du
+            # flux. Sans abonné l'appel est sans effet, ce qui est le cas
+            # normal — un run tourne aussi bien sans navigateur connecté.
+            publish(state["project_id"], RunEvent("token", {"text": event.text}))
         elif isinstance(event, StreamRestart):
             # Le flux est reparti entier sur le fournisseur suivant (§5.2) :
             # ce qui avait déjà été accumulé n'est plus la section, sous
             # peine de coller un faux départ devant le texte relancé.
             pieces = []
+            # Le front doit vider son affichage pour la même raison, sinon il
+            # montrerait le faux départ suivi du vrai texte.
+            publish(state["project_id"], RunEvent("section_restart", {
+                "document": ref.document, "section_id": ref.section_id,
+            }))
         elif isinstance(event, StreamDone):
             pass
     return {"draft": prompts.parse_written_text("".join(pieces), tables),
@@ -276,8 +295,12 @@ async def critique(state, transport=None) -> dict:
         transport=transport,
     )
     verdict = reponse.parsed
-    return {"score": verdict.score if verdict else 0,
-            "problems": verdict.problems if verdict else []}
+    score = verdict.score if verdict else 0
+    problems = verdict.problems if verdict else []
+    publish(state["project_id"], RunEvent("score", {
+        "score": score, "problems": problems,
+    }))
+    return {"score": score, "problems": problems}
 
 
 async def coherence_check(state, transport=None) -> dict:
