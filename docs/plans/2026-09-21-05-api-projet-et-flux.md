@@ -1655,14 +1655,25 @@ CREATION = {
 MOT_DE_PASSE = "motdepasse123"
 
 
-async def _active_account(client, email: str) -> dict:
+async def _active_account(client, label: str) -> dict:
     """Inscrit, active en base, se connecte, rend l'en-tête d'autorisation.
 
     Même motif que `tests/test_login.py::_register_and_activate` : le contrat
     d'API est en français — `mot_de_passe` à l'entrée, `jeton` à la sortie.
+
+    L'adresse porte un suffixe unique, et ce n'est pas de la coquetterie :
+    `migrated_db` a la portée de la SESSION, donc la base n'est pas remise à
+    zéro entre deux tests d'un même fichier. Avec une adresse fixe, chaque
+    test hérite des projets créés par ses prédécesseurs — constaté :
+    `..._list_only_holds_the_owners_projects` voyait deux « CoachDom » et
+    échouait, tout en passant lorsqu'on le lançait seul. Un test qui dépend
+    de l'ordre de ses voisins est un test qu'on finit par désactiver.
     """
+    from uuid import uuid4
+
     from app.core.db import connection
 
+    email = f"{label}-{uuid4()}@exemple.fr"
     await client.post("/auth/register",
                       json={"email": email, "mot_de_passe": MOT_DE_PASSE})
     async with connection() as conn:
@@ -1676,7 +1687,7 @@ async def _active_account(client, email: str) -> dict:
 
 @pytest_asyncio.fixture
 async def account(client, migrated_db):
-    return await _active_account(client, "projets@exemple.fr")
+    return await _active_account(client, "projets")
 
 
 async def test_creating_a_project_returns_its_header(client, account):
@@ -1703,7 +1714,7 @@ async def test_the_list_only_holds_the_owners_projects(client, account):
     await client.post("/projects", json=CREATION, headers=account)
 
     # Un second compte, avec son propre projet.
-    other_account = await _active_account(client, "intrus@exemple.fr")
+    other_account = await _active_account(client, "intrus")
     await client.post("/projects", json={**CREATION, "nom": "PasÀToi"},
                       headers=other_account)
 
@@ -1713,7 +1724,7 @@ async def test_the_list_only_holds_the_owners_projects(client, account):
 
 
 async def test_another_users_project_is_not_found_never_forbidden(client, account):
-    owner = await _active_account(client, "owner@exemple.fr")
+    owner = await _active_account(client, "owner")
     project_id = (await client.post(
         "/projects", json=CREATION, headers=owner)).json()["id"]
 
@@ -1979,7 +1990,7 @@ from tests.test_project_routes import CREATION, _active_account
 
 @pytest_asyncio.fixture
 async def account(client, migrated_db):
-    return await _active_account(client, "reponses@exemple.fr")
+    return await _active_account(client, "reponses")
 
 
 async def _wait_for_interaction(client, project_id, headers):
@@ -2077,7 +2088,7 @@ async def test_a_stale_interaction_id_changes_nothing(client, account):
 
 
 async def test_answering_another_users_project_is_not_found(client, account):
-    owner = await _active_account(client, "other_account-proprio@exemple.fr")
+    owner = await _active_account(client, "autre-proprio")
     project_id = (await client.post(
         "/projects", json=CREATION, headers=owner)).json()["id"]
 
@@ -2254,7 +2265,7 @@ from tests.test_project_routes import CREATION, _active_account
 
 @pytest_asyncio.fixture
 async def account(client, migrated_db):
-    return await _active_account(client, "flux@exemple.fr")
+    return await _active_account(client, "flux")
 
 
 def test_an_event_is_encoded_as_two_fields_and_a_blank_line():
@@ -2305,7 +2316,7 @@ async def test_the_stream_delivers_what_the_run_publishes(client, account):
 
 
 async def test_another_users_stream_is_not_found(client, account):
-    owner = await _active_account(client, "flux-proprio@exemple.fr")
+    owner = await _active_account(client, "flux-proprio")
     project_id = (await client.post(
         "/projects", json=CREATION, headers=owner)).json()["id"]
 
@@ -2483,7 +2494,7 @@ from tests.test_project_routes import CREATION, _active_account
 
 @pytest_asyncio.fixture
 async def account(client, migrated_db):
-    return await _active_account(client, "reprise@exemple.fr")
+    return await _active_account(client, "reprise")
 
 
 async def _force_status(project_id, statut):
@@ -2571,7 +2582,7 @@ async def test_reopening_a_section_marks_it_and_its_dependents(client, account):
 
 
 async def test_resuming_another_users_project_is_not_found(client, account):
-    owner = await _active_account(client, "reprise-proprio@exemple.fr")
+    owner = await _active_account(client, "reprise-proprio")
     project_id = (await client.post(
         "/projects", json=CREATION, headers=owner)).json()["id"]
     response = await client.post(f"/projects/{project_id}/resume",
