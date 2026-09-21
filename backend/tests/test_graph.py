@@ -263,3 +263,72 @@ async def test_a_review_that_asks_for_a_rewrite_sends_the_section_back(project):
         sections = await load_sections(conn, project)
     assert sections, "la demande de réécriture a fait perdre les sections"
     assert all(s["statut"] == "done" for s in sections)
+
+
+async def test_an_answer_outside_the_catalogue_never_becomes_a_fact():
+    """La seconde porte d'entrée des faits, longtemps restée sans loquet.
+
+    `extract_facts` filtre ce que le modèle propose ; `ask_questions` ne
+    filtrait rien. Une paire clé/valeur arbitraire devenait un fait
+    `source="user"`, donc protégé contre toute correction, puis persisté,
+    puis compté parmi les « nombres connus » du vérificateur — de sorte
+    qu'un chiffre inventé cessait d'être signalé comme orphelin.
+    """
+    from unittest.mock import patch
+
+    from app.agent import graph as graph_module
+
+    reponses = {"prix_moyen_unite": 45, "fait_invente": 999_999.0}
+    with patch.object(graph_module, "interrupt", lambda _: reponses):
+        maj = await graph_module.ask_questions(
+            {"pending_questions": None, "plan": [], "cursor": 0})
+
+    assert "prix_moyen_unite" in maj["facts"]
+    assert "fait_invente" not in maj["facts"], (
+        "une clé hors catalogue est entrée dans les faits"
+    )
+
+
+async def test_a_rewrite_without_a_reason_still_sends_the_section_back():
+    """Un champ libre laissé vide suffisait à valider la section.
+
+    `_route_after_review` route sur `problems` : une liste vide envoyait vers
+    `save`, donc marquait la section terminée, au moment précis où
+    l'utilisateur venait de dire qu'elle ne l'était pas.
+    """
+    from unittest.mock import patch
+
+    from app.agent import graph as graph_module
+    from app.agent.state import SectionRef
+
+    state = {"plan": [SectionRef(document="cdc", section_id="contexte_objectifs",
+                                 order=1)],
+             "cursor": 0, "score": 5, "problems": []}
+    for demande in ({"action": "rewrite"},
+                    {"action": "rewrite", "problems": []}):
+        with patch.object(graph_module, "interrupt", lambda _, d=demande: d):
+            maj = await graph_module.review(state)
+        assert maj["problems"], f"{demande} a rendu une liste vide"
+        assert graph_module._route_after_review(maj) == "write"
+
+    with patch.object(graph_module, "interrupt", lambda _: {"action": "accept"}):
+        maj = await graph_module.review(state)
+    assert maj["problems"] == []
+    assert graph_module._route_after_review(maj) == "save"
+
+
+def test_the_writing_prompt_carries_the_problems_to_correct():
+    """`problems` avait trois producteurs et deux lecteurs, tous deux des
+    routeurs. Le rédacteur ne le recevait pas : une réécriture réémettait le
+    prompt à l'identique, et rendait donc le même brouillon."""
+    from app.agent.prompts import writing_prompt
+    from app.agent.templates import load_catalogue
+
+    catalogue = load_catalogue()
+    section = catalogue.section("cdc.contexte_objectifs")
+    sans = writing_prompt(section, {}, [], "cadrage", catalogue)
+    avec = writing_prompt(section, {}, [], "cadrage", catalogue,
+                          ["Le premier objectif n'est pas mesurable."])
+
+    assert sans != avec, "le prompt de réécriture est identique au premier jet"
+    assert "Le premier objectif n'est pas mesurable." in avec[1].content

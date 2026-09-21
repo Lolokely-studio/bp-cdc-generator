@@ -248,7 +248,8 @@ async def write(state, transport=None) -> dict:
     pieces: list[str] = []
     async for event in stream(
         "redaction",
-        prompts.writing_prompt(section, state["facts"], tables, profil, _catalogue()),
+        prompts.writing_prompt(section, state["facts"], tables, profil,
+                               _catalogue(), state["problems"]),
         project_id=state["project_id"],
         transport=transport,
     ):

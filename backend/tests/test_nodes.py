@@ -232,6 +232,31 @@ async def test_writing_produces_blocks(project):
     assert maj["revisions"] == 1
 
 
+async def test_a_rewrite_reaches_the_writer_with_the_problems_to_fix(project):
+    """Le câblage, pas seulement le prompt.
+
+    `writing_prompt` sait porter les problèmes depuis le correctif, mais
+    encore faut-il que `write` les lui passe. Le simulé tire sa graine du
+    hachage du prompt : deux états identiques au seul `problems` près
+    doivent donc rendre deux brouillons différents. Sans le câblage, une
+    « réécriture » réémettait le prompt à l'identique et rendait forcément
+    le même texte — deux appels modèle par section pour rien.
+    """
+    plan = CATALOGUE.plan_for("cdc", "consultation", None)
+    premier_jet = await nodes.write(
+        _state(project_id=project, plan=plan, cursor=0, problems=[]),
+        transport=FakeTransport())
+    reecriture = await nodes.write(
+        _state(project_id=project, plan=plan, cursor=0,
+               problems=["Le premier objectif n'est pas mesurable."]),
+        transport=FakeTransport())
+
+    textes = lambda draft: [getattr(b, "text", "") for b in draft]
+    assert textes(premier_jet["draft"]) != textes(reecriture["draft"]), (
+        "la réécriture rend le même texte que le premier jet"
+    )
+
+
 class _RestartingTransport:
     """Simulé de flux sous script, même forme que `_StreamStub` dans
     `test_gateway.py` : un script de fragments (ou d'exceptions) par couple

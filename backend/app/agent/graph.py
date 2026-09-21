@@ -7,6 +7,16 @@ from app.agent.state import EsquisseState, Fact
 from app.agent.templates import load_catalogue
 
 
+# Ce que porte `problems` quand l'utilisateur demande une réécriture sans
+# dire ce qui ne va pas. Le rédacteur le reçoit tel quel : mieux vaut lui
+# dire « on ne sait pas ce qui cloche, reprends autrement » que de lui
+# tendre une liste vide, qui se lirait comme « rien à corriger ».
+UNSPECIFIED_REWRITE = (
+    "l'utilisateur a demandé une réécriture sans préciser ce qui ne va pas : "
+    "reprends la section sous un autre angle"
+)
+
+
 async def ask_questions(state) -> dict:
     """Première des trois interruptions.
 
@@ -25,9 +35,21 @@ async def ask_questions(state) -> dict:
     proposed = state.get("pending_questions")
     questions = [q.model_dump() for q in proposed.questions] if proposed else []
     answers = interrupt({"kind": "questions", "questions": questions})
+    # Les réponses sont filtrées contre le catalogue, exactement comme
+    # `extract_facts` filtre ce que le modèle propose. C'était la seule des
+    # deux portes d'entrée des faits à n'avoir aucun loquet, et l'écart
+    # coûtait cher : une paire clé/valeur arbitraire devenait un
+    # `Fact(source="user")`, donc protégé par `merge_facts` contre toute
+    # correction ultérieure, puis persisté, puis compté parmi les « nombres
+    # connus » du vérificateur — si bien qu'un chiffre inventé cessait d'être
+    # signalé comme orphelin. C'est le garde-fou qui nous permet de nous
+    # passer de recherche web ; il ne peut pas dépendre de la bonne foi du
+    # client.
+    known = load_catalogue().facts
     facts = {
         fact_id: Fact(fact_id=fact_id, value=value, source="user")
         for fact_id, value in (answers or {}).items()
+        if fact_id in known
     }
     return {"facts": facts, "pending_questions": None}
 
@@ -42,7 +64,13 @@ async def review(state) -> dict:
         "problems": state["problems"],
     })
     if isinstance(feedback, dict) and feedback.get("action") == "rewrite":
-        return {"problems": feedback.get("problems", []), "revisions": 0}
+        # Une demande de réécriture sans motif reste une demande de
+        # réécriture. `_route_after_review` route sur `problems` : rendre une
+        # liste vide ici enverrait la section vers `save`, donc la marquerait
+        # terminée, au moment précis où l'utilisateur vient de dire qu'elle ne
+        # l'est pas. Un champ libre laissé vide suffisait à produire ça.
+        problems = feedback.get("problems") or [UNSPECIFIED_REWRITE]
+        return {"problems": problems, "revisions": 0}
     # Acceptation : le brief rendait `{}` ici, qui ne touche pas `problems`.
     # `_route_after_review` route sur `state["problems"]` pour décider entre
     # "write" et "save" ; comme la critique simulée ne rend jamais une liste
