@@ -2065,6 +2065,12 @@ async def test_the_header_status_agrees_with_the_state(client, account):
     assert state_body["interaction"] is not None, (
         "l'entête annonce `waiting` alors que rien n'attend de réponse"
     )
+    # Le jeu de clés de CETTE route-ci. Le contrôle posé sur la création ne
+    # la couvre pas — elle n'appelle que `POST /projects` — et sans cette
+    # ligne, retirer `response_model` de `header` rendrait la ligne brute,
+    # `thread_id` et `user_id` compris, sans que rien ne bronche.
+    assert set(header) == {"id", "nom", "documents", "profil_cdc", "profil_bp",
+                           "run_status", "created_at", "updated_at"}
 
 
 async def test_the_state_interaction_id_is_the_one_langgraph_gave(client, account):
@@ -2116,8 +2122,21 @@ async def test_a_both_document_project_carries_the_two_profiles(client, account)
     assert body["profil_cdc"] == "consultation"
     assert body["profil_bp"] == "banque"
 
-    state_body = (await client.get(f"/projects/{body['id']}/state",
-                                   headers=account)).json()
+    # Le sondage n'est pas facultatif : `start_run` rend la main avant que le
+    # pilote ait eu son tour d'ordonnanceur, donc `snapshot.values` est vide
+    # et `plan` vaut `[]` si on interroge tout de suite. Constaté, trois fois
+    # sur trois.
+    import asyncio
+
+    for _ in range(100):
+        state_body = (await client.get(f"/projects/{body['id']}/state",
+                                       headers=account)).json()
+        if state_body["plan"]:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le plan est resté vide")
+
     documents = {ref["document"] for ref in state_body["plan"]}
     assert documents == {"cdc", "bp"}, (
         "un projet `both` doit porter les deux documents à son plan"
@@ -2136,22 +2155,30 @@ async def test_the_list_is_ordered_most_recently_modified_first(client, account)
 
     from app.core.db import connection
 
-    first = (await client.post("/projects", json={**CREATION, "nom": "Ancien"},
+    # L'ordre d'insertion doit être l'INVERSE de l'ordre attendu, sinon le
+    # test est aveugle : sans clause de tri, PostgreSQL rend ces deux lignes
+    # fraîches dans l'ordre où elles ont été écrites, et si cet ordre est
+    # déjà le bon l'assertion passe pour rien. C'est l'erreur de la première
+    # version de ce test, constatée par mutation.
+    #
+    # On insère donc le PLUS ANCIEN d'abord, et on attend le plus récent en
+    # tête.
+    older = (await client.post("/projects", json={**CREATION, "nom": "Ancien"},
                                headers=account)).json()["id"]
-    second = (await client.post("/projects", json={**CREATION, "nom": "Recent"},
-                                headers=account)).json()["id"]
+    newer = (await client.post("/projects", json={**CREATION, "nom": "Recent"},
+                               headers=account)).json()["id"]
     async with connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 "update projects set updated_at = now() - interval '1 hour' "
-                "where id = %s", (UUID(second),))
+                "where id = %s", (UUID(older),))
             await cur.execute(
                 "update projects set updated_at = now() where id = %s",
-                (UUID(first),))
+                (UUID(newer),))
 
     names = [p["nom"] for p in (await client.get("/projects",
                                                  headers=account)).json()]
-    assert names.index("Ancien") < names.index("Recent"), (
+    assert names.index("Recent") < names.index("Ancien"), (
         "la liste n'est pas triée par date de modification décroissante"
     )
 ```
@@ -2164,7 +2191,7 @@ async def test_the_list_is_ordered_most_recently_modified_first(client, account)
 | `ProjectSummary` fige `run_status = "idle"` | `..._header_status_agrees_with_the_state` |
 | `interaction["id"]` remplacé par une constante | `..._state_interaction_id_is_the_one_langgraph_gave` |
 | `create` intervertit `profil_cdc` et `profil_bp` | `..._creating_a_project_returns_its_header` |
-| `header` sans `response_model`, rendant la ligne brute | le même (jeu de clés exact) |
+| `header` sans `response_model`, rendant la ligne brute | `..._header_status_agrees_with_the_state` — et NON le test de création, qui n'appelle jamais cette route |
 | `projects_of_user` sans `order by updated_at desc` | `..._list_is_ordered_most_recently_modified_first` |
 | `project_for_user` cessant de lire les horodatages | `..._creating_a_project_returns_its_header` |
 | `start_run` qui lève, après l'insertion | aucune — voir ci-dessous |

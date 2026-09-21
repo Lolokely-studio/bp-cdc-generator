@@ -33,14 +33,21 @@ Chaque plan ci-dessous produit un logiciel qui tourne et qui se teste seul. On �
 
 Tirées de l'exécution du plan 1, où elles ont manqué.
 
-**Un seul commit de plan par tâche.** Quand une relecture trouve un défaut dans
-le code que le plan impose, le plan se corrige — sinon le brief régénéré fait
-réécrire le même défaut à la tâche suivante. Mais ces corrections se groupent
-par tâche, en un commit, et non une par constat. Le plan 1 en a produit dix-huit
-sur un seul fichier, ce qui noie l'historique du code dans du bruit de
-documentation.
+**Une correction de plan ne fait jamais un commit à elle seule.** Quand une
+relecture trouve un défaut dans le code que le plan impose, le plan se
+corrige — mais cette correction voyage avec le commit de code qu'elle
+provoque, et non devant lui. Un plan qui change sans que rien ne change dans
+le code décrit une intention ; les deux ensemble décrivent un fait. Le plan 4
+a produit quatre commits de plan là où il fallait quatre commits tout court,
+et l'historique se lit deux fois moins bien.
 
-**Corriger le plan et le brief dans le même geste.** Deux fois pendant le plan 1,
+En pratique : on édite le plan, on régénère les briefs, on dispatche, et
+c'est l'implémenteur qui met `docs/plans/` dans son `git add` avec son code.
+La protection contre l'effacement d'un travail non commité reste
+l'interdiction de `git checkout`, `restore`, `stash`, `clean` et `reset`
+portée par chaque dispatche, pas le commit préventif.
+
+**Le plan se corrige avec le brief, dans le même geste.** Deux fois pendant le plan 1,
 le brief a été régénéré sans que le plan soit corrigé, ou l'inverse. Les deux
 divergences portaient sur des protections réelles — l'affectation ferme des
 variables de test, un nom de test. Le plan est la source, le brief en dérive :
