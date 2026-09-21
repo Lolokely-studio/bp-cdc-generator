@@ -1988,6 +1988,31 @@ import pytest_asyncio
 from tests.test_project_routes import CREATION, _active_account
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _fake_llm(monkeypatch):
+    """Bascule le graphe sur le modèle simulé.
+
+    Obligatoire dans TOUT fichier de test qui appelle `POST /projects` :
+    la route démarre un vrai run en tâche de fond, et sans cette bascule
+    `advance` appellerait la passerelle avec `ESQUISSE_FAKE_LLM=false` — la
+    valeur que `tests/conftest.py` fixe pour toute la suite — donc de vraies
+    requêtes réseau avec des clés factices. C'est exactement ce que la suite
+    `not network` interdit, et c'est passé inaperçu jusqu'à la tâche 3.
+
+    Le nettoyage des runs et des pools n'est PAS ici : `tests/conftest.py`
+    porte un démontage autouse qui annule les runs, ferme le point de
+    reprise et ferme le pool applicatif, dans cet ordre. Le dupliquer ferait
+    deux endroits à tenir d'accord, et c'est toujours le second qu'on
+    oublie.
+    """
+    monkeypatch.setenv("ESQUISSE_FAKE_LLM", "true")
+    from app.core import config
+
+    config.settings.cache_clear()
+    yield
+    config.settings.cache_clear()
+
+
 @pytest_asyncio.fixture
 async def account(client, migrated_db):
     return await _active_account(client, "reponses")
@@ -2263,6 +2288,31 @@ from app.projects.stream import HEARTBEAT, encode
 from tests.test_project_routes import CREATION, _active_account
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _fake_llm(monkeypatch):
+    """Bascule le graphe sur le modèle simulé.
+
+    Obligatoire dans TOUT fichier de test qui appelle `POST /projects` :
+    la route démarre un vrai run en tâche de fond, et sans cette bascule
+    `advance` appellerait la passerelle avec `ESQUISSE_FAKE_LLM=false` — la
+    valeur que `tests/conftest.py` fixe pour toute la suite — donc de vraies
+    requêtes réseau avec des clés factices. C'est exactement ce que la suite
+    `not network` interdit, et c'est passé inaperçu jusqu'à la tâche 3.
+
+    Le nettoyage des runs et des pools n'est PAS ici : `tests/conftest.py`
+    porte un démontage autouse qui annule les runs, ferme le point de
+    reprise et ferme le pool applicatif, dans cet ordre. Le dupliquer ferait
+    deux endroits à tenir d'accord, et c'est toujours le second qu'on
+    oublie.
+    """
+    monkeypatch.setenv("ESQUISSE_FAKE_LLM", "true")
+    from app.core import config
+
+    config.settings.cache_clear()
+    yield
+    config.settings.cache_clear()
+
+
 @pytest_asyncio.fixture
 async def account(client, migrated_db):
     return await _active_account(client, "flux")
@@ -2490,6 +2540,31 @@ import pytest_asyncio
 
 from app.core.db import connection
 from tests.test_project_routes import CREATION, _active_account
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _fake_llm(monkeypatch):
+    """Bascule le graphe sur le modèle simulé.
+
+    Obligatoire dans TOUT fichier de test qui appelle `POST /projects` :
+    la route démarre un vrai run en tâche de fond, et sans cette bascule
+    `advance` appellerait la passerelle avec `ESQUISSE_FAKE_LLM=false` — la
+    valeur que `tests/conftest.py` fixe pour toute la suite — donc de vraies
+    requêtes réseau avec des clés factices. C'est exactement ce que la suite
+    `not network` interdit, et c'est passé inaperçu jusqu'à la tâche 3.
+
+    Le nettoyage des runs et des pools n'est PAS ici : `tests/conftest.py`
+    porte un démontage autouse qui annule les runs, ferme le point de
+    reprise et ferme le pool applicatif, dans cet ordre. Le dupliquer ferait
+    deux endroits à tenir d'accord, et c'est toujours le second qu'on
+    oublie.
+    """
+    monkeypatch.setenv("ESQUISSE_FAKE_LLM", "true")
+    from app.core import config
+
+    config.settings.cache_clear()
+    yield
+    config.settings.cache_clear()
 
 
 @pytest_asyncio.fixture
