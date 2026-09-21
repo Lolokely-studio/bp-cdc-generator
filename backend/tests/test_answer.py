@@ -59,6 +59,25 @@ def _answer_for(interaction):
     return []
 
 
+async def _wait_for_status(client, project_id, headers, expected):
+    """Attend que l'entête annonce `expected`, et le rend.
+
+    Le statut et le point de reprise ne deviennent pas visibles au même
+    instant : le second l'est dès la fin d'`ainvoke`, le premier une
+    écriture en base plus tard. Un test qui a vu l'interruption n'a donc
+    aucune garantie sur le statut.
+    """
+    import asyncio
+
+    for _ in range(100):
+        header = (await client.get(f"/projects/{project_id}",
+                                   headers=headers)).json()
+        if header["run_status"] == expected:
+            return header
+        await asyncio.sleep(0.05)
+    raise AssertionError(f"le statut n'a jamais atteint `{expected}`")
+
+
 async def test_answering_advances_the_run(client, account):
     project_id = (await client.post(
         "/projects", json=CREATION, headers=account)).json()["id"]
@@ -318,6 +337,17 @@ async def test_every_answer_reports_the_run_status(client, account):
     project_id = (await client.post(
         "/projects", json=CREATION, headers=account)).json()["id"]
     interaction = await _wait_for_interaction(client, project_id, account)
+    # `_wait_for_interaction` sonde `/state`, qui lit le point de reprise —
+    # et celui-ci devient visible À L'INTÉRIEUR d'`ainvoke`, donc AVANT que
+    # le pilote écrive `waiting`. Attendre l'interruption ne garantit donc
+    # pas le statut : il faut attendre le statut lui-même, sinon
+    # l'assertion ci-dessous gagne une course au lieu de vérifier un fait.
+    #
+    # Le contrôle de la tâche 5 l'a prouvé en glissant un délai avant
+    # l'écriture du statut : l'assertion rendait alors « running ». Elle ne
+    # cassait jamais en pratique, seulement parce que l'écriture est rapide
+    # devant l'aller-retour HTTP suivant.
+    await _wait_for_status(client, project_id, account, "waiting")
 
     stale = (await client.post(
         f"/projects/{project_id}/answer",

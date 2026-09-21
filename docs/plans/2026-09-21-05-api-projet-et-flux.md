@@ -2312,6 +2312,25 @@ def _answer_for(interaction):
     return []
 
 
+async def _wait_for_status(client, project_id, headers, expected):
+    """Attend que l'entête annonce `expected`, et le rend.
+
+    Le statut et le point de reprise ne deviennent pas visibles au même
+    instant : le second l'est dès la fin d'`ainvoke`, le premier une
+    écriture en base plus tard. Un test qui a vu l'interruption n'a donc
+    aucune garantie sur le statut.
+    """
+    import asyncio
+
+    for _ in range(100):
+        header = (await client.get(f"/projects/{project_id}",
+                                   headers=headers)).json()
+        if header["run_status"] == expected:
+            return header
+        await asyncio.sleep(0.05)
+    raise AssertionError(f"le statut n'a jamais atteint `{expected}`")
+
+
 async def test_answering_advances_the_run(client, account):
     project_id = (await client.post(
         "/projects", json=CREATION, headers=account)).json()["id"]
@@ -2743,6 +2762,17 @@ async def test_every_answer_reports_the_run_status(client, account):
     project_id = (await client.post(
         "/projects", json=CREATION, headers=account)).json()["id"]
     interaction = await _wait_for_interaction(client, project_id, account)
+    # `_wait_for_interaction` sonde `/state`, qui lit le point de reprise —
+    # et celui-ci devient visible À L'INTÉRIEUR d'`ainvoke`, donc AVANT que
+    # le pilote écrive `waiting`. Attendre l'interruption ne garantit donc
+    # pas le statut : il faut attendre le statut lui-même, sinon
+    # l'assertion ci-dessous gagne une course au lieu de vérifier un fait.
+    #
+    # Le contrôle de la tâche 5 l'a prouvé en glissant un délai avant
+    # l'écriture du statut : l'assertion rendait alors « running ». Elle ne
+    # cassait jamais en pratique, seulement parce que l'écriture est rapide
+    # devant l'aller-retour HTTP suivant.
+    await _wait_for_status(client, project_id, account, "waiting")
 
     stale = (await client.post(
         f"/projects/{project_id}/answer",
@@ -2829,6 +2859,20 @@ que de mettre des f-strings dans la route :
 2. **Un client qui ne lit rien pendant longtemps est coupé** par les
    intermédiaires. Un commentaire SSE (`: battement\n\n`) toutes les quinze
    secondes tient la connexion sans être vu du client.
+
+**Le blocage que vous pourriez craindre est déjà trouvé et corrigé.** La
+tâche 4 a révélé que la suite PENDAIT dès qu'une requête HTTP lisait la base
+pendant qu'un run avançait : `httpx.ASGITransport` n'exécute pas le cycle de
+vie ASGI, donc le pool applicatif n'était jamais fermé, et l'annulation en
+masse de ses tâches récursait dans psycopg jusqu'à une `RecursionError`
+qu'asyncio avale dans un rappel. `tests/conftest.py` porte désormais un
+démontage autouse qui annule les runs, ferme le point de reprise et ferme le
+pool, dans cet ordre. Vous n'avez rien à ajouter — et surtout rien à
+dupliquer.
+
+Si malgré cela un test pend, **arrêtez-vous et dites-le** plutôt que
+d'attendre : ce serait une forme neuve, et la connaître vaut mieux qu'un
+contournement.
 
 **Pourquoi pas `sse-starlette` :** une dépendance de plus à suivre, à
 verrouiller et à déployer, pour vingt lignes qu'on veut de toute façon
@@ -3084,6 +3128,29 @@ Au redémarrage, `run_status` vaut encore `running` alors que plus rien ne
 tourne — le registre des tâches est en mémoire, et la mémoire est partie.
 L'application doit détecter l'incohérence au démarrage, passer ces projets en
 `failed`, et proposer « Reprendre ».
+
+**Ce que la tâche 5 vous lègue, et qu'il faut trancher ici.** Sa relecture a
+mesuré la fenêtre de `RunAlreadyRunning` avec un nœud délibérément ralenti :
+dès qu'une reprise démarre, le point de reprise cesse d'exposer
+l'interruption, si bien qu'une requête tardive est refusée par la branche
+« périmé » et non par le registre. La conflation de `/answer` — « un run
+tourne déjà » répondu `{"rejoue": False, "run_status": "running"}` — est
+donc vraie aujourd'hui.
+
+Elle cesse de l'être ici. Un run planté laisse son interruption **en
+attente** : un `/answer` envoyé pendant qu'un `/resume` avance reconnaîtra
+donc l'identifiant comme courant, tombera sur le registre, et s'entendra
+répondre `rejoue: False` **pendant que sa charge utile est jetée** et que
+l'ancienne valeur est rejouée. L'utilisateur croit avoir répondu ; il n'a
+rien répondu.
+
+Deux issues défendables, à choisir en écrivant la tâche : répondre `409` sur
+cette branche-là seulement, ce qui rompt la promesse « toujours 200 » du
+§6.2 mais ne ment pas ; ou faire attendre la requête que la reprise ait
+atteint son interruption suivante, ce qui tient la promesse au prix d'une
+latence. **Décidez et écrivez pourquoi** — ne laissez pas le commentaire de
+`routes.py` affirmer « deux requêtes sont arrivées ensemble », qui sera faux
+dès que cette tâche existera.
 
 **Les trois appelants manquants du plan 3 se branchent ici.** La revue finale
 notait que `reproject`, `mark_for_reopening` et — pour sa seconde moitié —
