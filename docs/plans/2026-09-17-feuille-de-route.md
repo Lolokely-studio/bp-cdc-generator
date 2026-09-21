@@ -88,6 +88,11 @@ Relecture des consignes et des grilles des 30 sections, plafond par compte, réi
       qu'en mesurant cette exécution, jamais par les tests unitaires : le modèle
       simulé inventait les identifiants de faits, et la règle des faits utiles
       annoncée dans l'en-tête du catalogue n'avait jamais été implémentée.
-- [ ] Plan 4
+- [ ] Plan 4 — **écrit, à exécuter** : [2026-09-21-05-api-projet-et-flux.md](2026-09-21-05-api-projet-et-flux.md)
+      Sept tâches. Un run vit dans une tâche asyncio de fond et publie sur un bus
+      en mémoire ; les connexions SSE s'y abonnent, et une coupure ne perd rien.
+      Les trois fonctions du plan 3 restées sans appelant — `purge_checkpoints`,
+      `reproject`, `mark_for_reopening` — en trouvent un ici, et `depend_de`,
+      déclaré dans les gabarits et appliqué nulle part, sert enfin.
 - [ ] Plan 5
 - [ ] Plan 6
