@@ -14,7 +14,7 @@ from app.projects.repository import (
     projects_of_user,
 )
 from app.projects.schemas import ProjectCreate, ProjectState, ProjectSummary
-from app.runs.runner import RunAlreadyRunning, start_run
+from app.runs.runner import start_run
 
 router = APIRouter(prefix="/projects", tags=["projets"])
 
@@ -48,6 +48,19 @@ async def create(body: ProjectCreate, user=Depends(active_user)):
     """
     thread_id = f"projet-{uuid4()}"
     catalogue = load_catalogue()
+    # L'état de départ est construit AVANT l'insertion, et ce n'est pas un
+    # détail d'ordre. `initial_state` appelle `plan_for`, qui LÈVE sur un
+    # profil absent de `profils_disponibles`. Construit après, il laisserait
+    # une ligne `projects` derrière lui que personne ne pourra jamais faire
+    # avancer : l'appelant reçoit un 500 sans identifiant, et aucune route de
+    # ce plan ne sait reprendre un projet dont on ignore l'existence.
+    #
+    # Le cas ne peut pas se produire aujourd'hui — les `Literal` des schémas
+    # et les `profils_disponibles` des YAML coïncident — mais ce sont deux
+    # listes tenues dans deux fichiers que rien ne relie. Vérifié : en
+    # faisant lever `start_run`, la ligne survit bel et bien.
+    graph_input = initial_state("", body.documents, body.profil_cdc,
+                                body.profil_bp, body.idee)
     async with connection() as conn:
         project_id = await create_project(
             conn, user["id"], nom=body.nom, documents=body.documents,
@@ -55,11 +68,8 @@ async def create(body: ProjectCreate, user=Depends(active_user)):
             thread_id=thread_id,
             templates_version=str(catalogue.cdc.version),
         )
-    start_run(
-        str(project_id), thread_id,
-        initial_state(str(project_id), body.documents, body.profil_cdc,
-                      body.profil_bp, body.idee),
-    )
+    graph_input["project_id"] = str(project_id)
+    start_run(str(project_id), thread_id, graph_input)
     # On ne guette pas un statut « stable » avant de répondre : le run vient
     # de partir en tâche de fond et la ligne peut porter encore `idle`.
     # Attendre ici rendrait la création lente et le code de retour
@@ -90,6 +100,18 @@ async def state(project_id: UUID, user=Depends(active_user)):
     interruption est en attente, les projections répondent sans réhydrater
     le graphe — ce qui est tout leur objet (§4.6).
     """
+    # L'ORDRE DES TROIS LECTURES EST PORTEUR, et rien ne les synchronise.
+    # La ligne d'abord, le point de reprise ensuite, les projections en
+    # dernier : le statut lu est donc le plus ancien des trois. Tant que les
+    # statuts n'avancent que dans un sens, l'écart penche du bon côté — on
+    # peut voir `running` à côté d'une interaction déjà présente, et le front
+    # affiche une question sous une bannière « en cours » périmée d'un
+    # sondage. Inverser les deux premières lectures donnerait `waiting` avec
+    # `interaction: null` : un état qui n'a jamais existé, et qu'un front
+    # rend en « répondez à la question qui n'est pas là ».
+    #
+    # La tâche 7 fait reculer les statuts (`failed` puis `running` à la
+    # reprise) : c'est là qu'il faudra reposer la question.
     row = await _owned(project_id, user)
     graph = await compiled_graph()
     config = {"configurable": {"thread_id": row["thread_id"]}}

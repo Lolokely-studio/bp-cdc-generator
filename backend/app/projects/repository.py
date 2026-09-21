@@ -46,7 +46,8 @@ async def project_for_user(conn, project_id: UUID, user_id: UUID) -> dict:
         await cur.execute(
             """
             select id, user_id, nom, documents, profil_cdc, profil_bp,
-                   thread_id, run_status, templates_version
+                   thread_id, run_status, templates_version,
+                   created_at, updated_at
             from projects where id = %s and user_id = %s
             """,
             (project_id, user_id),
