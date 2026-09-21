@@ -60,3 +60,25 @@ async def project_for_user(conn, project_id: UUID, user_id: UUID) -> dict:
         # aux mauvaises clés.
         columns = [column.name for column in cur.description]
     return dict(zip(columns, row))
+
+
+RUN_STATUSES = ("idle", "running", "waiting", "failed", "done")
+
+
+async def set_run_status(conn, project_id: UUID, statut: str) -> None:
+    """Le seul chemin d'écriture de `run_status`.
+
+    Le contrôle sur `RUN_STATUSES` est ici et non à l'appelant : la colonne
+    est du texte libre côté base, et une faute de frappe y passerait sans
+    bruit pour ne se voir qu'à l'affichage, des heures plus tard.
+
+    `updated_at` suit : l'index de la liste du propriétaire trie dessus, et
+    un projet qui avance sans remonter dans la liste serait déroutant.
+    """
+    if statut not in RUN_STATUSES:
+        raise ValueError(f"statut de run inconnu : {statut}")
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "update projects set run_status = %s, updated_at = now() where id = %s",
+            (statut, project_id),
+        )
