@@ -69,15 +69,28 @@ async def test_a_subscriber_that_falls_behind_is_dropped_with_an_error():
         received = []
         # Un délai par élément, et non un simple `async for` : sans lui, une
         # régression qui n'émettrait jamais l'avis de retard ferait PENDRE ce
-        # test au lieu de l'échouer. L'intégration continue tournerait alors
-        # jusqu'à son propre délai sans nommer le test en cause — et une
-        # mutation qui fait pendre ne prouve rien.
+        # test au lieu de l'échouer, et une mutation qui fait pendre ne
+        # prouve rien.
+        #
+        # Mais ce délai ouvre un second trou, qu'il faut refermer dans le
+        # même geste : il finit la boucle aussi bien quand l'itérateur
+        # s'arrête tout seul que quand il ne s'arrête JAMAIS. Sans distinguer
+        # les deux, supprimer le `return` d'`_iterate` laisserait les sept
+        # tests au vert — le dernier élément reçu resterait l'avis de retard,
+        # et seule la connexion SSE, plus tard, finirait par couper. Le
+        # contrat du bus serait alors tenu par le caprice du client.
+        ended_by = None
         try:
             while True:
                 received.append(
                     await asyncio.wait_for(anext(events), timeout=1))
-        except (StopAsyncIteration, asyncio.TimeoutError):
-            pass
+        except StopAsyncIteration:
+            ended_by = "exhausted"
+        except asyncio.TimeoutError:
+            ended_by = "timeout"
+    assert ended_by == "exhausted", (
+        "l'itérateur ne s'est pas arrêté de lui-même après l'avis de retard"
+    )
     assert received[-1].name == "error"
     assert received[-1].data == LAGGED.data
     assert len(received) == SUBSCRIBER_QUEUE_SIZE
