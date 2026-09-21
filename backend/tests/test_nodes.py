@@ -417,3 +417,73 @@ async def test_saving_advances_the_cursor_and_writes_the_projection(project):
     assert maj["draft"] is None
     assert maj["revisions"] == 0
     assert maj["problems"] == []
+
+
+def test_a_required_fact_answered_i_dont_know_is_not_asked_again():
+    """La règle « clé présente = répondu » est gardée dans `question_batch`
+    mais pas dans `missing_required_facts`, alors que c'est lui qui décide si
+    le graphe repart poser des questions. Reposer une question déjà répondue
+    « je ne sais pas » est la faute que la docstring promet d'éviter.
+    """
+    plan = CATALOGUE.plan_for("bp", None, "banque")
+    section = CATALOGUE.section(f"bp.{plan[0].section_id}")
+    requis = section.faits_requis[0]
+    connus = {requis: Fact(fact_id=requis, value=None, source="user")}
+    state = _state(documents="bp", profil_cdc=None, plan=plan, cursor=0,
+                   facts=connus)
+    assert requis not in nodes.missing_required_facts(state)
+
+
+async def test_an_invented_identifier_from_the_model_never_becomes_a_fact(project):
+    """Le filtre catalogue d'`extract_facts` n'est plus exercé hors ligne
+    depuis que le simulé recopie les identifiants qu'on lui offre : il rend
+    donc toujours des identifiants valides. On lui en fait rendre un faux."""
+    class _InventingTransport(FakeTransport):
+        async def chat(self, provider, model, messages, *, schema=None):
+            completion = await super().chat(provider, model, messages, schema=schema)
+            if schema is not None and hasattr(completion.parsed, "facts"):
+                for extrait in completion.parsed.facts:
+                    extrait.fact_id = "fait_totalement_invente"
+            return completion
+
+    maj = await nodes.extract_facts(
+        _state(project_id=project, documents="bp", profil_cdc=None,
+               plan=CATALOGUE.plan_for("bp", None, "banque"), cursor=0),
+        transport=_InventingTransport())
+    assert "fait_totalement_invente" not in maj["facts"]
+
+
+async def test_a_section_is_only_offered_its_own_computations(project):
+    """`computations` n'est jamais vidé entre sections : sans le filtre
+    `name in section.calculs`, tous les calculs accumulés depuis le début du
+    run seraient proposés à toutes les sections suivantes."""
+    from app.agent import prompts as prompts_module
+
+    plan = CATALOGUE.plan_for("bp", None, "banque")
+    index = next(i for i, r in enumerate(plan)
+                 if "marge_unitaire" in CATALOGUE.section(f"bp.{r.section_id}").calculs)
+    etranger = Computation(name="plan_tresorerie_12mois", title="Trésorerie",
+                           columns=("Mois", "Solde"),
+                           rows=(("Janvier", "1 000,00 €"),),
+                           numbers=(1_000.0,))
+    state = _state(project_id=project, documents="bp", profil_cdc=None,
+                   plan=plan, cursor=index)
+    state["computations"] = {"plan_tresorerie_12mois": etranger}
+
+    vus: list[list] = []
+    vrai_prompt = prompts_module.writing_prompt
+
+    def _espion(section, facts, computations, *args, **kwargs):
+        vus.append(list(computations))
+        return vrai_prompt(section, facts, computations, *args, **kwargs)
+
+    prompts_module.writing_prompt = _espion
+    try:
+        await nodes.write(state, transport=FakeTransport())
+    finally:
+        prompts_module.writing_prompt = vrai_prompt
+
+    assert vus, "le rédacteur n'a pas été appelé"
+    assert etranger not in vus[0], (
+        "un calcul d'une autre section a été proposé au rédacteur"
+    )

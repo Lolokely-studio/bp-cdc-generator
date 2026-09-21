@@ -202,3 +202,38 @@ def test_the_pivot_flag_is_loaded_without_being_interpreted():
 
 def test_the_catalogue_is_loaded_once():
     assert load_catalogue() is CATALOGUE
+
+
+def test_the_plan_is_ordered_by_writing_order_not_by_reading_order():
+    """Le piège le mieux argumenté et le moins gardé du plan 3.
+
+    Une docstring explique précisément pourquoi le tri suit `ordre` et non
+    `ordre_lecture` — et rien ne le testait. Les quinze sections du business
+    plan ont les deux champs différents : trier sur `ordre_lecture` ferait
+    passer le résumé exécutif de dernier à premier, c'est-à-dire l'écrirait
+    avant que quoi que ce soit existe. `depend_de` n'est appliqué nulle part,
+    ce tri est donc le seul mécanisme de dépendance du graphe.
+    """
+    catalogue = load_catalogue()
+    plan = catalogue.plan_for("bp", None, "banque")
+    sections = [catalogue.section(f"bp.{ref.section_id}") for ref in plan]
+
+    assert [s.ordre for s in sections] == sorted(s.ordre for s in sections)
+    # Et les deux ordres divergent vraiment : sans cela le test ne prouverait
+    # rien, les deux tris rendant la même liste.
+    assert [s.ordre for s in sections] != [s.ordre_lecture for s in sections]
+    # Le résumé exécutif, écrit en dernier, imprimé en premier.
+    dernier_ecrit = sections[-1]
+    assert dernier_ecrit.ordre_lecture == 1
+    assert min(s.ordre_lecture for s in sections) == dernier_ecrit.ordre_lecture
+
+
+def test_two_templates_declaring_different_review_thresholds_are_refused():
+    """La garde existe et son commentaire dit pourquoi ; rien ne l'exerçait."""
+    import pytest
+
+    catalogue = load_catalogue()
+    divergent = catalogue.model_copy(deep=True)
+    divergent.bp.seuil_relecture = catalogue.cdc.seuil_relecture + 1
+    with pytest.raises(ValueError, match="seuils de relecture différents"):
+        _ = divergent.review_threshold
