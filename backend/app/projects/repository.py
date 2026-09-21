@@ -62,6 +62,29 @@ async def project_for_user(conn, project_id: UUID, user_id: UUID) -> dict:
     return dict(zip(columns, row))
 
 
+async def projects_of_user(conn, user_id: UUID) -> list[dict]:
+    """La liste du propriétaire, la plus récemment modifiée d'abord.
+
+    Le tri suit l'index `(user_id, updated_at desc)` posé par la migration
+    0002 : sans lui, cette requête ferait un balayage complet dès que la
+    table grossirait.
+    """
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            select id, nom, documents, profil_cdc, profil_bp,
+                   run_status, created_at, updated_at
+            from projects where user_id = %s order by updated_at desc
+            """,
+            (user_id,),
+        )
+        # Même motif que `project_for_user` : le curseur rend des tuples, pas
+        # des dicts (aucun `row_factory` n'est configuré), donc les colonnes
+        # viennent de `cur.description` et non d'une liste tenue à la main.
+        columns = [column.name for column in cur.description]
+        return [dict(zip(columns, row)) for row in await cur.fetchall()]
+
+
 RUN_STATUSES = ("idle", "running", "waiting", "failed", "done")
 
 
