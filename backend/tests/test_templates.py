@@ -237,3 +237,37 @@ def test_two_templates_declaring_different_review_thresholds_are_refused():
     divergent.bp.seuil_relecture = catalogue.cdc.seuil_relecture + 1
     with pytest.raises(ValueError, match="seuils de relecture différents"):
         _ = divergent.review_threshold
+
+
+def test_reopening_a_section_pulls_in_what_depends_on_it():
+    catalogue = load_catalogue()
+    reopened = catalogue.sections_depending_on("cdc.contexte_objectifs")
+
+    assert "cdc.contexte_objectifs" in reopened, (
+        "la section demandée doit être du lot : c'est elle qu'on rouvre"
+    )
+    # `cdc.yaml` déclare plusieurs dépendances directes ; sans elles, ce test
+    # ne prouverait rien et passerait pour une mauvaise raison.
+    direct = {f"cdc.{s.id}" for s in catalogue.cdc.sections
+              if "contexte_objectifs" in s.depend_de}
+    assert direct, "le gabarit ne déclare plus aucune dépendance directe"
+    assert direct <= reopened
+
+    # Et la fermeture est bien transitive, pas seulement directe.
+    for qualified in direct:
+        bare = qualified.split(".", 1)[1]
+        indirect = {f"cdc.{s.id}" for s in catalogue.cdc.sections
+                    if bare in s.depend_de}
+        assert indirect <= reopened
+
+
+def test_a_section_dependency_never_crosses_the_documents():
+    reopened = load_catalogue().sections_depending_on("cdc.contexte_objectifs")
+    assert all(q.startswith("cdc.") for q in reopened)
+
+
+def test_an_unknown_section_is_refused():
+    import pytest
+
+    with pytest.raises(KeyError):
+        load_catalogue().sections_depending_on("cdc.section_qui_n_existe_pas")

@@ -342,11 +342,23 @@ async def test_the_answer_reaches_the_graph_unchanged(client, account, monkeypat
     assert captured[-1].resume == {interaction["id"]: payload}
 
 
-async def test_a_race_on_the_same_answer_is_absorbed(client, account, monkeypatch):
+async def test_a_race_on_the_same_answer_is_refused_not_silently_dropped(
+        client, account, monkeypatch):
     """La seule branche écrite pour une vraie course, et rien ne l'exerçait.
 
     Supprimer son `except` laissait les 414 tests verts, alors qu'un vrai
     double-clic simultané rend alors un 500.
+
+    La tâche 5 avait absorbé cette course en `rejoue: false, 200` : une
+    lecture valable tant que la SEULE façon de perdre cette course était un
+    second `/answer` sur la même réponse — auquel cas rien n'est perdu, la
+    première requête a fait passer la bonne valeur. La tâche 7 introduit
+    `/resume`, qui peut gagner la même course sans consommer aucune réponse :
+    répondre `rejoue: false` à la place mentirait, l'utilisateur croyant
+    avoir répondu alors que sa charge utile vient d'être jetée. Le test ne
+    peut plus distinguer les deux causes depuis l'extérieur de la route — il
+    vérifie donc que la branche ne ment plus jamais, au prix d'un 409 plutôt
+    que d'un 200 optimiste.
     """
     from app.projects import routes
     from app.runs.runner import RunAlreadyRunning
@@ -365,8 +377,8 @@ async def test_a_race_on_the_same_answer_is_absorbed(client, account, monkeypatc
               "reponse": _answer_for(interaction)},
         headers=account)
 
-    assert response.status_code == 200
-    assert response.json() == {"rejoue": False, "run_status": "running"}
+    assert response.status_code == 409
+    assert response.json() == {"detail": {"code": "run_deja_en_cours"}}
 
 
 async def test_every_answer_reports_the_run_status(client, account):

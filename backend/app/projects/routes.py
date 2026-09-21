@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 from langgraph.types import Command
 
 from app.agent.graph import compiled_graph, initial_state
-from app.agent.projections import load_facts, load_sections
+from app.agent.projections import load_facts, load_sections, mark_for_reopening, save_facts
 from app.agent.templates import load_catalogue
 from app.auth.dependencies import active_user
 from app.core.db import connection
@@ -22,6 +22,7 @@ from app.projects.schemas import (
     ProjectSummary,
 )
 from app.projects.stream import event_stream
+from app.runs import registry
 from app.runs.runner import RunAlreadyRunning, start_run
 
 router = APIRouter(prefix="/projects", tags=["projets"])
@@ -161,10 +162,20 @@ async def answer(project_id: UUID, body: AnswerRequest,
     un état dépassé — tous répondent 200 avec `rejoue: false`, et rien ne
     bouge.
 
-    Répondre 409 serait défendable en théorie et désastreux en pratique : le
-    front ne peut pas distinguer « tu as cliqué deux fois » d'un vrai échec,
-    et afficherait une erreur à un utilisateur dont la réponse est bien
-    passée.
+    Cette lecture de l'idempotence tenait sur une prémisse que la tâche 7
+    invalide : elle supposait qu'une seconde requête arrivant sur un run déjà
+    lancé rejouait forcément LA MÊME réponse — vraie tant que la seule façon
+    de relancer un run était un second `/answer` sur la même interruption,
+    puisque le point de reprise cesse d'exposer cette interruption dès que la
+    reprise démarre, et qu'une requête tardive tombe alors sur la branche
+    « périmée » ci-dessus plutôt que sur le registre. `/resume` change la
+    donne : un run planté laisse son interruption EN ATTENTE, donc `/resume`
+    et un `/answer` tardif peuvent tous deux reconnaître le même identifiant
+    courant et se disputer le registre. Si c'est `/resume` qui gagne la
+    course, il relance sans consommer aucune réponse (`Command` vaut `None`),
+    et un `/answer` perdant qui recevrait quand même `rejoue: false` ferait
+    croire à l'utilisateur que sa réponse est passée alors qu'elle vient
+    d'être jetée en silence.
     """
     # L'ORDRE DES TROIS LECTURES EST PORTEUR, et rien ne les synchronise.
     # La ligne d'abord, le point de reprise ensuite, les projections en
@@ -202,9 +213,27 @@ async def answer(project_id: UUID, body: AnswerRequest,
         start_run(str(project_id), row["thread_id"],
                   Command(resume={body.interaction_id: body.reponse}))
     except RunAlreadyRunning:
-        # Un run avance déjà : c'est que deux requêtes sont arrivées ensemble
-        # et que la première a gagné. La seconde n'a rien à rejouer.
-        return {"rejoue": False, "run_status": "running"}
+        # Un run avance déjà sur ce fil — mais on ne peut plus dire lequel
+        # des deux appelants a gagné : un second `/answer` sur la même
+        # interruption (la réponse gagnante est alors identique, rien n'est
+        # perdu) ou un `/resume` sur un run planté (qui ne consomme aucune
+        # réponse : LA réponse de CETTE requête serait jetée sans jamais
+        # avoir été prise en compte). Rendre `rejoue: false` ici mentirait
+        # dans ce second cas — l'utilisateur croirait avoir répondu.
+        #
+        # On choisit donc de rompre, sur cette seule branche, la promesse
+        # « toujours 200 » du §6.2 : un 409 ne ment jamais, quand un
+        # `rejoue: false` optimiste le ferait une fois sur deux. Le coût est
+        # un aller-retour de plus pour le client, qui peut relire `/state`
+        # et renvoyer sa réponse si l'interruption est toujours la sienne.
+        # L'alternative — faire attendre la requête jusqu'à ce que la
+        # reprise en cours atteigne sa prochaine interruption — tiendrait la
+        # promesse, mais transformerait `/answer` en appel de durée
+        # indéterminée, bornée par le temps d'une section entière : un coût
+        # de latence sans budget clair, pour un cas que le client peut de
+        # toute façon résoudre par une nouvelle lecture d'état.
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            {"code": "run_deja_en_cours"})
     return {"rejoue": True, "run_status": "running"}
 
 
@@ -228,3 +257,68 @@ async def stream(project_id: UUID, user=Depends(active_user)):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("/{project_id}/resume")
+async def resume(project_id: UUID, user=Depends(active_user)):
+    """Relance un run interrompu, depuis son point de reprise (§8).
+
+    Les faits sont réécrits AVANT la relance, dans l'esprit du §4.6 : en cas
+    de divergence, c'est le point de reprise qui gagne. Les sections, elles,
+    ne s'y trouvent pas — il ne porte que la section en cours — et elles se
+    réparent d'elles-mêmes, `save` écrivant la projection avant d'avancer le
+    curseur. Un run mort entre les deux refait simplement sa section.
+    """
+    row = await _owned(project_id, user)
+    if registry.is_running(str(project_id)):
+        return {"reprise": False, "run_status": "running"}
+
+    graph = await compiled_graph()
+    config = {"configurable": {"thread_id": row["thread_id"]}}
+    snapshot = await graph.aget_state(config)
+    values = snapshot.values or {}
+
+    # `save_facts` et non `reproject` : le point de reprise porte les faits,
+    # jamais les sections déjà validées. Voir la note ci-dessous — ce n'est
+    # pas un raccourci, c'est la seule projection qu'il puisse reconstruire.
+    async with connection() as conn:
+        await save_facts(conn, project_id, values.get("facts", {}))
+
+    # `None` et non un état neuf : LangGraph repart du point de reprise. Lui
+    # passer un état reconstruit écraserait ce qu'il a gardé.
+    start_run(str(project_id), row["thread_id"], None)
+    return {"reprise": True, "run_status": "running"}
+
+
+@router.post("/{project_id}/sections/{section_id}/reopen")
+async def reopen(project_id: UUID, section_id: str,
+                 user=Depends(active_user)):
+    """Rouvre une section et celles qui en dépendent.
+
+    Rouvrir la seule section demandée laisserait le document incohérent :
+    celles qui la citent dans leur `depend_de` ont été écrites en s'appuyant
+    sur ce qu'elle disait.
+    """
+    row = await _owned(project_id, user)
+    graph = await compiled_graph()
+    snapshot = await graph.aget_state(
+        {"configurable": {"thread_id": row["thread_id"]}})
+    plan = (snapshot.values or {}).get("plan", [])
+
+    matching = [ref for ref in plan if ref.section_id == section_id]
+    if not matching:
+        raise HTTPException(status.HTTP_404_NOT_FOUND,
+                            {"code": "section_introuvable"})
+    if len(matching) > 1:
+        # Possible depuis la migration 0003 : les deux documents peuvent
+        # porter le même identifiant de section. On refuse plutôt que d'en
+        # choisir un au hasard — le front, lui, sait de quel document il
+        # parle, et pourra le préciser le jour où le cas se présente.
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            {"code": "section_ambigue"})
+
+    qualified = load_catalogue().sections_depending_on(
+        f"{matching[0].document}.{section_id}")
+    async with connection() as conn:
+        touched = await mark_for_reopening(conn, project_id, qualified)
+    return {"sections": sorted(qualified), "touchees": touched}

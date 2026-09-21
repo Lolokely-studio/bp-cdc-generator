@@ -1,23 +1,82 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.agent.checkpointer import close_checkpointer
-from app.core.db import pool
+from app.agent.checkpointer import close_checkpointer, purge_checkpoints
+from app.core.db import connection, pool
 from app.llm.transport import close_clients
+from app.runs import registry
+
+logger = logging.getLogger(__name__)
+
+
+async def reconcile_orphan_runs() -> int:
+    """Passe en `failed` les runs que plus aucune tâche ne pilote (§8).
+
+    Au redémarrage, le registre des tâches est vide — il vivait en mémoire —
+    alors que des lignes portent encore `running`. Sans cette réconciliation,
+    l'utilisateur attend devant un écran qui ne bougera plus jamais, et
+    `/resume` refuserait de partir en croyant qu'un run tourne déjà.
+
+    Le test du registre n'est pas superflu pour autant : cette fonction est
+    aussi appelable à chaud, et un run bien vivant ne doit pas être abattu.
+    """
+    from app.projects.repository import running_projects, set_run_status
+
+    reconciled = 0
+    async with connection() as conn:
+        for row in await running_projects(conn):
+            if registry.is_running(str(row["id"])):
+                continue
+            await set_run_status(conn, row["id"], "failed")
+            reconciled += 1
+    return reconciled
+
+
+async def purge_finished_projects() -> int:
+    """Purge les points de reprise des projets terminés (§9.3), en filet.
+
+    La purge normale tourne à la fin d'un run (`runner.advance`, juste après
+    l'écriture de `done`). Celle-ci est celle de secours : elle rattrape les
+    projets que le processus a fini de piloter sans jamais avoir eu la main
+    pour la lancer lui-même — exactement ce qui arrive quand le redémarrage
+    survient entre les deux.
+    """
+    from app.projects.repository import finished_projects
+
+    purged = 0
+    async with connection() as conn:
+        for row in await finished_projects(conn):
+            await purge_checkpoints(row["thread_id"])
+            purged += 1
+    return purged
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Ouvre le pool au démarrage, le referme à l'arrêt.
-
-    C'est aussi le point d'accroche que réclamera la purge des points de reprise
-    du §9.3 de la spec."""
+    """Ouvre le pool au démarrage, réconcilie les runs orphelins, purge en
+    filet, le referme à l'arrêt.
+    """
     connection_pool = pool()
     await connection_pool.open(wait=True)
+
+    orphans = await reconcile_orphan_runs()
+    if orphans:
+        logger.warning("%d run(s) orphelin(s) repassés en échec", orphans)
+    # §9.3, la purge « en filet » : celle de fin de run a pu ne jamais
+    # tourner, précisément parce que le processus est mort en chemin.
+    await purge_finished_projects()
+
     try:
         yield
     finally:
+        # L'ordre compte : on annule d'abord les runs, ensuite seulement on
+        # ferme ce dont ils se servent. L'inverse laisserait une tâche
+        # vivante écrire dans un point de reprise dont la connexion vient
+        # d'être fermée, et l'erreur remonterait dans une tâche que
+        # personne n'attend, donc nulle part.
+        await registry.cancel_all()
         try:
             await close_checkpointer()
         finally:

@@ -106,3 +106,34 @@ async def set_run_status(conn, project_id: UUID, status: str) -> None:
             "update projects set run_status = %s, updated_at = now() where id = %s",
             (status, project_id),
         )
+
+
+async def running_projects(conn) -> list[dict]:
+    """Les projets que la base croit en cours, tous propriétaires confondus.
+
+    L'exception à la règle « toujours filtrer sur le propriétaire » : cette
+    requête sert la réconciliation du démarrage, qui n'agit au nom de
+    personne. Elle ne rend que l'identifiant et le fil — de quoi réconcilier,
+    rien de plus — pour qu'un appel de trop ne devienne pas une fuite.
+    """
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "select id, thread_id from projects where run_status = 'running'")
+        rows = await cur.fetchall()
+        columns = [column.name for column in cur.description]
+    return [dict(zip(columns, row)) for row in rows]
+
+
+async def finished_projects(conn) -> list[dict]:
+    """Les projets que la base croit terminés, tous propriétaires confondus.
+
+    Même exception que `running_projects` à la règle du filtre sur le
+    propriétaire : sert la purge de filet du démarrage (§9.3), qui n'agit
+    pas plus au nom de quelqu'un.
+    """
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "select id, thread_id from projects where run_status = 'done'")
+        rows = await cur.fetchall()
+        columns = [column.name for column in cur.description]
+    return [dict(zip(columns, row)) for row in rows]
