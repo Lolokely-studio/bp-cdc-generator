@@ -1032,12 +1032,30 @@ async def test_a_finished_run_marks_done_then_purges_then_says_so(project, monke
         return _FinishedGraph()
 
     calls = []
+    # `order` enregistre les deux effets dans l'ordre réel. Sans lui, le test
+    # constate que la purge a eu lieu et que le statut vaut `done`, mais
+    # jamais lequel des deux est venu en premier — et intervertir les deux
+    # laissait la suite verte.
+    #
+    # L'ordre compte : purger avant d'écrire `done`, c'est risquer de mourir
+    # entre les deux et de laisser un projet marqué `running` dont les points
+    # de reprise ont disparu. Dans l'autre sens, la mort entre les deux
+    # laisse un projet `done` dont les points de reprise survivent — ce que
+    # la purge de filet du démarrage ramasse sans rien perdre.
+    order = []
+    real_status = runner._status
+
+    async def _record_status(project_id, status):
+        order.append(f"status:{status}")
+        await real_status(project_id, status)
 
     async def _count_calls(thread_id, keep=1):
+        order.append("purge")
         calls.append((thread_id, keep))
         return 0
 
     monkeypatch.setattr(runner, "compiled_graph", _finished_graph)
+    monkeypatch.setattr(runner, "_status", _record_status)
     monkeypatch.setattr(checkpointer, "purge_checkpoints", _count_calls)
 
     async with subscribe(str(project["project_id"])) as events:
@@ -1054,6 +1072,10 @@ async def test_a_finished_run_marks_done_then_purges_then_says_so(project, monke
     )
     assert await _status(project["project_id"], project["user_id"]) == "done"
     assert [e.name for e in received] == ["done"]
+    assert order.index("status:done") < order.index("purge"), (
+        "la purge a précédé l'écriture de `done` : mourir entre les deux "
+        "laisserait un projet `running` sans points de reprise"
+    )
 
 
 async def test_the_status_is_written_before_the_event_leaves(project, monkeypatch):
@@ -1128,6 +1150,44 @@ async def test_the_error_event_leaves_even_if_the_database_is_unreachable(projec
     )
 
 
+async def test_the_error_event_does_not_wait_for_the_database(project, monkeypatch):
+    """Publier d'abord, écrire ensuite — et le test voisin ne suffit pas.
+
+    La garde autour de l'écriture du statut protège d'une base qui LÈVE :
+    l'exception est absorbée sur place, et l'événement part quel que soit
+    l'ordre des deux. Ce test-là ne distingue donc pas les deux ordres, ce
+    que la mutation a montré en restant verte.
+
+    Une base qui TRAÎNE les distingue. Le pool peut mettre plusieurs
+    secondes à rendre une connexion — c'est même le cas courant sur un
+    hébergement qui sort de veille — et dans l'ordre inverse le navigateur
+    attendrait tout ce temps avant d'apprendre que son run est mort.
+    """
+    from app.runs import runner
+
+    real_status = runner._status
+
+    async def _slow_failed(project_id, status):
+        if status == "failed":
+            await asyncio.sleep(5)
+        await real_status(project_id, status)
+
+    monkeypatch.setattr(runner, "_status", _slow_failed)
+
+    async with subscribe(str(project["project_id"])) as events:
+        running = asyncio.create_task(advance(
+            str(project["project_id"]), project["thread_id"],
+            {"plan": [], "cursor": 5}))
+        try:
+            event = await asyncio.wait_for(anext(events), timeout=1)
+        finally:
+            running.cancel()
+
+    assert event.name == "error", (
+        "le navigateur a attendu la base avant d'apprendre l'échec"
+    )
+
+
 async def test_an_unknown_run_status_is_refused():
     """La seule logique neuve de `repository.py`, et rien ne l'exerçait.
 
@@ -1162,9 +1222,14 @@ async def test_a_finished_task_never_unregisters_its_successor():
     second = asyncio.create_task(_long())
     registry.register("projet-course", second)
     try:
-        # Le rappel de `first` s'exécute au tour de boucle suivant.
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
+        # On déclenche le rappel de la PREMIÈRE tâche à la main, après que la
+        # seconde a pris sa place. Compter sur l'ordonnanceur pour produire
+        # cet entrelacement donnerait un test qui passe ou non selon la
+        # machine — et, de fait, `await first` draine déjà le rappel avant
+        # que la seconde existe, si bien que la fenêtre ne s'ouvre jamais.
+        # C'est ce qui rendait la première version de ce test aveugle à la
+        # mutation qu'elle devait attraper.
+        registry._forget("projet-course")(first)
         assert registry.is_running("projet-course"), (
             "le rappel de la tâche terminée a désenregistré sa remplaçante"
         )
@@ -1412,7 +1477,7 @@ async def _status(project_id: str, status: str) -> None:
 cd backend && uv run pytest tests/test_runner.py -v
 ```
 
-Attendu : 9 passés.
+Attendu : 10 passés.
 
 **`interrupt.id` existe bien**, vérifié sur la version installée avant
 d'écrire ce plan : `langgraph.types.Interrupt` est une dataclass à deux
@@ -1432,9 +1497,10 @@ qui les emploie, il est périmé.
 | purger AVANT d'écrire `done` | `..._finished_run_marks_done_then_purges_then_says_so` |
 | écrire `waiting` APRÈS avoir publié l'interruption | `..._status_is_written_before_the_event_leaves` |
 | supprimer l'écriture de `running` | le même |
-| `_fail` écrivant le statut AVANT de publier | `..._error_event_leaves_even_if_the_database_is_unreachable` |
+| `_fail` écrivant le statut AVANT de publier | `..._error_event_does_not_wait_for_the_database` — et non le test voisin, qui ne distingue pas les deux ordres |
 | retirer le contrôle sur `RUN_STATUSES` | `..._unknown_run_status_is_refused` |
 | `_forget` retirant par clé sans contrôler l'identité | `..._finished_task_never_unregisters_its_successor` |
+| purger AVANT d'écrire `done` (déjà listée) | vérifiée par l'ordre enregistré, pas par la seule présence des effets |
 
 Ces six dernières laissaient les 394 tests au vert avant cette correction.
 La relecture les a trouvées par mutation, aucune par lecture.
@@ -1448,7 +1514,7 @@ git add backend/app/runs/registry.py backend/app/runs/runner.py \
 git commit -m "feat(runs): un pilote qui conduit le graphe hors de la requête HTTP"
 ```
 
-Attendu : 398 passés, 5 désélectionnés.
+Attendu : 399 passés, 5 désélectionnés.
 
 ---
 
