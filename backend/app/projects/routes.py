@@ -1,6 +1,7 @@
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from langgraph.types import Command
 
 from app.agent.graph import compiled_graph, initial_state
@@ -20,6 +21,7 @@ from app.projects.schemas import (
     ProjectState,
     ProjectSummary,
 )
+from app.projects.stream import event_stream
 from app.runs.runner import RunAlreadyRunning, start_run
 
 router = APIRouter(prefix="/projects", tags=["projets"])
@@ -204,3 +206,25 @@ async def answer(project_id: UUID, body: AnswerRequest,
         # et que la première a gagné. La seconde n'a rien à rejouer.
         return {"rejoue": False, "run_status": "running"}
     return {"rejoue": True, "run_status": "running"}
+
+
+@router.get("/{project_id}/stream")
+async def stream(project_id: UUID, user=Depends(active_user)):
+    """Le flux du §6.1.
+
+    Le contrôle du propriétaire passe AVANT d'ouvrir le flux : une fois la
+    réponse en cours, on ne peut plus changer son code de statut, et un 404
+    tardif ne serait pas lisible par le client.
+
+    `X-Accel-Buffering: no` et `Cache-Control: no-cache` disent aux
+    intermédiaires de ne pas accumuler : sans eux, un proxy peut retenir le
+    flux jusqu'à remplir un tampon, et l'utilisateur verrait la section
+    apparaître d'un bloc à la fin — soit exactement ce que le flux existe
+    pour éviter.
+    """
+    await _owned(project_id, user)
+    return StreamingResponse(
+        event_stream(str(project_id)),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
