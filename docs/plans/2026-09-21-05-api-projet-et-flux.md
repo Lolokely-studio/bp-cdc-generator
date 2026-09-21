@@ -2344,15 +2344,34 @@ async def test_answering_advances_the_run(client, account):
     assert response.status_code == 200
 
     # Le run repart : soit il atteint une autre interruption, soit il finit.
+    # On attend que le graphe se soit ARRÊTÉ sur l'interruption suivante, et
+    # non simplement qu'il ait quitté la précédente. Entre deux
+    # interruptions, `/state` rend `interaction: null` de façon transitoire :
+    # une boucle qui s'arrête là capture un état de passage, et la
+    # comparaison finale porte alors contre `None`. C'est ce qui rendait ce
+    # test instable — cinq échecs sur six en isolement, sur un `TypeError`
+    # et non sur son assertion.
+    # Deux conditions ensemble, et il faut les deux. Attendre `interaction:
+    # null` capture un état de PASSAGE entre deux interruptions, et la
+    # comparaison finale porte alors contre `None` — cinq échecs sur six, sur
+    # un `TypeError`. Mais attendre le seul statut `waiting` ne suffit pas non
+    # plus : `start_run` rend la main avant que la tâche de fond écrive
+    # `running`, donc on retrouve le `waiting` D'AVANT la réponse et on
+    # repart avec l'ancienne interruption.
+    #
+    # On exige donc un statut arrêté ET une interruption réellement nouvelle.
     for _ in range(200):
-        state_body = (await client.get(f"/projects/{project_id}/state",
-                                 headers=account)).json()
-        current = state_body["interaction"]
-        if current is None or current["id"] != interaction["id"]:
+        header = (await client.get(f"/projects/{project_id}",
+                                   headers=account)).json()
+        pending = (await client.get(f"/projects/{project_id}/state",
+                                    headers=account)).json()["interaction"]
+        if (header["run_status"] == "waiting" and pending is not None
+                and pending["id"] != interaction["id"]):
             break
         await asyncio.sleep(0.05)
     else:
-        raise AssertionError("le run n'a pas dépassé l'interruption répondue")
+        raise AssertionError(
+            "le run ne s'est pas arrêté sur l'interruption suivante")
 
 
 async def test_answering_twice_does_not_advance_twice(client, account):
@@ -2662,7 +2681,7 @@ Dans `test_answering_twice_does_not_advance_twice`, après le second appel :
     # graphe, pas la réponse.
     after = (await client.get(f"/projects/{project_id}/state",
                               headers=account)).json()["interaction"]
-    assert after is None or after["id"] == current["id"], (
+    assert after is not None and after["id"] == pending["id"], (
         "le second appel a fait avancer le graphe"
     )
 ```
