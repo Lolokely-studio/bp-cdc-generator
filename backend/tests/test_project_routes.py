@@ -10,9 +10,8 @@ MOT_DE_PASSE = "motdepasse123"
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def _fake_llm_and_cleanup(monkeypatch):
-    """Bascule le graphe sur le modèle simulé, et nettoie le run de fond
-    après le test.
+async def _fake_llm(monkeypatch):
+    """Bascule le graphe sur le modèle simulé.
 
     `POST /projects` démarre un vrai run en tâche de fond via `start_run`.
     Sans cette bascule, `advance` appellerait la passerelle avec
@@ -22,22 +21,17 @@ async def _fake_llm_and_cleanup(monkeypatch):
     suite `not network` interdit. Même montage que
     `tests/test_runner.py::project` et `tests/test_graph.py::project`.
 
-    Sans le nettoyage, une tâche de fond survivrait à son test et écrirait
-    dans une base que le test suivant croit à lui (`registry.cancel_all`),
-    et le pool du point de reprise resterait lié à la boucle d'événements
-    que pytest-asyncio referme à la fin du test (`close_checkpointer`).
+    Le nettoyage des runs et des pools n'est PAS ici : `tests/conftest.py`
+    porte un démontage autouse qui annule les runs, ferme le point de
+    reprise et ferme le pool applicatif, dans cet ordre. Le dupliquer ici
+    ferait deux endroits à tenir d'accord, et c'est toujours le second
+    qu'on oublie.
     """
     monkeypatch.setenv("ESQUISSE_FAKE_LLM", "true")
     from app.core import config
 
     config.settings.cache_clear()
     yield
-    from app.runs import registry
-
-    await registry.cancel_all()
-    from app.agent.checkpointer import close_checkpointer
-
-    await close_checkpointer()
     config.settings.cache_clear()
 
 
