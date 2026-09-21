@@ -175,14 +175,26 @@ async def test_a_question_list_follows_the_number_of_facts_offered():
     completion = await FakeTransport().chat(PROVIDER, MODEL, messages,
                                             schema=ProposedQuestions)
     assert len(completion.parsed.questions) == len(demandes)
-    assert {q.fact_id for q in completion.parsed.questions} <= set(demandes)
+    # Égalité et non inclusion : les dix tableaux du business plan tiennent à
+    # ce que le lot soit couvert en entier. Une inclusion laisserait passer un
+    # doublon, qui coûte un fait, donc un calcul, donc un tableau.
+    assert {q.fact_id for q in completion.parsed.questions} == set(demandes)
 
 
 async def test_another_list_still_gets_two_items():
-    # La règle ne vaut que pour les questions : ailleurs, deux suffit.
+    """La règle ne vaut que pour les questions : ailleurs, deux suffit.
+
+    Le prompt offre bien trois faits — sans cela le compte retomberait à deux
+    par la branche « aucun fait offert » et ce test passerait sans jamais
+    regarder le nom du champ, c'est-à-dire sans tester ce qu'il annonce.
+    """
     from app.agent.prompts import Critique
 
-    completion = await FakeTransport().chat(PROVIDER, MODEL, _messages(), schema=Critique)
+    completion = await FakeTransport().chat(
+        PROVIDER, MODEL,
+        _prompt_offering("prix_moyen_unite", "volume_ventes_an1", "cible_principale"),
+        schema=Critique,
+    )
     assert len(completion.parsed.problems) == 2
 
 

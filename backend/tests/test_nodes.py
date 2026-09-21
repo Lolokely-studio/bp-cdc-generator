@@ -108,7 +108,7 @@ def test_the_question_batch_is_capped():
         assert len(batch) <= nodes.QUESTION_BATCH_SIZE
 
 
-def test_a_fact_already_known_never_returns_to_the_batch():
+def test_a_fully_answered_section_forms_no_batch():
     # « Je ne sais pas » comprise : c'est une réponse.
     plan = CATALOGUE.plan_for("bp", None, "banque")
     section = CATALOGUE.section(f"bp.{plan[0].section_id}")
@@ -117,6 +117,28 @@ def test_a_fact_already_known_never_returns_to_the_batch():
     batch = nodes.question_batch(_state(documents="bp", profil_cdc=None,
                                         plan=plan, cursor=0, facts=connus))
     assert batch == []
+
+
+def test_a_known_useful_fact_never_returns_to_the_batch():
+    """Le test voisin s'arrête au court-circuit « aucun fait requis ne
+    manque » et n'atteint jamais le filtre des faits utiles. Celui-ci laisse
+    donc un fait requis manquant, pour que le lot se forme vraiment.
+
+    Sans le filtre, un second tour reposerait une question déjà répondue —
+    « je ne sais pas » comprise, qui est une réponse.
+    """
+    plan = CATALOGUE.plan_for("bp", None, "banque")
+    index, section = next(
+        (i, s) for i, r in enumerate(plan)
+        if (s := CATALOGUE.section(f"bp.{r.section_id}")).faits_requis
+        and s.faits_utiles
+    )
+    known_useful = section.faits_utiles[0]
+    connus = {known_useful: Fact(fact_id=known_useful, value=None, source="user")}
+    batch = nodes.question_batch(_state(documents="bp", profil_cdc=None,
+                                        plan=plan, cursor=index, facts=connus))
+    assert known_useful not in batch
+    assert section.faits_requis[0] in batch
 
 
 def test_a_section_declaring_computations_goes_through_them():
