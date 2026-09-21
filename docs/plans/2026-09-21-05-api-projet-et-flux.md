@@ -25,8 +25,13 @@ les reprises, §9.2 et §9.3 pour l'instance unique et la purge.
 **Revue du plan 3 :** [2026-09-18-04-agent-revue.md](2026-09-18-04-agent-revue.md).
 Trois constats y attendent ce plan-ci, et sont traités par les tâches
 ci-dessous plutôt que reportés encore : `purge_checkpoints` sans appelant
-(tâches 3 et 7), `reproject` sans appelant (tâche 7), `mark_for_reopening`
-sans appelant (tâche 7).
+(tâches 3 et 7) et `mark_for_reopening` sans appelant (tâche 7).
+
+`reproject` était du lot dans la première version de ce plan. Elle en sort :
+sa prémisse est fausse, le point de reprise ne porte pas les sections déjà
+validées et ne peut donc pas les réécrire. La tâche 7 dit pourquoi, et le
+constat part au plan suivant plutôt que d'être refermé par un appel de
+complaisance.
 
 ---
 
@@ -3111,6 +3116,177 @@ sur `event_stream` que par un test d'intégration qui ment.
 | `HEARTBEAT = "event: ping\n\n"` | `..._heartbeat_is_a_comment_and_not_an_event` |
 | retirer l'appel à `_owned` avant d'ouvrir le flux | `..._another_users_stream_is_not_found` |
 
+
+- [ ] **Étape 5 bis : la route entière peut disparaître sans qu'un test bronche**
+
+Douze mutations jouées par la relecture, **huit survivantes**. Deux sont
+graves, et la première l'est au point de vider la tâche de son sens.
+
+**`test_another_users_stream_is_not_found` passe avec la route supprimée.**
+Il n'assertait que `status_code == 404` — or FastAPI répond 404 sur un chemin
+qui n'existe pas. Vérifié : en retirant tout le bloc `@router.get(".../stream")`,
+la suite complète reste à 425 passés. C'est l'unique test HTTP de la tâche,
+donc rien ne tient l'existence de la route, ni sa méthode, ni son chemin, ni
+son câblage.
+
+**Le correctif qui a justifié cette tâche n'a pas de test de non-régression.**
+Remettre le `asyncio.wait_for` du brief — le défaut même que le passage à
+`asyncio.wait` corrige, celui qui tue le flux après le premier battement —
+laisse la suite à 425 passés.
+
+Ajouter à `backend/tests/test_stream.py` :
+
+```python
+def test_the_heartbeat_is_frequent_enough_to_hold_a_connection():
+    # Le commentaire du module invoque la fenêtre d'inactivité de trente à
+    # soixante secondes des intermédiaires. Le test voisin ne regarde que la
+    # FORME du battement ; porter le délai à cent mille secondes laissait la
+    # suite verte.
+    from app.projects.stream import HEARTBEAT_SECONDS
+
+    assert HEARTBEAT_SECONDS <= 30
+
+
+async def test_the_stream_survives_its_own_heartbeats(monkeypatch):
+    """Le défaut qui a justifié cette tâche, réduit à un test.
+
+    `asyncio.wait_for(anext(it), …)` ANNULE l'`anext` à l'expiration, ce qui
+    ferme le générateur asynchrone : le flux mourait après le premier
+    battement, en silence, au bout de quinze secondes. Sans ce test, rien
+    n'empêche quiconque de réintroduire la forme d'origine.
+    """
+    from app.projects import stream as st
+
+    monkeypatch.setattr(st, "HEARTBEAT_SECONDS", 0.02)
+    project_id = f"battements-{uuid4()}"
+    frames = st.event_stream(project_id)
+
+    beats = [await asyncio.wait_for(anext(frames), timeout=1) for _ in range(3)]
+    assert beats == [st.HEARTBEAT] * 3
+
+    # Et après trois battements, un vrai événement passe encore.
+    publish(project_id, RunEvent("token", {"text": "vivant"}))
+    frame = await asyncio.wait_for(anext(frames), timeout=1)
+    assert frame.startswith("event: token")
+    await frames.aclose()
+
+
+async def test_the_lag_notice_reaches_the_client():
+    """Le bus coupe l'abonné en retard ; encore faut-il que l'avis sorte.
+
+    `tests/test_events.py` couvre le bus. Rien ne couvrait la traversée :
+    faire avaler l'avis par `event_stream` laissait la suite verte, et le
+    navigateur perdait le signal de reconnexion sur lequel repose le §8.
+    """
+    from app.runs.events import SUBSCRIBER_QUEUE_SIZE
+
+    project_id = f"retard-{uuid4()}"
+    frames = event_stream(project_id)
+    # On amorce l'abonnement : le générateur ne s'abonne qu'à la première
+    # itération, et publier avant ne toucherait personne.
+    first = asyncio.ensure_future(anext(frames))
+    await asyncio.sleep(0)
+    for index in range(SUBSCRIBER_QUEUE_SIZE + 50):
+        publish(project_id, RunEvent("token", {"text": str(index)}))
+
+    received = [await asyncio.wait_for(first, timeout=1)]
+    with contextlib.suppress(StopAsyncIteration, asyncio.TimeoutError):
+        while True:
+            received.append(await asyncio.wait_for(anext(frames), timeout=1))
+
+    assert received[-1].startswith("event: error"), (
+        "l'avis de retard n'est pas parvenu au client"
+    )
+    assert "flux_en_retard" in received[-1]
+
+
+async def test_the_response_carries_the_sse_contract(client, account):
+    """La route rend-elle ce qu'un `EventSource` accepte, et écoute-t-elle le
+    bon projet ?
+
+    Trois mutations survivaient : un `media_type` en `text/plain`, la perte
+    des en-têtes anti-tampon, et un abonnement à un autre projet — ce
+    dernier rendant un flux silencieux pour toujours. On appelle la fonction
+    de route directement : le transport de test ne sait pas conduire une
+    réponse en flux, mais l'objet qu'elle construit s'inspecte.
+    """
+    from uuid import UUID
+
+    from app.core.db import connection
+    from app.projects.routes import stream as stream_route
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    async with connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("select user_id from projects where id = %s",
+                              (UUID(project_id),))
+            user_id = (await cur.fetchone())[0]
+
+    response = await stream_route(UUID(project_id), {"id": user_id})
+    assert response.media_type == "text/event-stream"
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.headers["x-accel-buffering"] == "no"
+
+    body = response.body_iterator
+    pending = asyncio.ensure_future(anext(body))
+    await asyncio.sleep(0)
+    publish(project_id, RunEvent("progress", {"cursor": 7, "total": 9}))
+    frame = await asyncio.wait_for(pending, timeout=1)
+    assert frame.startswith("event: progress")
+    assert '"cursor": 7' in frame, (
+        "le flux n'écoute pas le projet demandé"
+    )
+    await body.aclose()
+
+
+async def test_the_stream_releases_its_subscription(client, account):
+    """Une tâche laissée par navigateur déconnecté est une fuite qui ne se
+    voit qu'en production. Remplacer le `finally` par `pass` laissait la
+    suite verte."""
+    from app.runs import events as ev
+
+    project_id = f"fuite-{uuid4()}"
+    frames = event_stream(project_id)
+    pending = asyncio.ensure_future(anext(frames))
+    await asyncio.sleep(0)
+    publish(project_id, RunEvent("token", {"text": "un"}))
+    await asyncio.wait_for(pending, timeout=1)
+
+    await frames.aclose()
+    await asyncio.sleep(0)
+    assert project_id not in ev._channels, "le canal n'a pas été libéré"
+    leaked = [t for t in asyncio.all_tasks()
+              if "asend" in repr(t) and not t.done()]
+    assert not leaked, f"tâche laissée derrière : {leaked}"
+```
+
+Et dans `test_another_users_stream_is_not_found`, une ligne qui change tout :
+
+```python
+        assert response.json() == {"detail": {"code": "projet_introuvable"}}, (
+            "un 404 de chemin inexistant se lit pareil qu'un 404 de "
+            "propriété : sans le corps, ce test passe même si la route a "
+            "disparu — vérifié"
+        )
+```
+
+- [ ] **Étape 5 ter : rejouer les huit mutations survivantes**
+
+| Mutation | Doit faire tomber |
+|---|---|
+| supprimer tout le bloc `@router.get(".../stream")` | `..._another_users_stream_is_not_found` |
+| revenir au `asyncio.wait_for` du brief dans `event_stream` | `..._stream_survives_its_own_heartbeats` |
+| `event_stream` avale `LAGGED` et sort au lieu de le rendre | `..._lag_notice_reaches_the_client` |
+| `media_type="text/plain"` | `..._response_carries_the_sse_contract` |
+| retirer `Cache-Control` et `X-Accel-Buffering` | le même |
+| `event_stream("un-autre-projet")` au lieu du projet demandé | le même |
+| remplacer le `finally` qui annule l'`anext` par `pass` | `..._stream_releases_its_subscription` |
+| `HEARTBEAT_SECONDS = 100000` | `..._heartbeat_is_frequent_enough_to_hold_a_connection` |
+
+Les huit laissaient les 425 tests au vert. J'ai vérifié la première
+moi-même : route entière supprimée, suite complète verte.
+
 - [ ] **Étape 6 : lancer la suite complète, puis commiter**
 
 ```bash
@@ -3131,7 +3307,7 @@ git commit -m "feat(projects): le flux SSE, battement compris"
 - Test : `backend/tests/test_resume.py`
 
 **Interfaces :**
-- Consomme : `reproject`, `mark_for_reopening` (`app/agent/projections.py`),
+- Consomme : `save_facts`, `mark_for_reopening` (`app/agent/projections.py`),
   `purge_checkpoints` (`app/agent/checkpointer.py`), `Catalogue.depend_de`
   (`app/agent/templates.py`), tout ce que les tâches 3 à 5 produisent.
 - Produit : `running_projects(conn) -> list[dict]`,
@@ -3173,9 +3349,12 @@ dès que cette tâche existera.
 
 **Les trois appelants manquants du plan 3 se branchent ici.** La revue finale
 notait que `reproject`, `mark_for_reopening` et — pour sa seconde moitié —
-`purge_checkpoints` étaient écrits, testés, et jamais invoqués. `POST
-/resume` appelle `reproject`, `POST /reopen` appelle `mark_for_reopening`,
-et le démarrage appelle `purge_checkpoints` en filet (§9.3).
+`purge_checkpoints` étaient écrits, testés, et jamais invoqués. Deux sur
+trois trouvent le leur ici : `POST /reopen` appelle `mark_for_reopening`, et
+le démarrage appelle `purge_checkpoints` en filet (§9.3).
+
+`reproject` n'en trouvera pas, et c'est un constat et non un oubli : voir
+l'étape 5.
 
 - [ ] **Étape 1 : écrire les tests qui échouent**
 
@@ -3454,10 +3633,11 @@ alignez-vous dessus plutôt que d'introduire un second motif.
 async def resume(project_id: UUID, user=Depends(active_user)):
     """Relance un run interrompu, depuis son point de reprise (§8).
 
-    `reproject` tourne AVANT la relance, comme le §4.6 l'impose : en cas de
-    divergence entre le point de reprise et les projections, c'est le point
-    de reprise qui gagne. Un run mort en plein `save` a pu écrire une
-    projection que le graphe ne connaît pas.
+    Les faits sont réécrits AVANT la relance, dans l'esprit du §4.6 : en cas
+    de divergence, c'est le point de reprise qui gagne. Les sections, elles,
+    ne s'y trouvent pas — il ne porte que la section en cours — et elles se
+    réparent d'elles-mêmes, `save` écrivant la projection avant d'avancer le
+    curseur. Un run mort entre les deux refait simplement sa section.
     """
     row = await _owned(project_id, user)
     if registry.is_running(str(project_id)):
@@ -3468,12 +3648,11 @@ async def resume(project_id: UUID, user=Depends(active_user)):
     snapshot = await graph.aget_state(config)
     values = snapshot.values or {}
 
+    # `save_facts` et non `reproject` : le point de reprise porte les faits,
+    # jamais les sections déjà validées. Voir la note ci-dessous — ce n'est
+    # pas un raccourci, c'est la seule projection qu'il puisse reconstruire.
     async with connection() as conn:
-        await reproject(
-            conn, project_id,
-            values.get("facts", {}),
-            _sections_from(values),
-        )
+        await save_facts(conn, project_id, values.get("facts", {}))
 
     # `None` et non un état neuf : LangGraph repart du point de reprise. Lui
     # passer un état reconstruit écraserait ce qu'il a gardé.
@@ -3602,7 +3781,7 @@ Imports à ajouter en tête de `routes.py` :
 
 ```python
 from app.agent.checkpointer import purge_checkpoints
-from app.agent.projections import mark_for_reopening, reproject
+from app.agent.projections import mark_for_reopening, save_facts
 from app.agent.templates import load_catalogue
 from app.runs import registry
 ```
@@ -3613,15 +3792,36 @@ from app.runs import registry
 (`cdc.contexte_objectifs`), établi par son test du plan 3 — c'est bien ce que
 `sections_depending_on` rend.
 
-**Un seul point reste à établir en lisant le code :** la forme du quatrième
-argument de `reproject`, qui est
-`list[tuple[SectionRef, list[Block], str, int | None, int]]`. Le
-`_sections_from` écrit plus haut est un nom, pas du code : écrivez-le en
-lisant ce que l'état du graphe porte réellement, et **ne reconstruisez
-jamais** ce que le point de reprise ne contient pas. Si le point de reprise
-ne porte pas de quoi réécrire les sections déjà validées — il ne garde que la
-section courante — alors `reproject` ne peut pas être appelée ainsi, et
-c'est un constat à rapporter, pas à contourner par une valeur inventée.
+**Le point que j'avais laissé ouvert est tranché, et la réponse change cette
+tâche.** J'ai lu ce que l'état du graphe porte : `facts`, `plan`, `cursor`,
+`computations`, et `draft` — **la section en cours, et elle seule**. Les
+sections déjà validées ne sont nulle part dans le point de reprise ; elles
+n'existent que dans la table `sections`.
+
+Donc `reproject(conn, project_id, facts, sections)` **ne peut pas être
+alimentée depuis le point de reprise**. Son quatrième argument n'a pas de
+source. Lui passer une liste vide effacerait tout le document au lieu de le
+réparer — l'inverse exact de ce qu'elle prétend faire.
+
+Et en y regardant, elle n'a pas lieu d'être appelée. Le nœud `save` écrit la
+projection **puis** avance le curseur : les sections situées avant le curseur
+sont donc correctes par construction. Une mort entre l'écriture en base et
+celle du point de reprise laisse une projection en avance d'une section ; à
+la reprise, le graphe refait cette section et `save` réécrit la projection
+par-dessus. La divergence est bornée et se répare d'elle-même.
+
+**Ce que `/resume` fait donc à la place :** il réécrit les faits depuis le
+point de reprise, par `save_facts`, qui est la seule projection que le
+point de reprise puisse réellement reconstruire. C'est peu, et c'est
+honnête.
+
+**Et `reproject` reste sans appelant.** Le préambule de ce plan reproche
+précisément cela au plan 3 ; je ne peux pas le refermer ici sans inventer
+une source qui n'existe pas. Le constat est donc : cette fonction a été
+écrite sur une prémisse fausse — que le point de reprise porte le document —
+et c'est elle qu'il faut retirer ou repenser, dans le plan qui touchera à
+l'export. **Écrivez-le dans le compte rendu** plutôt que de la faire appeler
+pour la forme.
 
 - [ ] **Étape 6 : lancer les tests, puis la suite complète**
 

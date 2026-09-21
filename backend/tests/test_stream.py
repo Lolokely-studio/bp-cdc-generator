@@ -122,3 +122,134 @@ async def test_another_users_stream_is_not_found(client, account):
         async with client.stream("GET", f"/projects/{project_id}/stream",
                                  headers=account) as response:
             assert response.status_code == 404
+            body = await response.aread()
+
+    assert json.loads(body) == {"detail": {"code": "projet_introuvable"}}, (
+        "un 404 de chemin inexistant se lit pareil qu'un 404 de "
+        "propriété : sans le corps, ce test passe même si la route a "
+        "disparu — vérifié"
+    )
+
+
+def test_the_heartbeat_is_frequent_enough_to_hold_a_connection():
+    # Le commentaire du module invoque la fenêtre d'inactivité de trente à
+    # soixante secondes des intermédiaires. Le test voisin ne regarde que la
+    # FORME du battement ; porter le délai à cent mille secondes laissait la
+    # suite verte.
+    from app.projects.stream import HEARTBEAT_SECONDS
+
+    assert HEARTBEAT_SECONDS <= 30
+
+
+async def test_the_stream_survives_its_own_heartbeats(monkeypatch):
+    """Le défaut qui a justifié cette tâche, réduit à un test.
+
+    `asyncio.wait_for(anext(it), …)` ANNULE l'`anext` à l'expiration, ce qui
+    ferme le générateur asynchrone : le flux mourait après le premier
+    battement, en silence, au bout de quinze secondes. Sans ce test, rien
+    n'empêche quiconque de réintroduire la forme d'origine.
+    """
+    from app.projects import stream as st
+
+    monkeypatch.setattr(st, "HEARTBEAT_SECONDS", 0.02)
+    project_id = f"battements-{uuid4()}"
+    frames = st.event_stream(project_id)
+
+    beats = [await asyncio.wait_for(anext(frames), timeout=1) for _ in range(3)]
+    assert beats == [st.HEARTBEAT] * 3
+
+    # Et après trois battements, un vrai événement passe encore.
+    publish(project_id, RunEvent("token", {"text": "vivant"}))
+    frame = await asyncio.wait_for(anext(frames), timeout=1)
+    assert frame.startswith("event: token")
+    await frames.aclose()
+
+
+async def test_the_lag_notice_reaches_the_client():
+    """Le bus coupe l'abonné en retard ; encore faut-il que l'avis sorte.
+
+    `tests/test_events.py` couvre le bus. Rien ne couvrait la traversée :
+    faire avaler l'avis par `event_stream` laissait la suite verte, et le
+    navigateur perdait le signal de reconnexion sur lequel repose le §8.
+    """
+    from app.runs.events import SUBSCRIBER_QUEUE_SIZE
+
+    project_id = f"retard-{uuid4()}"
+    frames = event_stream(project_id)
+    # On amorce l'abonnement : le générateur ne s'abonne qu'à la première
+    # itération, et publier avant ne toucherait personne.
+    first = asyncio.ensure_future(anext(frames))
+    await asyncio.sleep(0)
+    for index in range(SUBSCRIBER_QUEUE_SIZE + 50):
+        publish(project_id, RunEvent("token", {"text": str(index)}))
+
+    received = [await asyncio.wait_for(first, timeout=1)]
+    with contextlib.suppress(StopAsyncIteration, asyncio.TimeoutError):
+        while True:
+            received.append(await asyncio.wait_for(anext(frames), timeout=1))
+
+    assert received[-1].startswith("event: error"), (
+        "l'avis de retard n'est pas parvenu au client"
+    )
+    assert "flux_en_retard" in received[-1]
+
+
+async def test_the_response_carries_the_sse_contract(client, account):
+    """La route rend-elle ce qu'un `EventSource` accepte, et écoute-t-elle le
+    bon projet ?
+
+    Trois mutations survivaient : un `media_type` en `text/plain`, la perte
+    des en-têtes anti-tampon, et un abonnement à un autre projet — ce
+    dernier rendant un flux silencieux pour toujours. On appelle la fonction
+    de route directement : le transport de test ne sait pas conduire une
+    réponse en flux, mais l'objet qu'elle construit s'inspecte.
+    """
+    from uuid import UUID
+
+    from app.core.db import connection
+    from app.projects.routes import stream as stream_route
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    async with connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("select user_id from projects where id = %s",
+                              (UUID(project_id),))
+            user_id = (await cur.fetchone())[0]
+
+    response = await stream_route(UUID(project_id), {"id": user_id})
+    assert response.media_type == "text/event-stream"
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.headers["x-accel-buffering"] == "no"
+
+    body = response.body_iterator
+    pending = asyncio.ensure_future(anext(body))
+    await asyncio.sleep(0)
+    publish(project_id, RunEvent("progress", {"cursor": 7, "total": 9}))
+    frame = await asyncio.wait_for(pending, timeout=1)
+    assert frame.startswith("event: progress")
+    assert '"cursor": 7' in frame, (
+        "le flux n'écoute pas le projet demandé"
+    )
+    await body.aclose()
+
+
+async def test_the_stream_releases_its_subscription(client, account):
+    """Une tâche laissée par navigateur déconnecté est une fuite qui ne se
+    voit qu'en production. Remplacer le `finally` par `pass` laissait la
+    suite verte."""
+    from app.runs import events as ev
+
+    project_id = f"fuite-{uuid4()}"
+    frames = event_stream(project_id)
+    pending = asyncio.ensure_future(anext(frames))
+    await asyncio.sleep(0)
+    publish(project_id, RunEvent("token", {"text": "un"}))
+    await asyncio.wait_for(pending, timeout=1)
+
+    await frames.aclose()
+    await asyncio.sleep(0)
+    assert project_id not in ev._channels, "le canal n'a pas été libéré"
+    leaked = [t for t in asyncio.all_tasks()
+              if "asend" in repr(t) and not t.done()]
+    assert not leaked, f"tâche laissée derrière : {leaked}"
