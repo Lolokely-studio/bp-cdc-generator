@@ -1578,6 +1578,24 @@ défaut. Vérifiez comment `app/core/db.py` configure `row_factory` avant
 d'écrire `dict(row)`, et alignez-vous sur ce que fait déjà
 `project_for_user` plutôt que d'introduire un second usage.
 
+- [ ] **Étape 1 bis : `project_for_user` rend aussi les horodatages**
+
+`ProjectSummary` porte `created_at` et `updated_at`, mais `project_for_user`
+ne les sélectionne pas : deux des trois routes qui rendent ce schéma
+répondaient donc toujours `null`, tandis que la liste les renseignait. Même
+schéma, deux sens selon la route — un front qui affiche « modifié le »
+d'après l'entête n'obtient rien. Ajoutez les deux colonnes au `select` :
+
+```sql
+            select id, user_id, nom, documents, profil_cdc, profil_bp,
+                   thread_id, run_status, templates_version,
+                   created_at, updated_at
+            from projects where id = %s and user_id = %s
+```
+
+Rien d'autre à changer : la fonction construit déjà ses clés depuis
+`cur.description`.
+
 - [ ] **Étape 2 : écrire les schémas**
 
 ```python
@@ -1793,7 +1811,7 @@ from app.projects.repository import (
     projects_of_user,
 )
 from app.projects.schemas import ProjectCreate, ProjectState, ProjectSummary
-from app.runs.runner import RunAlreadyRunning, start_run
+from app.runs.runner import start_run
 
 router = APIRouter(prefix="/projects", tags=["projets"])
 
@@ -1827,6 +1845,19 @@ async def create(body: ProjectCreate, user=Depends(active_user)):
     """
     thread_id = f"projet-{uuid4()}"
     catalogue = load_catalogue()
+    # L'état de départ est construit AVANT l'insertion, et ce n'est pas un
+    # détail d'ordre. `initial_state` appelle `plan_for`, qui LÈVE sur un
+    # profil absent de `profils_disponibles`. Construit après, il laisserait
+    # une ligne `projects` derrière lui que personne ne pourra jamais faire
+    # avancer : l'appelant reçoit un 500 sans identifiant, et aucune route de
+    # ce plan ne sait reprendre un projet dont on ignore l'existence.
+    #
+    # Le cas ne peut pas se produire aujourd'hui — les `Literal` des schémas
+    # et les `profils_disponibles` des YAML coïncident — mais ce sont deux
+    # listes tenues dans deux fichiers que rien ne relie. Vérifié : en
+    # faisant lever `start_run`, la ligne survit bel et bien.
+    graph_input = initial_state("", body.documents, body.profil_cdc,
+                                body.profil_bp, body.idee)
     async with connection() as conn:
         project_id = await create_project(
             conn, user["id"], nom=body.nom, documents=body.documents,
@@ -1834,11 +1865,8 @@ async def create(body: ProjectCreate, user=Depends(active_user)):
             thread_id=thread_id,
             templates_version=str(catalogue.cdc.version),
         )
-    start_run(
-        str(project_id), thread_id,
-        initial_state(str(project_id), body.documents, body.profil_cdc,
-                      body.profil_bp, body.idee),
-    )
+    graph_input["project_id"] = str(project_id)
+    start_run(str(project_id), thread_id, graph_input)
     # On ne guette pas un statut « stable » avant de répondre : le run vient
     # de partir en tâche de fond et la ligne peut porter encore `idle`.
     # Attendre ici rendrait la création lente et le code de retour
@@ -1869,6 +1897,18 @@ async def state(project_id: UUID, user=Depends(active_user)):
     interruption est en attente, les projections répondent sans réhydrater
     le graphe — ce qui est tout leur objet (§4.6).
     """
+    # L'ORDRE DES TROIS LECTURES EST PORTEUR, et rien ne les synchronise.
+    # La ligne d'abord, le point de reprise ensuite, les projections en
+    # dernier : le statut lu est donc le plus ancien des trois. Tant que les
+    # statuts n'avancent que dans un sens, l'écart penche du bon côté — on
+    # peut voir `running` à côté d'une interaction déjà présente, et le front
+    # affiche une question sous une bannière « en cours » périmée d'un
+    # sondage. Inverser les deux premières lectures donnerait `waiting` avec
+    # `interaction: null` : un état qui n'a jamais existé, et qu'un front
+    # rend en « répondez à la question qui n'est pas là ».
+    #
+    # La tâche 7 fait reculer les statuts (`failed` puis `running` à la
+    # reprise) : c'est là qu'il faudra reposer la question.
     row = await _owned(project_id, user)
     graph = await compiled_graph()
     config = {"configurable": {"thread_id": row["thread_id"]}}
@@ -1932,6 +1972,209 @@ jour les deux divergent, cette ligne est l'endroit où le problème se pose.
 | `_owned` levant `403` au lieu de `404` | `..._not_found_never_forbidden` |
 | `projects_of_user` sans le `where user_id` | `..._list_only_holds_the_owners_projects` |
 | retirer le `model_validator` de `ProjectCreate` | `..._without_its_profile_is_refused` |
+
+
+- [ ] **Étape 9 bis : ce que la relecture a trouvé par mutation**
+
+Seize mutations jouées, **onze non attrapées**. Les routes sont justes — le
+relecteur a vérifié le 404 sur les quatre, corps et en-têtes compris, et n'a
+trouvé aucun canal temporel. Ce sont les tests qui ne regardent pas.
+
+D'abord, **renforcer les tests existants**. Dans
+`test_creating_a_project_returns_its_header`, après les assertions déjà
+présentes :
+
+```python
+    # Ce que la création a réellement écrit. Sans ces lignes, intervertir
+    # `profil_cdc` et `profil_bp` à l'insertion laissait les 405 tests verts
+    # — alors que l'étoile de `create_project` existe précisément pour
+    # empêcher cette confusion au site d'appel.
+    assert body["documents"] == CREATION["documents"]
+    assert body["profil_cdc"] == CREATION["profil_cdc"]
+    assert body["profil_bp"] is None
+    # Les horodatages valent sur TOUTES les routes qui rendent ce schéma,
+    # pas seulement sur la liste.
+    assert body["created_at"] and body["updated_at"]
+    # Le jeu de clés exact : `thread_id` et `user_id` ne sortent jamais. Ils
+    # sont filtrés deux fois aujourd'hui — par `response_model` et parce que
+    # pydantic ignore les clés en trop — mais deux coïncidences ne font pas
+    # un contrat.
+    assert set(body) == {"id", "nom", "documents", "profil_cdc", "profil_bp",
+                         "run_status", "created_at", "updated_at"}
+```
+
+Dans `test_another_users_project_is_not_found_never_forbidden`, à l'intérieur
+de la boucle, après le contrôle du statut :
+
+```python
+        assert response.json() == {"detail": {"code": "projet_introuvable"}}, (
+            "le corps distingue « n'existe pas » de « pas à vous » : c'est "
+            "un oracle d'énumération complet, exactement ce que le 404 "
+            "existe pour fermer"
+        )
+```
+
+Puis **quatre tests neufs** :
+
+```python
+async def test_an_unknown_project_answers_exactly_like_someone_elses(client, account):
+    """Le code de statut ne suffit pas à fermer le trou d'énumération.
+
+    Vérifié par mutation : un corps qui distingue les deux sortes d'absence
+    laissait les six tests verts, alors qu'il suffit à énumérer les projets
+    des autres.
+    """
+    from uuid import uuid4
+
+    owner = await _active_account(client, "corps-404")
+    someone_elses = (await client.post("/projects", json=CREATION,
+                                       headers=owner)).json()["id"]
+    unknown = str(uuid4())
+
+    bodies = []
+    for candidate in (someone_elses, unknown):
+        for path in (f"/projects/{candidate}", f"/projects/{candidate}/state"):
+            response = await client.get(path, headers=account)
+            assert response.status_code == 404
+            bodies.append(response.json())
+    assert all(b == bodies[0] for b in bodies), (
+        "les deux sortes d'absence ne se répondent pas à l'identique"
+    )
+
+
+async def test_the_header_status_agrees_with_the_state(client, account):
+    """`run_status` pilote toute l'interface, et rien ne le regardait.
+
+    Une valeur figée à `idle` dans le schéma laissait les 405 tests verts.
+    """
+    import asyncio
+
+    project_id = (await client.post("/projects", json=CREATION,
+                                    headers=account)).json()["id"]
+    for _ in range(100):
+        header = (await client.get(f"/projects/{project_id}",
+                                   headers=account)).json()
+        if header["run_status"] == "waiting":
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("l'entête n'a jamais annoncé `waiting`")
+
+    state_body = (await client.get(f"/projects/{project_id}/state",
+                                   headers=account)).json()
+    assert state_body["interaction"] is not None, (
+        "l'entête annonce `waiting` alors que rien n'attend de réponse"
+    )
+
+
+async def test_the_state_interaction_id_is_the_one_langgraph_gave(client, account):
+    """Toute l'idempotence de la tâche 5 repose sur cet identifiant.
+
+    Le test précédent ne vérifiait que sa PRÉSENCE : une constante y passait,
+    et la suite entière restait verte. On le compare donc à la source.
+    """
+    import asyncio
+    from uuid import UUID
+
+    from app.agent.graph import compiled_graph
+    from app.core.db import connection
+
+    project_id = (await client.post("/projects", json=CREATION,
+                                    headers=account)).json()["id"]
+    for _ in range(100):
+        state_body = (await client.get(f"/projects/{project_id}/state",
+                                       headers=account)).json()
+        if state_body["interaction"] is not None:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le run n'a jamais atteint d'interruption")
+
+    async with connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("select thread_id from projects where id = %s",
+                              (UUID(project_id),))
+            thread_id = (await cur.fetchone())[0]
+    graph = await compiled_graph()
+    snapshot = await graph.aget_state({"configurable": {"thread_id": thread_id}})
+
+    assert state_body["interaction"]["id"] == snapshot.interrupts[0].id
+
+
+async def test_a_both_document_project_carries_the_two_profiles(client, account):
+    """`profil_bp` n'était renseigné nulle part dans toute la suite.
+
+    La moitié du validateur de `ProjectCreate` et la moitié de `plan_for`
+    n'étaient donc jamais traversées par HTTP. Un projet `both` produit aussi
+    le plan le plus long, ce qui exerce le chemin où le curseur enjambe deux
+    catalogues.
+    """
+    creation = {**CREATION, "nom": "LesDeux", "documents": "both",
+                "profil_bp": "banque"}
+    body = (await client.post("/projects", json=creation,
+                              headers=account)).json()
+    assert body["profil_cdc"] == "consultation"
+    assert body["profil_bp"] == "banque"
+
+    state_body = (await client.get(f"/projects/{body['id']}/state",
+                                   headers=account)).json()
+    documents = {ref["document"] for ref in state_body["plan"]}
+    assert documents == {"cdc", "bp"}, (
+        "un projet `both` doit porter les deux documents à son plan"
+    )
+
+
+async def test_the_list_is_ordered_most_recently_modified_first(client, account):
+    """Le tri est la seule raison d'être de l'index que la docstring invoque,
+    et rien ne le vérifiait.
+
+    Les horodatages sont posés à la main : les runs de fond écrivent
+    `updated_at` à leur rythme, et un test qui dépend de leur ordonnancement
+    passerait selon la machine.
+    """
+    from uuid import UUID
+
+    from app.core.db import connection
+
+    first = (await client.post("/projects", json={**CREATION, "nom": "Ancien"},
+                               headers=account)).json()["id"]
+    second = (await client.post("/projects", json={**CREATION, "nom": "Recent"},
+                                headers=account)).json()["id"]
+    async with connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "update projects set updated_at = now() - interval '1 hour' "
+                "where id = %s", (UUID(second),))
+            await cur.execute(
+                "update projects set updated_at = now() where id = %s",
+                (UUID(first),))
+
+    names = [p["nom"] for p in (await client.get("/projects",
+                                                 headers=account)).json()]
+    assert names.index("Ancien") < names.index("Recent"), (
+        "la liste n'est pas triée par date de modification décroissante"
+    )
+```
+
+- [ ] **Étape 9 ter : rejouer les mutations qui survivaient**
+
+| Mutation | Doit faire tomber |
+|---|---|
+| le corps du 404 distingue « pas à vous » de « n'existe pas » | `..._unknown_project_answers_exactly_like_someone_elses` |
+| `ProjectSummary` fige `run_status = "idle"` | `..._header_status_agrees_with_the_state` |
+| `interaction["id"]` remplacé par une constante | `..._state_interaction_id_is_the_one_langgraph_gave` |
+| `create` intervertit `profil_cdc` et `profil_bp` | `..._creating_a_project_returns_its_header` |
+| `header` sans `response_model`, rendant la ligne brute | le même (jeu de clés exact) |
+| `projects_of_user` sans `order by updated_at desc` | `..._list_is_ordered_most_recently_modified_first` |
+| `project_for_user` cessant de lire les horodatages | `..._creating_a_project_returns_its_header` |
+| `start_run` qui lève, après l'insertion | aucune — voir ci-dessous |
+
+Les sept premières laissaient les 405 tests au vert. **La huitième n'a pas
+de test** : éprouver qu'une levée de `start_run` ne laisse pas de ligne
+derrière demanderait de faire lever une fonction qui, telle qu'elle est
+écrite, ne lève plus — l'ordre du code est la garantie, et c'est le
+commentaire qui la porte. C'est assumé, et c'est écrit ici pour que
+personne ne croie l'avoir oublié.
 
 - [ ] **Étape 9 : commiter**
 
@@ -2178,6 +2421,18 @@ async def answer(project_id: UUID, body: AnswerRequest,
     et afficherait une erreur à un utilisateur dont la réponse est bien
     passée.
     """
+    # L'ORDRE DES TROIS LECTURES EST PORTEUR, et rien ne les synchronise.
+    # La ligne d'abord, le point de reprise ensuite, les projections en
+    # dernier : le statut lu est donc le plus ancien des trois. Tant que les
+    # statuts n'avancent que dans un sens, l'écart penche du bon côté — on
+    # peut voir `running` à côté d'une interaction déjà présente, et le front
+    # affiche une question sous une bannière « en cours » périmée d'un
+    # sondage. Inverser les deux premières lectures donnerait `waiting` avec
+    # `interaction: null` : un état qui n'a jamais existé, et qu'un front
+    # rend en « répondez à la question qui n'est pas là ».
+    #
+    # La tâche 7 fait reculer les statuts (`failed` puis `running` à la
+    # reprise) : c'est là qu'il faudra reposer la question.
     row = await _owned(project_id, user)
     graph = await compiled_graph()
     config = {"configurable": {"thread_id": row["thread_id"]}}
