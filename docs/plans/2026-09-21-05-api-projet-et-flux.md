@@ -849,7 +849,7 @@ git commit -m "feat(agent): les nœuds publient la rédaction, la note et l'avan
     corps de la tâche, testable sans asyncio de fond
   - `RunAlreadyRunning` — exception levée par `start_run` si une tâche vit
     déjà pour ce projet
-  - `set_run_status(conn, project_id: UUID, statut: str) -> None`
+  - `set_run_status(conn, project_id: UUID, status: str) -> None`
   - `RUN_STATUSES = ("idle", "running", "waiting", "failed", "done")`
 
 **Ce que le pilote doit garantir, et pourquoi :**
@@ -877,7 +877,7 @@ Dans `backend/app/projects/repository.py`, à la suite de `project_for_user` :
 RUN_STATUSES = ("idle", "running", "waiting", "failed", "done")
 
 
-async def set_run_status(conn, project_id: UUID, statut: str) -> None:
+async def set_run_status(conn, project_id: UUID, status: str) -> None:
     """Le seul chemin d'écriture de `run_status`.
 
     Le contrôle sur `RUN_STATUSES` est ici et non à l'appelant : la colonne
@@ -887,12 +887,12 @@ async def set_run_status(conn, project_id: UUID, statut: str) -> None:
     `updated_at` suit : l'index de la liste du propriétaire trie dessus, et
     un projet qui avance sans remonter dans la liste serait déroutant.
     """
-    if statut not in RUN_STATUSES:
-        raise ValueError(f"statut de run inconnu : {statut}")
+    if status not in RUN_STATUSES:
+        raise ValueError(f"statut de run inconnu : {status}")
     async with conn.cursor() as cur:
         await cur.execute(
             "update projects set run_status = %s, updated_at = now() where id = %s",
-            (statut, project_id),
+            (status, project_id),
         )
 ```
 
@@ -901,7 +901,7 @@ async def set_run_status(conn, project_id: UUID, statut: str) -> None:
 ```python
 # backend/tests/test_runner.py
 import asyncio
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 import pytest_asyncio
@@ -1004,10 +1004,32 @@ async def test_a_failing_run_is_marked_failed_and_publishes_an_error(project):
     assert errors[-1].data["reprenable"] is True
 
 
-async def test_a_finished_run_purges_its_checkpoints(project):
-    """`purge_checkpoints` est écrit et testé depuis le plan 3 et n'avait
-    aucun appelant — constat 8 de la revue finale. Il en a un ici."""
+async def test_a_finished_run_marks_done_then_purges_then_says_so(project, monkeypatch):
+    """Le VRAI chemin de fin, pas une trappe de test.
+
+    La première version de ce test passait par un paramètre `_force_done`
+    qui sautait tout le bloc `try` : elle prouvait que la trappe purgeait,
+    jamais qu'un graphe terminé purge. Mettre tout le corps de fin derrière
+    ce drapeau laissait les 394 tests au vert. On remplace donc le graphe,
+    pas le chemin.
+
+    `purge_checkpoints` est écrit et testé depuis le plan 3 et n'avait aucun
+    appelant — constat 8 de la revue finale. Il en a un ici.
+    """
+    from types import SimpleNamespace
+
     from app.agent import checkpointer
+    from app.runs import runner
+
+    class _FinishedGraph:
+        async def ainvoke(self, graph_input, config):
+            return {}
+
+        async def aget_state(self, config):
+            return SimpleNamespace(interrupts=(), values={})
+
+    async def _finished_graph():
+        return _FinishedGraph()
 
     calls = []
 
@@ -1015,17 +1037,139 @@ async def test_a_finished_run_purges_its_checkpoints(project):
         calls.append((thread_id, keep))
         return 0
 
-    real_purge = checkpointer.purge_checkpoints
-    checkpointer.purge_checkpoints = _count_calls
-    try:
-        await advance(str(project["project_id"]), project["thread_id"],
-                      None, _force_done=True)
-    finally:
-        checkpointer.purge_checkpoints = real_purge
+    monkeypatch.setattr(runner, "compiled_graph", _finished_graph)
+    monkeypatch.setattr(checkpointer, "purge_checkpoints", _count_calls)
 
-    assert calls, "un run terminé doit purger ses points de reprise"
-    assert calls[0][0] == project["thread_id"]
+    async with subscribe(str(project["project_id"])) as events:
+        await advance(str(project["project_id"]), project["thread_id"], None)
+        received = []
+        try:
+            while True:
+                received.append(await asyncio.wait_for(anext(events), timeout=0.2))
+        except (StopAsyncIteration, asyncio.TimeoutError):
+            pass
+
+    assert calls == [(project["thread_id"], 1)], (
+        "un run terminé doit purger ses points de reprise"
+    )
     assert await _status(project["project_id"], project["user_id"]) == "done"
+    assert [e.name for e in received] == ["done"]
+
+
+async def test_the_status_is_written_before_the_event_leaves(project, monkeypatch):
+    """L'ordre, et pas seulement le contenu.
+
+    Un client qui appelle `/state` en réaction à un événement doit trouver la
+    colonne déjà à jour. On enregistre l'ordre réel des deux effets plutôt
+    que de guetter une course : un test qui dépend de l'ordonnanceur passe ou
+    non selon la machine, ce qui est la pire sorte.
+    """
+    from app.runs import runner
+
+    order = []
+    real_status, real_publish = runner._status, runner.publish
+
+    async def _record_status(project_id, status):
+        order.append(f"status:{status}")
+        await real_status(project_id, status)
+
+    def _record_publish(project_id, event):
+        order.append(f"publish:{event.name}")
+        real_publish(project_id, event)
+
+    monkeypatch.setattr(runner, "_status", _record_status)
+    monkeypatch.setattr(runner, "publish", _record_publish)
+
+    graph_input = initial_state(str(project["project_id"]), "cdc",
+                                "consultation", None, "Une idée.")
+    await advance(str(project["project_id"]), project["thread_id"], graph_input)
+
+    assert order[0] == "status:running", (
+        "le run doit s'annoncer en cours avant de faire quoi que ce soit"
+    )
+    assert "status:waiting" in order and "publish:interaction" in order
+    assert order.index("status:waiting") < order.index("publish:interaction")
+
+
+async def test_the_error_event_leaves_even_if_the_database_is_unreachable(project, monkeypatch):
+    """Le filet ne doit pas pouvoir être tué par ce qui l'a rendu nécessaire.
+
+    `_status` ouvre une connexion. Si la base est la cause de l'échec, elle
+    lèvera aussi en marquant l'échec — et dans l'ordre inverse cette seconde
+    levée emporterait la publication, depuis une tâche que personne
+    n'attend. Le run mourrait alors en silence, ce que ce bloc existe pour
+    empêcher.
+    """
+    from app.runs import runner
+
+    real_status = runner._status
+
+    async def _refuse_failed(project_id, status):
+        if status == "failed":
+            raise RuntimeError("base injoignable")
+        await real_status(project_id, status)
+
+    monkeypatch.setattr(runner, "_status", _refuse_failed)
+
+    async with subscribe(str(project["project_id"])) as events:
+        await advance(str(project["project_id"]), project["thread_id"],
+                      {"plan": [], "cursor": 5})
+        received = []
+        try:
+            while True:
+                received.append(await asyncio.wait_for(anext(events), timeout=0.2))
+        except (StopAsyncIteration, asyncio.TimeoutError):
+            pass
+
+    errors = [e for e in received if e.name == "error"]
+    assert errors, (
+        "l'événement d'erreur n'est pas parti : une base injoignable a "
+        "emporté le filet qu'elle rendait nécessaire"
+    )
+
+
+async def test_an_unknown_run_status_is_refused():
+    """La seule logique neuve de `repository.py`, et rien ne l'exerçait.
+
+    La colonne est du texte libre côté base : une faute de frappe y passerait
+    sans bruit pour ne se voir qu'à l'affichage, des heures plus tard.
+    """
+    async with connection() as conn:
+        with pytest.raises(ValueError, match="statut de run inconnu"):
+            await set_run_status(conn, uuid4(), "en_cours")
+
+
+async def test_a_finished_task_never_unregisters_its_successor():
+    """Le défaut que la relecture a reproduit.
+
+    Le rappel de fin retirait par clé. La tâche A qui se termine effaçait
+    donc l'entrée de la tâche B qui venait de la remplacer : `is_running`
+    répondait « non » pour un run bien vivant, le garde de
+    `RunAlreadyRunning` tombait, et `cancel_all` ne voyait plus l'orpheline.
+    """
+    from app.runs import registry
+
+    async def _immediate():
+        return None
+
+    async def _long():
+        await asyncio.sleep(10)
+
+    first = asyncio.create_task(_immediate())
+    registry.register("projet-course", first)
+    await first
+
+    second = asyncio.create_task(_long())
+    registry.register("projet-course", second)
+    try:
+        # Le rappel de `first` s'exécute au tour de boucle suivant.
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert registry.is_running("projet-course"), (
+            "le rappel de la tâche terminée a désenregistré sa remplaçante"
+        )
+    finally:
+        await registry.cancel_all()
 
 
 async def test_two_starts_for_the_same_project_are_refused(project):
@@ -1055,6 +1199,9 @@ Attendu : `ModuleNotFoundError: No module named 'app.runs.runner'`.
 ```python
 # backend/app/runs/registry.py
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Une tâche par projet, sur la durée de vie du processus.
 #
@@ -1069,10 +1216,28 @@ _tasks: dict[str, asyncio.Task] = {}
 
 def register(project_id: str, task: asyncio.Task) -> None:
     _tasks[project_id] = task
-    # Se retirer soi-même à la fin : sans ce rappel, un projet dont le run
-    # est terminé resterait marqué « en cours » et aucune reprise ne
-    # repartirait jamais.
-    task.add_done_callback(lambda _: _tasks.pop(project_id, None))
+    # Le rappel de fin vérifie l'IDENTITÉ de la tâche avant de retirer
+    # l'entrée, et ce n'est pas une précaution de style.
+    #
+    # `is_running` passe à faux dès qu'une tâche se termine, mais le rappel
+    # ne s'exécute qu'au tour de boucle suivant. Dans cet intervalle, une
+    # coroutine déjà prête — une requête `/answer` qui reprend, par exemple —
+    # passe le garde, `register` remplace l'entrée, puis le rappel de la
+    # tâche A efface l'entrée de la tâche B. Deux tâches avancent alors le
+    # même `thread_id` — exactement la corruption que ce module existe pour
+    # empêcher — et `cancel_all` ne voit plus l'orpheline.
+    #
+    # Reproduit, pas supposé : la relecture de cette tâche en a produit une
+    # démonstration autonome.
+    task.add_done_callback(_forget(project_id))
+
+
+def _forget(project_id: str):
+    """Le rappel qui ne retire que sa propre tâche."""
+    def _callback(task: asyncio.Task) -> None:
+        if _tasks.get(project_id) is task:
+            del _tasks[project_id]
+    return _callback
 
 
 def is_running(project_id: str) -> bool:
@@ -1081,19 +1246,29 @@ def is_running(project_id: str) -> bool:
 
 
 async def cancel_all() -> None:
-    """Annule tout et attend que ce soit fait. Appelée à l'arrêt de
-    l'application, et par les tests qui ont lancé une tâche de fond — sans
-    quoi une tâche survivrait à son test et écrirait dans une base que le
-    test suivant croit à lui."""
-    tasks = list(_tasks.values())
-    for task in tasks:
+    """Annule tout et attend que ce soit fait.
+
+    Appelée à l'arrêt de l'application, et par les tests qui ont lancé une
+    tâche de fond — sans quoi une tâche survivrait à son test et écrirait
+    dans une base que le test suivant croit à lui.
+    """
+    pending = dict(_tasks)
+    for task in pending.values():
         task.cancel()
-    for task in tasks:
+    for project_id, task in pending.items():
         try:
             await task
-        except (asyncio.CancelledError, Exception):
-            pass
-    _tasks.clear()
+        except BaseException:
+            # `BaseException` et non `Exception` : l'annulation qu'on vient
+            # de demander se présente en `CancelledError`, qui n'hérite plus
+            # d'`Exception` depuis Python 3.8. Un vrai échec de run remonte
+            # aussi par ici à l'arrêt ; on le journalise plutôt que de le
+            # perdre en silence.
+            logger.debug("run %s terminé à l'arrêt", project_id, exc_info=True)
+        # On ne retire que ce qu'on a annulé. Un `_tasks.clear()` final
+        # emporterait une tâche enregistrée pendant qu'on attendait.
+        if _tasks.get(project_id) is task:
+            del _tasks[project_id]
 ```
 
 - [ ] **Étape 5 : écrire le pilote**
@@ -1136,44 +1311,43 @@ def start_run(project_id: str, thread_id: str, graph_input) -> None:
     registry.register(project_id, task)
 
 
-async def advance(project_id: str, thread_id: str, graph_input,
-                  *, _force_done: bool = False) -> None:
+async def advance(project_id: str, thread_id: str, graph_input) -> None:
     """Avance le graphe jusqu'à l'interruption suivante ou jusqu'au bout.
 
     Fonction séparée de `start_run` pour être appelable directement : un test
     du pilote n'a pas à se battre avec l'ordonnanceur pour savoir quand la
     tâche a fini.
-
-    `_force_done` sert au test de la purge, qui a besoin d'atteindre le
-    chemin de fin sans dérouler trente sections.
     """
     config = {"configurable": {"thread_id": thread_id}}
     await _status(project_id, "running")
     try:
-        if not _force_done:
-            graph = await compiled_graph()
-            await graph.ainvoke(graph_input, config=config)
-            snapshot = await graph.aget_state(config)
-            if snapshot.interrupts:
-                await _publish_interrupt(project_id, snapshot.interrupts[0])
-                await _status(project_id, "waiting")
-                return
+        graph = await compiled_graph()
+        await graph.ainvoke(graph_input, config=config)
+        snapshot = await graph.aget_state(config)
     except asyncio.CancelledError:
-        # L'arrêt de l'application. Le point de reprise a déjà tout ce qu'il
-        # faut ; la réconciliation du démarrage suivant remettra le projet en
-        # `failed` et proposera « Reprendre ».
+        # L'arrêt de l'application. On ne touche pas au statut : la ligne
+        # reste `running` et la réconciliation du démarrage suivant la
+        # repassera en `failed` en proposant « Reprendre » (tâche 7). Tant
+        # que cette réconciliation n'existe pas, la colonne ment après une
+        # annulation — c'est assumé, et c'est la tâche 7 qui le referme.
+        #
+        # Cette clause est documentaire : depuis Python 3.8,
+        # `CancelledError` hérite de `BaseException` et non d'`Exception`,
+        # donc le bloc suivant ne l'aurait pas attrapée de toute façon. On
+        # l'écrit pour que le lecteur sache que le cas a été pesé, pas
+        # oublié.
         raise
     except Exception as error:
-        # Une tâche dont personne n'attend le résultat avale son exception
-        # jusqu'au ramasse-miettes : sans ce bloc, un run mourrait en silence
-        # et `run_status` resterait à `running` pour toujours.
-        logger.exception("run %s en échec", project_id)
-        await _status(project_id, "failed")
-        publish(project_id, RunEvent("error", {
-            "code": "run_en_echec",
-            "message": str(error) or error.__class__.__name__,
-            "reprenable": True,
-        }))
+        await _fail(project_id, error)
+        return
+
+    # Le statut AVANT la publication, dans les deux sorties. Un client qui
+    # appelle `/state` en réaction à l'événement doit trouver la colonne déjà
+    # à jour ; l'ordre inverse lui montrerait l'état d'avant, une fois sur
+    # on ne sait combien.
+    if snapshot.interrupts:
+        await _status(project_id, "waiting")
+        await _publish_interrupt(project_id, snapshot.interrupts[0])
         return
 
     await _status(project_id, "done")
@@ -1182,6 +1356,34 @@ async def advance(project_id: str, thread_id: str, graph_input,
     removed = await checkpointer.purge_checkpoints(thread_id)
     logger.info("run %s terminé, %d points de reprise purgés", project_id, removed)
     publish(project_id, RunEvent("done", {"project_id": project_id}))
+
+
+async def _fail(project_id: str, error: Exception) -> None:
+    """Marque l'échec sans jamais le perdre.
+
+    L'événement part AVANT l'écriture en base, et l'écriture est elle-même
+    gardée. `_status` ouvre une connexion : si la base est la cause de
+    l'échec initial — le cas le plus probable — elle lèvera ici aussi. Dans
+    l'ordre inverse, cette seconde levée emporterait la publication et
+    s'échapperait d'une tâche que personne n'attend : le run mourrait en
+    silence et `run_status` resterait à `running` pour toujours, c'est-à-dire
+    exactement ce que ce bloc existe pour empêcher. Constaté sur une sonde,
+    pas déduit.
+
+    `logger.exception` est appelé sous une exception active, il journalise
+    donc la trace complète.
+    """
+    logger.exception("run %s en échec", project_id)
+    publish(project_id, RunEvent("error", {
+        "code": "run_en_echec",
+        "message": str(error) or error.__class__.__name__,
+        "reprenable": True,
+    }))
+    try:
+        await _status(project_id, "failed")
+    except Exception:
+        logger.exception(
+            "run %s : impossible d'écrire le statut d'échec", project_id)
 
 
 async def _publish_interrupt(project_id: str, interrupt) -> None:
@@ -1197,11 +1399,11 @@ async def _publish_interrupt(project_id: str, interrupt) -> None:
     }))
 
 
-async def _status(project_id: str, statut: str) -> None:
+async def _status(project_id: str, status: str) -> None:
     from uuid import UUID
 
     async with connection() as conn:
-        await set_run_status(conn, UUID(project_id), statut)
+        await set_run_status(conn, UUID(project_id), status)
 ```
 
 - [ ] **Étape 6 : lancer les tests pour les voir passer**
@@ -1210,7 +1412,7 @@ async def _status(project_id: str, statut: str) -> None:
 cd backend && uv run pytest tests/test_runner.py -v
 ```
 
-Attendu : 5 passés.
+Attendu : 9 passés.
 
 **`interrupt.id` existe bien**, vérifié sur la version installée avant
 d'écrire ce plan : `langgraph.types.Interrupt` est une dataclass à deux
@@ -1223,10 +1425,19 @@ qui les emploie, il est périmé.
 
 | Mutation | Doit faire tomber |
 |---|---|
-| retirer l'appel à `purge_checkpoints` | `..._finished_run_purges_its_checkpoints` |
-| `except Exception` qui relève au lieu de marquer `failed` | `..._failing_run_is_marked_failed...` |
+| retirer l'appel à `purge_checkpoints` | `..._finished_run_marks_done_then_purges_then_says_so` |
+| `except Exception` qui relève au lieu d'appeler `_fail` | `..._failing_run_is_marked_failed...` |
 | `registry.is_running` rendant toujours `False` | `..._two_starts_for_the_same_project_are_refused` |
 | ne pas publier l'identifiant dans `interaction` | `..._interruption_is_published` |
+| purger AVANT d'écrire `done` | `..._finished_run_marks_done_then_purges_then_says_so` |
+| écrire `waiting` APRÈS avoir publié l'interruption | `..._status_is_written_before_the_event_leaves` |
+| supprimer l'écriture de `running` | le même |
+| `_fail` écrivant le statut AVANT de publier | `..._error_event_leaves_even_if_the_database_is_unreachable` |
+| retirer le contrôle sur `RUN_STATUSES` | `..._unknown_run_status_is_refused` |
+| `_forget` retirant par clé sans contrôler l'identité | `..._finished_task_never_unregisters_its_successor` |
+
+Ces six dernières laissaient les 394 tests au vert avant cette correction.
+La relecture les a trouvées par mutation, aucune par lecture.
 
 - [ ] **Étape 8 : lancer la suite complète, puis commiter**
 
@@ -1237,7 +1448,7 @@ git add backend/app/runs/registry.py backend/app/runs/runner.py \
 git commit -m "feat(runs): un pilote qui conduit le graphe hors de la requête HTTP"
 ```
 
-Attendu : 390 passés, 5 désélectionnés.
+Attendu : 398 passés, 5 désélectionnés.
 
 ---
 
@@ -2381,10 +2592,61 @@ Et dans `lifespan`, après l'ouverture du pool :
 `purge_checkpoints(thread_id)` sur chacun. Écrivez-la à côté de
 `reconcile_orphan_runs`, avec son test.
 
-**Attention à l'arrêt :** `lifespan` doit aussi appeler
-`registry.cancel_all()` dans son `finally`, avant `close_checkpointer()`.
-Sans cela, une tâche de run encore vivante écrirait dans un point de reprise
-dont la connexion vient d'être fermée.
+**L'arrêt, et ce n'est pas une remarque en passant.** La relecture de la
+tâche 3 a constaté que `cancel_all` n'avait aucun appelant en production —
+exactement le travers que le préambule de ce plan reproche au plan 3, et
+qu'il prétend refermer. Le `finally` de `lifespan` devient donc :
+
+```python
+    finally:
+        # L'ordre compte : on annule d'abord les runs, ensuite seulement on
+        # ferme ce dont ils se servent. L'inverse laisserait une tâche
+        # vivante écrire dans un point de reprise dont la connexion vient
+        # d'être fermée, et l'erreur remonterait dans une tâche que
+        # personne n'attend, donc nulle part.
+        await registry.cancel_all()
+        try:
+            await close_checkpointer()
+        finally:
+            try:
+                await close_clients()
+            finally:
+                await connection_pool.close()
+```
+
+Et son test, dans `backend/tests/test_lifespan.py` :
+
+```python
+async def test_shutting_down_cancels_the_running_runs():
+    """Un run qui survit à l'arrêt écrit dans une connexion fermée, et
+    personne ne voit l'erreur : elle remonte dans une tâche que personne
+    n'attend."""
+    import asyncio
+
+    from app.main import create_app
+    from app.runs import registry
+
+    async def _long():
+        await asyncio.sleep(30)
+
+    transport = httpx.ASGITransport(app=create_app())
+    async with httpx.AsyncClient(transport=transport,
+                                 base_url="http://test") as client:
+        await client.get("/health")
+        task = asyncio.create_task(_long())
+        registry.register("projet-a-l-arret", task)
+        assert registry.is_running("projet-a-l-arret")
+
+    assert not registry.is_running("projet-a-l-arret"), (
+        "l'arrêt de l'application n'a pas annulé le run en cours"
+    )
+    assert task.cancelled()
+```
+
+Le client `httpx` en gestionnaire de contexte déclenche le cycle de vie de
+l'application à la sortie du bloc : c'est ce qui rend l'arrêt observable
+depuis un test. Vérifiez comment `tests/test_lifespan.py` procède déjà et
+alignez-vous dessus plutôt que d'introduire un second motif.
 
 - [ ] **Étape 5 : écrire les deux routes**
 
