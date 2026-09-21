@@ -43,35 +43,41 @@ def publish(project_id: str, event: RunEvent) -> None:
     """Publie sans bloquer et sans rien attendre de personne.
 
     Synchrone à dessein : les nœuds du graphe l'appellent au milieu d'un flux
-    de tokens, et un `await` de plus par fragment coûterait une bascule de
+    de fragments, et un `await` de plus par fragment coûterait une bascule de
     tâche par mot rédigé. `put_nowait` sur une file bornée suffit.
     """
-    for queue in _channels.get(project_id, ()):
+    subscribers = _channels.get(project_id)
+    if not subscribers:
+        return
+    # Une copie : `_drop_lagging` retire l'abonné du canal, et muter un
+    # ensemble qu'on parcourt lèverait une `RuntimeError`.
+    for queue in list(subscribers):
         try:
             queue.put_nowait(event)
         except asyncio.QueueFull:
-            # L'abonné est trop lent. On ne jette pas d'événement au hasard :
-            # on le coupe proprement. `_close` se charge du reste ; ici on ne
-            # peut pas muter l'ensemble qu'on parcourt.
-            _mark_lagged(queue)
+            _drop_lagging(project_id, queue)
 
 
-def _mark_lagged(queue: asyncio.Queue) -> None:
-    """Remplace le plus ancien élément par l'avis de retard.
+def _drop_lagging(project_id: str, queue: asyncio.Queue) -> None:
+    """Coupe l'abonné en retard, une fois pour toutes.
+
+    Le retirer du canal AVANT de poser l'avis est ce qui rend l'opération
+    idempotente, et ce n'est pas une élégance : sans cela, chaque publication
+    suivante retrouverait la file pleine, sortirait un fragment de plus et
+    glisserait un nouvel avis derrière. L'abonné recevrait alors des
+    fragments amputés AVANT de voir le premier avis — exactement ce que
+    cette branche existe pour éviter.
 
     La file est pleine par définition : pour y glisser `LAGGED`, il faut
     d'abord faire de la place. On sort le plus ancien, ce qui est le moins
-    mauvais choix — l'abonné sera coupé de toute façon, autant qu'il reçoive
-    l'avis le plus tôt possible.
+    mauvais choix — l'abonné sera coupé de toute façon.
     """
-    # N'ajouter LAGGED qu'une fois par file
-    if not getattr(queue, '_lagged_marked', False):
-        queue._lagged_marked = True
-        try:
-            queue.get_nowait()
-        except asyncio.QueueEmpty:  # pragma: no cover — la file est pleine
-            pass
-        queue.put_nowait(LAGGED)
+    _channels.get(project_id, set()).discard(queue)
+    try:
+        queue.get_nowait()
+    except asyncio.QueueEmpty:  # pragma: no cover — la file est pleine
+        pass
+    queue.put_nowait(LAGGED)
 
 
 @asynccontextmanager

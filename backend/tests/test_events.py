@@ -67,8 +67,17 @@ async def test_a_subscriber_that_falls_behind_is_dropped_with_an_error():
         for index in range(SUBSCRIBER_QUEUE_SIZE + 10):
             publish("projet-f", RunEvent("token", {"text": str(index)}))
         received = []
-        async for event in events:
-            received.append(event)
+        # Un délai par élément, et non un simple `async for` : sans lui, une
+        # régression qui n'émettrait jamais l'avis de retard ferait PENDRE ce
+        # test au lieu de l'échouer. L'intégration continue tournerait alors
+        # jusqu'à son propre délai sans nommer le test en cause — et une
+        # mutation qui fait pendre ne prouve rien.
+        try:
+            while True:
+                received.append(
+                    await asyncio.wait_for(anext(events), timeout=1))
+        except (StopAsyncIteration, asyncio.TimeoutError):
+            pass
     assert received[-1].name == "error"
     assert received[-1].data == LAGGED.data
     assert len(received) == SUBSCRIBER_QUEUE_SIZE
