@@ -65,9 +65,8 @@ async def save_section(
             insert into sections
                 (project_id, section_id, document, ordre, statut, contenu, note, revisions)
             values (%s, %s, %s, %s, %s, %s, %s, %s)
-            on conflict (project_id, section_id) do update
-            set document = excluded.document,
-                ordre = excluded.ordre,
+            on conflict (project_id, document, section_id) do update
+            set ordre = excluded.ordre,
                 statut = excluded.statut,
                 contenu = excluded.contenu,
                 note = excluded.note,

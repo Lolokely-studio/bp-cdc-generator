@@ -165,3 +165,37 @@ async def test_projections_of_one_project_never_reach_another(project):
 
 def test_the_documented_statuses_are_the_only_ones():
     assert SECTION_STATUSES == ("pending", "writing", "done", "reopened")
+
+
+async def test_reopening_a_section_never_touches_its_namesake_in_the_other_document(project):
+    """La clé primaire de `sections` ne porte pas le document ; le filtre sur
+    `document` est donc le seul à empêcher qu'un `section_id` partagé entre
+    les deux documents fasse rouvrir les deux. Aucune collision n'existe
+    aujourd'hui dans les gabarits — la docstring dit « marcherait par chance »
+    — donc on la fabrique, puisque rien n'empêche qu'elle survienne.
+    """
+    homonyme = "section_partagee"
+    async with connection() as conn:
+        for document in ("cdc", "bp"):
+            await save_section(
+                conn, project,
+                SectionRef(document=document, section_id=homonyme, order=1),
+                blocks=[Paragraph(text="x")], statut="done", note=8, revisions=0)
+        touched = await mark_for_reopening(conn, project, {f"cdc.{homonyme}"})
+        statuts = {(s["document"], s["section_id"]): s["statut"]
+                   for s in await load_sections(conn, project)}
+
+    # Les deux lignes fabriquées ici ne peuvent pas coexister sous l'ancienne
+    # clé primaire : les laisser derrière soi ferait échouer le `downgrade`
+    # de la migration 0003 au run suivant, et la base de test resterait dans
+    # un état partiel. On efface ce qu'on a inventé.
+    async with connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "delete from sections where project_id = %s and section_id = %s",
+                (project, homonyme),
+            )
+
+    assert touched == 1, "le filtre sur le document n'a pas restreint la mise à jour"
+    assert statuts[("cdc", homonyme)] == "reopened"
+    assert statuts[("bp", homonyme)] == "done"

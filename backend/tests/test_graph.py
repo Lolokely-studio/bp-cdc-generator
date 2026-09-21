@@ -287,6 +287,10 @@ async def test_an_answer_outside_the_catalogue_never_becomes_a_fact():
     assert "fait_invente" not in maj["facts"], (
         "une clé hors catalogue est entrée dans les faits"
     )
+    # Le lot doit repartir vidé : sans cela il resterait dans l'état, donc
+    # dans chaque point de reprise, pour tout le reste du run — le coût même
+    # que la docstring d'`EsquisseState` argumente longuement pour refuser.
+    assert maj["pending_questions"] is None
 
 
 async def test_a_rewrite_without_a_reason_still_sends_the_section_back():
