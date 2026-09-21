@@ -139,17 +139,30 @@ async def compute(state) -> dict:
     _, section = _current(state)
     results: dict[str, Computation] = dict(state["computations"])
     for name in section.calculs:
-        assumptions = build_assumptions(name, state["facts"])
-        if assumptions is None:
-            # Les faits ne suffisent pas. Le tableau n'existera pas et le texte
-            # portera une donnée à compléter — jamais une valeur par défaut,
-            # qui serait un chiffre inventé de plus.
-            continue
+        # `build_assumptions` est DANS le `try`, et ce n'est pas un détail de
+        # style. Il ne rend `None` que sur un fait manquant ; sur un fait
+        # présent mais hors des bornes pydantic de `finance.py` il lève une
+        # `ValidationError`. Celle-ci est bien une `ValueError`, mais depuis
+        # l'extérieur du `try` elle sortait du nœud et emportait le run — et
+        # comme le point de reprise rejoue le même nœud, le projet restait
+        # coincé pour de bon.
+        #
+        # Le cas n'a rien d'exotique : un projet freemium répond zéro au prix
+        # unitaire, un projet déficitaire répond un coût variable supérieur au
+        # prix. Rien ne valide les réponses en amont, `ask_questions` pose le
+        # fait tel quel.
         try:
+            assumptions = build_assumptions(name, state["facts"])
+            if assumptions is None:
+                # Les faits ne suffisent pas. Le tableau n'existera pas et le
+                # texte portera une donnée à compléter — jamais une valeur par
+                # défaut, qui serait un chiffre inventé de plus.
+                continue
             results[name] = run_computation(name, assumptions)
         except ValueError:
             # Hypothèses aberrantes : une descente de marché incohérente, un
-            # taux de marge nul. On n'écrit pas un tableau faux.
+            # taux de marge nul, une réponse hors bornes. On n'écrit pas un
+            # tableau faux, et surtout on n'emporte pas les neuf autres.
             continue
     return {"computations": results}
 

@@ -4,6 +4,7 @@ import pytest
 import pytest_asyncio
 
 from app.agent import nodes
+from app.agent.finance import Computation
 from app.agent.state import Fact, Paragraph, SectionRef
 from app.agent.templates import load_catalogue
 from app.core.db import connection
@@ -330,6 +331,54 @@ async def test_a_computation_missing_its_facts_is_skipped_silently_but_without_c
     maj = await nodes.compute(_state(documents="bp", profil_cdc=None, plan=plan,
                                     cursor=index, facts=facts))
     assert "annuites_credit" not in maj["computations"]
+
+
+async def test_an_out_of_range_answer_skips_its_computation_without_killing_the_run():
+    """Le frère du test précédent, pour l'autre moitié du cas.
+
+    `build_assumptions` ne rend `None` que sur un fait *manquant*. Sur un
+    fait présent mais hors des bornes de `finance.py`, il lève. Et la levée
+    vient d'une réponse ordinaire : un projet gratuit à l'usage répond zéro
+    au prix unitaire. Hors du `try`, elle emportait le run entier — et le
+    point de reprise rejouant le même nœud, le projet restait coincé.
+
+    `marge_unitaire` est le calcul visé parce qu'il LÈVE vraiment sur ce
+    jeu de faits. `seuil_rentabilite`, lui, rend `None` : écrit sur lui, ce
+    test passerait sans jamais emprunter le chemin qu'il prétend garder.
+    """
+    plan = CATALOGUE.plan_for("bp", None, "banque")
+    index = next(i for i, r in enumerate(plan)
+                 if "marge_unitaire" in CATALOGUE.section(f"bp.{r.section_id}").calculs)
+    facts = {
+        # Gratuit à l'usage : une réponse légitime, pas une saisie fautive.
+        "prix_moyen_unite": Fact(fact_id="prix_moyen_unite", value=0, source="user"),
+        "cout_variable_unitaire": Fact(
+            fact_id="cout_variable_unitaire", value=0, source="user"),
+    }
+    state = _state(documents="bp", profil_cdc=None, plan=plan, cursor=index,
+                   facts=facts)
+    # Le travail déjà fait par les sections précédentes doit survivre : ce
+    # n'est pas seulement « ne pas lever », c'est « ne rien perdre ».
+    acquis = Computation(name="tam_sam_som", title="Marché",
+                         columns=("Niveau", "Montant"),
+                         rows=(("TAM", "1 000 000,00 €"),),
+                         numbers=(1_000_000.0,))
+    state["computations"] = {"tam_sam_som": acquis}
+
+    maj = await nodes.compute(state)
+    assert "marge_unitaire" not in maj["computations"]
+    assert maj["computations"]["tam_sam_som"] == acquis
+
+
+def test_a_negative_rate_reads_as_a_decline_not_as_minus_two_thousand_percent():
+    # « -20 » pour un recul de vingt pour cent se saisit aussi naturellement
+    # que « 20 » pour une hausse.
+    from app.agent.assumptions import _rate
+
+    for written, expected in ((-20, -0.2), (-0.2, -0.2), (20, 0.2), (0.2, 0.2)):
+        facts = {"croissance_annuelle": Fact(
+            fact_id="croissance_annuelle", value=written, source="user")}
+        assert _rate(facts, "croissance_annuelle") == pytest.approx(expected)
 
 
 async def test_saving_advances_the_cursor_and_writes_the_projection(project):
