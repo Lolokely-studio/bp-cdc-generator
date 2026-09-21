@@ -60,11 +60,15 @@ def _rate(facts: dict[str, Fact], fact_id: str) -> float | None:
     refuser serait pédant. Au-dessus de 1, on divise. La valeur 1 exactement
     reste ambiguë et se lit en fraction, donc cent pour cent : le cas est rare
     et vaut mieux qu'une devinette.
+
+    La règle est symétrique. Un recul se saisit « -20 » aussi naturellement
+    qu'une hausse se saisit « 20 », et sans la branche négative cette réponse
+    devenait -2000 % de croissance.
     """
     value = _value(facts, fact_id)
     if value is None:
         return None
-    return value / 100 if value > 1 else value
+    return value / 100 if value > 1 or value < -1 else value
 
 
 def _annual_revenue(facts: dict[str, Fact]) -> float | None:

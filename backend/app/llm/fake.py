@@ -108,10 +108,13 @@ def _value_for(annotation, seed: int, path: str, metadata=(), facts: tuple[str, 
     typing. Et `bool` passe avant `int`, puisque `bool` est un sous-type
     d'`int` en Python.
 
-    `facts` ne change la sortie que pour un champ nommé `fact_id` : c'est la
-    seule donnée qu'un modèle, même simulé, peut recopier mécaniquement du
-    prompt plutôt que de l'inventer — exactement le raisonnement qui vaut
-    déjà pour les repères de tableau dans `stream_chat`.
+    `facts` ne change la sortie qu'à deux endroits, et dans les deux cas
+    parce que le prompt contient la réponse à recopier plutôt qu'à inventer —
+    le raisonnement qui vaut déjà pour les repères de tableau dans
+    `stream_chat` :
+    - un champ nommé `fact_id` reçoit un identifiant offert ;
+    - une liste dont le chemin finit par `.questions` prend la longueur du
+      lot offert, voir le commentaire de la branche concernée plus bas.
     """
     origin = get_origin(annotation)
 

@@ -168,6 +168,7 @@ def writing_prompt(
     computations: list[Computation],
     profil: str,
     catalogue: Catalogue | None = None,
+    problems: list[str] | None = None,
 ) -> list[Message]:
     """Le prompt de rédaction est assemblé, pas écrit.
 
@@ -183,6 +184,18 @@ def writing_prompt(
     """
     catalogue = catalogue or load_catalogue()
     markers = "\n".join(f"[Tableau: {c.name}] — {c.title}" for c in computations)
+    # `problems` n'était réclamé par personne : trois nœuds le remplissaient —
+    # la critique, le vérificateur de chiffres, la relecture humaine — et ses
+    # deux seuls lecteurs étaient des routeurs. Une « réécriture » réémettait
+    # donc le prompt à l'identique, et rendait forcément le même brouillon.
+    # Le retour de l'utilisateur était collecté puis jeté.
+    corrections = ""
+    if problems:
+        listed = "\n".join(f"- {p}" for p in problems)
+        corrections = (
+            "\n\nCette section a déjà été rédigée une fois et doit être "
+            f"reprise. À corriger :\n{listed}\n"
+        )
     body = f"""Section à rédiger : {section.titre}
 Profil du document : {profil}
 Longueur visée : {section.longueur_cible}
@@ -198,7 +211,7 @@ Faits établis :
 
 Tableaux disponibles, à placer par leur repère :
 {markers or "- aucun"}
-
+{corrections}
 {WRITING_FORMAT}"""
     return [Message("system", _SYSTEM), Message("user", body)]
 

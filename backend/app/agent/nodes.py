@@ -24,10 +24,21 @@ REWRITE_SCORE = 7
 # d'abord, les faits utiles prennent les places qui restent — c'est la règle
 # que l'en-tête du catalogue décrit et qui n'avait jamais été écrite.
 #
-# Six : simulé sur le plan complet du business plan, ce chiffre récupère les
+# Six : mesuré sur le plan complet du business plan, ce chiffre récupère les
 # sept faits utiles dont les calculs financiers ont besoin, en quarante-sept
-# questions réparties sur quinze sections. Assez pour servir, trop peu pour
-# ressembler à un interrogatoire.
+# questions formant un lot dans onze des quinze sections. Assez pour servir,
+# trop peu pour ressembler à un interrogatoire.
+#
+# C'est un plancher avec du mou, pas un optimum : quatre récupère déjà les
+# sept faits, trois en perd deux (`tresorerie_securite`, `taille_marche_sam`).
+# Monter ne coûte rien, descendre sous quatre coûte des tableaux.
+#
+# Et la constante n'est pas seule porteuse : **l'ordre des `faits_utiles`
+# dans chaque section YAML l'est autant**. `besoin_financement` n'atteint
+# `aides_subventions` et `tresorerie_securite`, en quatrième et cinquième
+# position, que parce que `emprunt_montant` et `emprunt_duree` ont déjà été
+# répondus dans une section antérieure et sortent du lot. Réordonner une
+# liste de faits utiles peut donc coûter un tableau, en silence.
 QUESTION_BATCH_SIZE = 6
 
 
@@ -57,9 +68,16 @@ def question_batch(state) -> list[str]:
     faits utiles dans les places qui restent. Un fait déjà connu n'y revient
     jamais, « je ne sais pas » compris : c'est une réponse.
 
-    Un lot ne se forme que si un fait requis manque. Une section entièrement
-    renseignée ne pose donc rien, et ses faits utiles restent sans réponse :
-    c'est la lecture littérale de la règle, et elle suffit en pratique.
+    Un lot ne se forme que si un fait requis manque. Deux cas tombent donc
+    dans le silence, et il vaut mieux les distinguer :
+    - une section entièrement renseignée ne repose rien, ce qui est voulu ;
+    - une section qui ne déclare **aucun** fait requis ne demande jamais rien,
+      à aucun projet, jamais. Trois sont dans ce cas — `bp.risques_bp`,
+      `cdc.risques_cdc` et `cdc.cadre_reponse` — avec quatre à cinq faits
+      utiles chacune. Vérifié : leurs treize faits vivent tous ailleurs, dans
+      une section qui, elle, en requiert, et aucun des sept faits dont les
+      calculs dépendent n'est du nombre. C'est donc une perte de confort, pas
+      une perte de tableau.
     """
     _, section = _current(state)
     required = [f for f in section.faits_requis if f not in state["facts"]]
@@ -121,17 +139,30 @@ async def compute(state) -> dict:
     _, section = _current(state)
     results: dict[str, Computation] = dict(state["computations"])
     for name in section.calculs:
-        assumptions = build_assumptions(name, state["facts"])
-        if assumptions is None:
-            # Les faits ne suffisent pas. Le tableau n'existera pas et le texte
-            # portera une donnée à compléter — jamais une valeur par défaut,
-            # qui serait un chiffre inventé de plus.
-            continue
+        # `build_assumptions` est DANS le `try`, et ce n'est pas un détail de
+        # style. Il ne rend `None` que sur un fait manquant ; sur un fait
+        # présent mais hors des bornes pydantic de `finance.py` il lève une
+        # `ValidationError`. Celle-ci est bien une `ValueError`, mais depuis
+        # l'extérieur du `try` elle sortait du nœud et emportait le run — et
+        # comme le point de reprise rejoue le même nœud, le projet restait
+        # coincé pour de bon.
+        #
+        # Le cas n'a rien d'exotique : un projet freemium répond zéro au prix
+        # unitaire, un projet déficitaire répond un coût variable supérieur au
+        # prix. Rien ne valide les réponses en amont, `ask_questions` pose le
+        # fait tel quel.
         try:
+            assumptions = build_assumptions(name, state["facts"])
+            if assumptions is None:
+                # Les faits ne suffisent pas. Le tableau n'existera pas et le
+                # texte portera une donnée à compléter — jamais une valeur par
+                # défaut, qui serait un chiffre inventé de plus.
+                continue
             results[name] = run_computation(name, assumptions)
         except ValueError:
             # Hypothèses aberrantes : une descente de marché incohérente, un
-            # taux de marge nul. On n'écrit pas un tableau faux.
+            # taux de marge nul, une réponse hors bornes. On n'écrit pas un
+            # tableau faux, et surtout on n'emporte pas les neuf autres.
             continue
     return {"computations": results}
 
@@ -217,7 +248,8 @@ async def write(state, transport=None) -> dict:
     pieces: list[str] = []
     async for event in stream(
         "redaction",
-        prompts.writing_prompt(section, state["facts"], tables, profil, _catalogue()),
+        prompts.writing_prompt(section, state["facts"], tables, profil,
+                               _catalogue(), state["problems"]),
         project_id=state["project_id"],
         transport=transport,
     ):
