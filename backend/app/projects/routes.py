@@ -1,6 +1,7 @@
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from langgraph.types import Command
 
 from app.agent.graph import compiled_graph, initial_state
 from app.agent.projections import load_facts, load_sections
@@ -13,8 +14,13 @@ from app.projects.repository import (
     project_for_user,
     projects_of_user,
 )
-from app.projects.schemas import ProjectCreate, ProjectState, ProjectSummary
-from app.runs.runner import start_run
+from app.projects.schemas import (
+    AnswerRequest,
+    ProjectCreate,
+    ProjectState,
+    ProjectSummary,
+)
+from app.runs.runner import RunAlreadyRunning, start_run
 
 router = APIRouter(prefix="/projects", tags=["projets"])
 
@@ -135,3 +141,50 @@ async def state(project_id: UUID, user=Depends(active_user)):
         sections=sections,
         interaction=interaction,
     )
+
+
+@router.post("/{project_id}/answer")
+async def answer(project_id: UUID, body: AnswerRequest,
+                 user=Depends(active_user)):
+    """Répond à l'interaction current et relance le run (§6.2).
+
+    L'idempotence se joue ici, pas dans le graphe : on compare l'identifiant
+    reçu à celui de l'interruption en attente et on ne reprend que s'ils
+    coïncident. Un double-clic, une reconnexion, un onglet resté ouvert sur
+    un état dépassé — tous répondent 200 avec `rejoue: false`, et rien ne
+    bouge.
+
+    Répondre 409 serait défendable en théorie et désastreux en pratique : le
+    front ne peut pas distinguer « tu as cliqué deux fois » d'un vrai échec,
+    et afficherait une erreur à un utilisateur dont la réponse est bien
+    passée.
+    """
+    # L'ORDRE DES TROIS LECTURES EST PORTEUR, et rien ne les synchronise.
+    # La ligne d'abord, le point de reprise ensuite, les projections en
+    # dernier : le statut lu est donc le plus ancien des trois. Tant que les
+    # statuts n'avancent que dans un sens, l'écart penche du bon côté — on
+    # peut voir `running` à côté d'une interaction déjà présente, et le front
+    # affiche une question sous une bannière « en cours » périmée d'un
+    # sondage. Inverser les deux premières lectures donnerait `waiting` avec
+    # `interaction: null` : un état qui n'a jamais existé, et qu'un front
+    # rend en « répondez à la question qui n'est pas là ».
+    #
+    # La tâche 7 fait reculer les statuts (`failed` puis `running` à la
+    # reprise) : c'est là qu'il faudra reposer la question.
+    row = await _owned(project_id, user)
+    graph = await compiled_graph()
+    config = {"configurable": {"thread_id": row["thread_id"]}}
+    snapshot = await graph.aget_state(config)
+
+    pending = snapshot.interrupts[0] if snapshot.interrupts else None
+    if pending is None or pending.id != body.interaction_id:
+        return {"rejoue": False, "run_status": row["run_status"]}
+
+    try:
+        start_run(str(project_id), row["thread_id"],
+                  Command(resume={body.interaction_id: body.reponse}))
+    except RunAlreadyRunning:
+        # Un run avance déjà : c'est que deux requêtes sont arrivées ensemble
+        # et que la première a gagné. La seconde n'a rien à rejouer.
+        return {"rejoue": False, "run_status": "running"}
+    return {"rejoue": True, "run_status": "running"}

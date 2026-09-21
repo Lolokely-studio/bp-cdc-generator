@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -54,3 +54,17 @@ class ProjectState(BaseModel):
     faits: dict[str, dict]
     sections: list[dict]
     interaction: dict | None
+
+
+class AnswerRequest(BaseModel):
+    """La réponse à une interaction précise.
+
+    `reponse` n'est pas typée : les cinq interruptions du §4.5 portent des
+    charges utiles différentes — un dictionnaire de faits, une décision de
+    relecture, une liste d'arbitrages. Les typer ici obligerait à une union
+    discriminée qui devrait suivre chaque évolution du graphe, alors que
+    c'est le graphe qui valide ce qu'il reçoit.
+    """
+
+    interaction_id: str = Field(min_length=1)
+    reponse: Any = None
