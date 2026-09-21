@@ -1,7 +1,6 @@
+import asyncio
 import logging
 from uuid import UUID
-
-import asyncio
 
 from app.agent import checkpointer
 from app.agent.graph import compiled_graph
@@ -34,44 +33,43 @@ def start_run(project_id: str, thread_id: str, graph_input) -> None:
     registry.register(project_id, task)
 
 
-async def advance(project_id: str, thread_id: str, graph_input,
-                  *, _force_done: bool = False) -> None:
+async def advance(project_id: str, thread_id: str, graph_input) -> None:
     """Avance le graphe jusqu'à l'interruption suivante ou jusqu'au bout.
 
     Fonction séparée de `start_run` pour être appelable directement : un test
     du pilote n'a pas à se battre avec l'ordonnanceur pour savoir quand la
     tâche a fini.
-
-    `_force_done` sert au test de la purge, qui a besoin d'atteindre le
-    chemin de fin sans dérouler trente sections.
     """
     config = {"configurable": {"thread_id": thread_id}}
     await _status(project_id, "running")
     try:
-        if not _force_done:
-            graph = await compiled_graph()
-            await graph.ainvoke(graph_input, config=config)
-            snapshot = await graph.aget_state(config)
-            if snapshot.interrupts:
-                await _publish_interrupt(project_id, snapshot.interrupts[0])
-                await _status(project_id, "waiting")
-                return
+        graph = await compiled_graph()
+        await graph.ainvoke(graph_input, config=config)
+        snapshot = await graph.aget_state(config)
     except asyncio.CancelledError:
-        # L'arrêt de l'application. Le point de reprise a déjà tout ce qu'il
-        # faut ; la réconciliation du démarrage suivant remettra le projet en
-        # `failed` et proposera « Reprendre ».
+        # L'arrêt de l'application. On ne touche pas au statut : la ligne
+        # reste `running` et la réconciliation du démarrage suivant la
+        # repassera en `failed` en proposant « Reprendre » (tâche 7). Tant
+        # que cette réconciliation n'existe pas, la colonne ment après une
+        # annulation — c'est assumé, et c'est la tâche 7 qui le referme.
+        #
+        # Cette clause est documentaire : depuis Python 3.8,
+        # `CancelledError` hérite de `BaseException` et non d'`Exception`,
+        # donc le bloc suivant ne l'aurait pas attrapée de toute façon. On
+        # l'écrit pour que le lecteur sache que le cas a été pesé, pas
+        # oublié.
         raise
     except Exception as error:
-        # Une tâche dont personne n'attend le résultat avale son exception
-        # jusqu'au ramasse-miettes : sans ce bloc, un run mourrait en silence
-        # et `run_status` resterait à `running` pour toujours.
-        logger.exception("run %s en échec", project_id)
-        await _status(project_id, "failed")
-        publish(project_id, RunEvent("error", {
-            "code": "run_en_echec",
-            "message": str(error) or error.__class__.__name__,
-            "reprenable": True,
-        }))
+        await _fail(project_id, error)
+        return
+
+    # Le statut AVANT la publication, dans les deux sorties. Un client qui
+    # appelle `/state` en réaction à l'événement doit trouver la colonne déjà
+    # à jour ; l'ordre inverse lui montrerait l'état d'avant, une fois sur
+    # on ne sait combien.
+    if snapshot.interrupts:
+        await _status(project_id, "waiting")
+        await _publish_interrupt(project_id, snapshot.interrupts[0])
         return
 
     await _status(project_id, "done")
@@ -80,6 +78,34 @@ async def advance(project_id: str, thread_id: str, graph_input,
     removed = await checkpointer.purge_checkpoints(thread_id)
     logger.info("run %s terminé, %d points de reprise purgés", project_id, removed)
     publish(project_id, RunEvent("done", {"project_id": project_id}))
+
+
+async def _fail(project_id: str, error: Exception) -> None:
+    """Marque l'échec sans jamais le perdre.
+
+    L'événement part AVANT l'écriture en base, et l'écriture est elle-même
+    gardée. `_status` ouvre une connexion : si la base est la cause de
+    l'échec initial — le cas le plus probable — elle lèvera ici aussi. Dans
+    l'ordre inverse, cette seconde levée emporterait la publication et
+    s'échapperait d'une tâche que personne n'attend : le run mourrait en
+    silence et `run_status` resterait à `running` pour toujours, c'est-à-dire
+    exactement ce que ce bloc existe pour empêcher. Constaté sur une sonde,
+    pas déduit.
+
+    `logger.exception` est appelé sous une exception active, il journalise
+    donc la trace complète.
+    """
+    logger.exception("run %s en échec", project_id)
+    publish(project_id, RunEvent("error", {
+        "code": "run_en_echec",
+        "message": str(error) or error.__class__.__name__,
+        "reprenable": True,
+    }))
+    try:
+        await _status(project_id, "failed")
+    except Exception:
+        logger.exception(
+            "run %s : impossible d'écrire le statut d'échec", project_id)
 
 
 async def _publish_interrupt(project_id: str, interrupt) -> None:
@@ -95,6 +121,6 @@ async def _publish_interrupt(project_id: str, interrupt) -> None:
     }))
 
 
-async def _status(project_id: str, statut: str) -> None:
+async def _status(project_id: str, status: str) -> None:
     async with connection() as conn:
-        await set_run_status(conn, UUID(project_id), statut)
+        await set_run_status(conn, UUID(project_id), status)
