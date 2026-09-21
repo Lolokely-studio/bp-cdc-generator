@@ -914,7 +914,15 @@ from app.runs.runner import RunAlreadyRunning, advance, start_run
 
 
 @pytest_asyncio.fixture
-async def project(migrated_db):
+async def project(migrated_db, monkeypatch):
+    # `ESQUISSE_FAKE_LLM` n'est pas un détail de confort : le pilote appelle
+    # le graphe SANS lui passer de transport, et la passerelle lit donc le
+    # réglage. Sans cette ligne, `advance` partirait vers les vrais
+    # fournisseurs au milieu d'une suite qui s'annonce hors-réseau. Même
+    # montage que `tests/test_graph.py::project`.
+    monkeypatch.setenv("ESQUISSE_FAKE_LLM", "true")
+    from app.core import config
+    config.settings.cache_clear()
     async with connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
@@ -934,6 +942,13 @@ async def project(migrated_db):
         )
     yield {"project_id": project_id, "user_id": user_id,
            "thread_id": thread_id}
+    # Démontage : le point de reprise ouvre un pool lié à la boucle
+    # d'événements du test, et pytest-asyncio en donne une neuve à chacun.
+    # Le laisser derrière soi ferait échouer un test suivant sans rapport.
+    from app.agent.checkpointer import close_checkpointer
+
+    await close_checkpointer()
+    config.settings.cache_clear()
 
 
 async def _status(project_id, user_id):
