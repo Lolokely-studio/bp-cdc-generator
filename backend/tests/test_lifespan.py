@@ -142,3 +142,32 @@ async def test_shutdown_cancels_runs_before_closing_the_checkpointer(monkeypatch
     assert observed.get("encore_vivant") is False, (
         "le point de reprise a été fermé avant que le run ne soit annulé"
     )
+
+
+async def test_shutting_down_cancels_exports_before_closing_the_checkpointer(
+        monkeypatch):
+    """Un export lit le point de reprise : il doit être annulé AVANT sa
+    fermeture. Retirer l'appel du cycle de vie laissait la suite verte."""
+    import asyncio
+
+    from app import main
+    from app.export import service
+
+    blocker = asyncio.Event()
+
+    async def _stuck(project):
+        await blocker.wait()
+
+    monkeypatch.setattr(service, "export_project", _stuck)
+    seen = {}
+    real_close = main.close_checkpointer
+
+    async def _record_close():
+        seen["exporting"] = service.is_exporting("projet-a-l-arret")
+        await real_close()
+
+    monkeypatch.setattr(main, "close_checkpointer", _record_close)
+    async with main.lifespan(object()):
+        service.start_export({"id": "projet-a-l-arret"})
+        assert service.is_exporting("projet-a-l-arret")
+    assert seen["exporting"] is False

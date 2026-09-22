@@ -13,3 +13,15 @@ services:
       POSTGRES_USER: esquisse
       POSTGRES_DB: esquisse_test
     ports: ["5433:5432"]
+
+  # Même image que `render.yaml`, pour éprouver la conversion réelle en local
+  # avant un déploiement. Identifiants de développement en clair : ils ne
+  # protègent rien qui compte sur une machine locale.
+  gotenberg:
+    image: docker.io/gotenberg/gotenberg:8.37.0-libreoffice
+    environment:
+      API_ENABLE_BASIC_AUTH: "true"
+      GOTENBERG_API_BASIC_AUTH_USERNAME: gotenberg
+      GOTENBERG_API_BASIC_AUTH_PASSWORD: gotenberg
+      API_TIMEOUT: "120s"
+    ports: ["3000:3000"]

@@ -43,6 +43,24 @@ class Settings(BaseSettings):
     nvidia_api_key: str = ""
     groq_cloud_api_key: str = ""
 
+    # Gotenberg, réveillé seulement à l'export (§9.4). Service web PUBLIC —
+    # les services privés sont payants chez Render — donc protégé par
+    # l'authentification de base qu'il sait faire depuis sa version 8.
+    # URL vide : aucun Gotenberg configuré, et l'export passe directement au
+    # repli HTML.
+    gotenberg_url: str = ""
+    gotenberg_username: str = ""
+    gotenberg_password: str = ""
+    # Le premier appel paie le réveil du service, environ une minute.
+    gotenberg_timeout_seconds: float = 120.0
+
+    # Supabase Storage, pour les exports. La clé de service contourne les
+    # règles d'accès : elle ne sort jamais du serveur, et le navigateur ne
+    # reçoit que des liens signés à expiration courte.
+    supabase_url: str = ""
+    supabase_service_role_key: str = ""
+    supabase_bucket_name: str = "exports"
+
     @property
     def dsn(self) -> str:
         """DSN PostgreSQL construit à partir des variables SUPABASE_DB_*."""

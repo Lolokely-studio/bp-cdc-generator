@@ -37,10 +37,21 @@ if os.environ.get("ESQUISSE_NETWORK_TESTS") != "1":
     ):
         os.environ[_provider_key] = "cle-de-test"
 
+    # Même raison pour le stockage Supabase : la suite ordinaire ne doit
+    # jamais atteindre le vrai bucket. Seule la campagne `network` fournit
+    # les vraies SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY.
+    os.environ["SUPABASE_URL"] = "http://storage.test"
+    os.environ["SUPABASE_SERVICE_ROLE_KEY"] = "cle-de-test"
+
 # Même raison pour le drapeau du modèle simulé : un développeur qui laisse
 # `ESQUISSE_FAKE_LLM=true` dans son `.env` ferait tourner une autre suite que
 # celle de l'intégration continue.
 os.environ["ESQUISSE_FAKE_LLM"] = "false"
+
+# Même affectation ferme pour Gotenberg : une URL vide vaut « aucun Gotenberg
+# configuré » et fait sauter tout de suite au repli HTML, sans qu'un test
+# n'atteigne jamais un vrai service.
+os.environ["GOTENBERG_URL"] = ""
 
 # Les imports de `app` viennent APRÈS les affectations ci-dessus. Aujourd'hui
 # `settings()` est paresseux et mémoïsé, donc l'ordre ne change rien — mais il
@@ -129,13 +140,16 @@ async def _close_the_application_pool():
     yield
     from app.agent.checkpointer import close_checkpointer
     from app.core.db import close_current_pool
+    from app.export import service as export_service
     from app.runs import registry
 
     # Le même ordre qu'à l'arrêt de l'application, et pour la même raison :
     # on annule d'abord les runs, ensuite seulement on ferme ce dont ils se
     # servent. L'inverse laisse une tâche vivante demander une connexion à un
     # pool fermé — ce qui lève dans psycopg, depuis une tâche que personne
-    # n'attend, donc nulle part.
+    # n'attend, donc nulle part. Une tâche d'export qui survivrait à son
+    # test écrirait dans une base que le test suivant croit à lui.
     await registry.cancel_all()
+    await export_service.cancel_all()
     await close_checkpointer()
     await close_current_pool()

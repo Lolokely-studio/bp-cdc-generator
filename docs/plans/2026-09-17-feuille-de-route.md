@@ -107,5 +107,15 @@ Relecture des consignes et des grilles des 30 sections, plafond par compte, réi
       prémisse fausse ; le statut `reopened`, que rien ne relit ; le coût de la
       purge à chaque réveil. Risque accepté : pas de déploiement pendant un run
       actif (spec §9.2).
-- [ ] Plan 5
+- [x] Plan 5 — **livré** : [2026-09-22-06-export.md](2026-09-22-06-export.md) — 547 tests
+      Word depuis un modèle remplaçable, PDF par Gotenberg ou par un repli HTML
+      qui le dit, stockage Supabase privé et liens signés, export en tâche de
+      fond qui rend tout, dépose tout puis enregistre tout d'un coup, et dit
+      son issue. Vérifié sur le réel : aller-retour sur le vrai bucket,
+      conversion réelle par Gotenberg (103 Mo au pic, sur 512), et un projet
+      complet exporté de bout en bout après purge du point de reprise.
+      Défauts de fond trouvés en chemin : un nom de projet avec « & » faisait
+      planter tout Word ; un 200 sans PDF passait pour fidèle ; un export raté
+      était invisible et un échec mélangeait ancien et nouveau. Reporté : voir
+      la section « Revue finale » du plan.
 - [ ] Plan 6

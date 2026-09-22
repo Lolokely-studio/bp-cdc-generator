@@ -170,3 +170,37 @@ async def fail_if_still_running(conn, project_id: UUID) -> bool:
             (project_id,),
         )
         return cur.rowcount > 0
+
+
+async def record_exports(conn, project_id: UUID, files: list[dict]) -> None:
+    """Enregistre tous les fichiers d'un export, ou aucun.
+
+    Une seule transaction : un export se voit en entier ou pas du tout.
+    `on conflict` remplace la suppression préalable, que l'index unique de la
+    migration 0005 rend inutile.
+    """
+    async with conn.transaction():
+        async with conn.cursor() as cur:
+            for f in files:
+                await cur.execute(
+                    "insert into exports (project_id, document, format, "
+                    "storage_path, brouillon, fidele) "
+                    "values (%s, %s, %s, %s, %s, %s) "
+                    "on conflict (project_id, document, format) do update set "
+                    "storage_path = excluded.storage_path, "
+                    "brouillon = excluded.brouillon, "
+                    "fidele = excluded.fidele, created_at = now()",
+                    (project_id, f["document"], f["format"], f["storage_path"],
+                     f["draft"], f["faithful"]))
+
+
+async def exports_of_project(conn, project_id: UUID) -> list[dict]:
+    """Les exports d'un projet. L'appelant a déjà vérifié la propriété par
+    `project_for_user` : cette requête ne filtre que sur le projet."""
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "select document, format, storage_path, brouillon, fidele, created_at "
+            "from exports where project_id = %s order by document, format",
+            (project_id,))
+        columns = [column.name for column in cur.description]
+        return [dict(zip(columns, row)) for row in await cur.fetchall()]

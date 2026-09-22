@@ -33,15 +33,53 @@ services:
       # être éteint, et le lire dans le fichier vaut mieux que le déduire.
       - key: ESQUISSE_FAKE_LLM
         value: "false"
+      # Le PDF vient de Gotenberg, un service public sur les paliers gratuits
+      # de Render, protégé par l'authentification de base. Les identifiants
+      # sont saisis une fois dans le tableau de bord et valent pour les deux
+      # services : celui-ci les envoie, l'autre les vérifie.
+      - key: GOTENBERG_URL
+        sync: false
+      - key: GOTENBERG_USERNAME
+        sync: false
+      - key: GOTENBERG_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Explicite, comme ESQUISSE_FAKE_LLM : le réglage retombe sur « exports »
+      # par défaut, mais le bucket de production se lit ici plutôt qu'il ne se
+      # déduit du code.
+      - key: SUPABASE_BUCKET_NAME
+        value: exports
 
   # Image officielle épinglée. Un service déployé depuis une image
   # pré-construite ne se redéploie pas tout seul : c'est voulu ici.
   # Il dort pendant toute la rédaction et n'est réveillé qu'à l'export,
   # parce que les 750 heures d'instance mensuelles sont partagées
   # entre tous les services de l'espace de travail.
+  #
+  # Épinglée sur la variante `-libreoffice` (vérifié sur Docker Hub le 22
+  # septembre : dernière version 8 publiée) : sans Chromium, dont l'export n'a
+  # pas besoin, elle tient mieux dans les 512 Mo de l'offre gratuite.
+  # Un service web sur Render est forcément public ; les services privés sont
+  # payants. L'authentification de base que Gotenberg sait faire depuis la
+  # version 8 protège donc l'accès, avec des identifiants saisis dans le
+  # tableau de bord, jamais dans le dépôt.
   - type: web
     name: esquisse-gotenberg
     runtime: image
     image:
-      url: docker.io/gotenberg/gotenberg:8
+      url: docker.io/gotenberg/gotenberg:8.37.0-libreoffice
     plan: free
+    envVars:
+      - key: API_ENABLE_BASIC_AUTH
+        value: "true"
+      - key: GOTENBERG_API_BASIC_AUTH_USERNAME
+        sync: false
+      - key: GOTENBERG_API_BASIC_AUTH_PASSWORD
+        sync: false
+      # Aligné sur `gotenberg_timeout_seconds` côté API : le défaut de 30s ne
+      # laisse pas le temps à LibreOffice de démarrer après un réveil à froid.
+      - key: API_TIMEOUT
+        value: "120s"
