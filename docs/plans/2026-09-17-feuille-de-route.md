@@ -107,5 +107,10 @@ Relecture des consignes et des grilles des 30 sections, plafond par compte, réi
       prémisse fausse ; le statut `reopened`, que rien ne relit ; le coût de la
       purge à chaque réveil. Risque accepté : pas de déploiement pendant un run
       actif (spec §9.2).
-- [ ] Plan 5
+- [ ] Plan 5 — **écrit, à exécuter** : [2026-09-22-06-export.md](2026-09-22-06-export.md)
+      Sept tâches : document assemblé, graphiques, Word par modèle remplaçable,
+      PDF par Gotenberg avec repli HTML qui le dit, stockage Supabase et liens
+      signés, routes d'export en tâche de fond, Gotenberg en déploiement.
+      Prérequis du propriétaire : bucket privé `exports`, `SUPABASE_URL` et
+      `SUPABASE_SERVICE_ROLE_KEY`.
 - [ ] Plan 6
