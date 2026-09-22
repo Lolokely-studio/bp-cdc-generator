@@ -1,10 +1,12 @@
+import pytest
+
 from app.agent.finance import (
     CashAssumptions,
     IncomeAssumptions,
     cash_plan_12m,
     income_statement_3y,
 )
-from app.export.charts import charts_for
+from app.export.charts import _cash_series, _income_series, charts_for
 
 _PNG = b"\x89PNG\r\n\x1a\n"
 
@@ -62,3 +64,50 @@ def test_charts_do_not_depend_on_a_display():
     import matplotlib
 
     assert matplotlib.get_backend().lower() == "agg"
+
+
+def test_the_income_series_are_revenue_and_result_in_that_order():
+    revenue, result = _income_series(list(_income().numbers))
+    assert revenue == pytest.approx([100_000, 110_000, 121_000])
+    assert result == pytest.approx([25_000, 31_000, 37_600])
+
+
+def test_the_cash_series_is_the_twelve_month_end_balances():
+    assert _cash_series(list(_cash().numbers)) == pytest.approx(
+        [11_000 + 1_000 * m for m in range(12)])
+
+
+def test_incomplete_numbers_give_no_chart():
+    assert charts_for({"compte_resultat_3ans": {"numbers": [1.0] * 8}}) == []
+    assert charts_for({"plan_tresorerie_12mois": {"numbers": [1.0] * 11}}) == []
+
+
+def test_charts_come_in_a_stable_order():
+    titles = [c.title for c in charts_for({"plan_tresorerie_12mois": _cash(),
+                                           "compte_resultat_3ans": _income()})]
+    assert titles == ["Chiffre d'affaires et résultat sur trois ans",
+                      "Trésorerie de fin de mois"]
+
+
+def test_a_failing_savefig_leaves_no_figure_open(monkeypatch):
+    import matplotlib.pyplot as plt
+    from matplotlib.figure import Figure
+
+    plt.close("all")
+
+    def _boom(self, *args, **kwargs):
+        raise OSError("disque plein")
+
+    monkeypatch.setattr(Figure, "savefig", _boom)
+    with pytest.raises(OSError):
+        charts_for({"compte_resultat_3ans": _income()})
+    assert plt.get_fignums() == []
+
+
+def test_a_computation_back_from_the_checkpoint_serializer_still_charts():
+    """Le vrai sérialiseur de LangGraph, pas une supposition sur sa sortie."""
+    from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
+    serde = JsonPlusSerializer()
+    restored = serde.loads_typed(serde.dumps_typed(_income()))
+    assert len(charts_for({"compte_resultat_3ans": restored})) == 1

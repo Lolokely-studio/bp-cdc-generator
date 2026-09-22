@@ -26,22 +26,34 @@ def _numbers(computation) -> list[float]:
 
 def _render(figure) -> bytes:
     buffer = io.BytesIO()
-    figure.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
-    # Fermer la figure n'est pas du ménage : pyplot garde une référence à
-    # chacune, et un service qui exporte en boucle finirait par saturer ses
-    # 512 Mo.
-    plt.close(figure)
+    try:
+        figure.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
+    finally:
+        # Fermer la figure n'est pas du ménage : pyplot garde une référence
+        # à chacune, et un service qui exporte en boucle finirait par saturer
+        # ses 512 Mo. `finally`, parce qu'un échec répété de `savefig` ne doit
+        # pas en laisser une ouverte à chaque fois.
+        plt.close(figure)
     return buffer.getvalue()
+
+
+def _income_series(numbers: list[float]) -> tuple[list[float], list[float]] | None:
+    """(chiffre d'affaires, résultat) par année, dans l'ordre où
+    `income_statement_3y` range ses triplets. `None` si incomplet."""
+    if len(numbers) < 9:
+        return None
+    return ([numbers[i * 3] for i in range(3)],
+            [numbers[i * 3 + 2] for i in range(3)])
 
 
 def _income_chart(numbers: list[float]) -> Chart | None:
     """Trois triplets (chiffre d'affaires, marge brute, résultat) par année,
     dans l'ordre où `income_statement_3y` les range."""
-    if len(numbers) < 9:
+    series = _income_series(numbers)
+    if series is None:
         return None
+    revenue, result = series
     years = ["Année 1", "Année 2", "Année 3"]
-    revenue = [numbers[i * 3] for i in range(3)]
-    result = [numbers[i * 3 + 2] for i in range(3)]
     figure, axis = plt.subplots(figsize=(6, 3.2))
     positions = range(3)
     axis.bar([p - 0.2 for p in positions], revenue, width=0.4,
@@ -54,12 +66,20 @@ def _income_chart(numbers: list[float]) -> Chart | None:
     return Chart("Chiffre d'affaires et résultat sur trois ans", _render(figure))
 
 
-def _cash_chart(numbers: list[float]) -> Chart | None:
-    """Les douze soldes de fin de mois, dans l'ordre de `cash_plan_12m`."""
+def _cash_series(numbers: list[float]) -> list[float] | None:
+    """Les douze soldes de fin de mois. `None` si incomplet."""
     if len(numbers) < 12:
         return None
+    return numbers[:12]
+
+
+def _cash_chart(numbers: list[float]) -> Chart | None:
+    """Les douze soldes de fin de mois, dans l'ordre de `cash_plan_12m`."""
+    series = _cash_series(numbers)
+    if series is None:
+        return None
     figure, axis = plt.subplots(figsize=(6, 3.2))
-    axis.plot(range(1, 13), numbers[:12], marker="o")
+    axis.plot(range(1, 13), series, marker="o")
     axis.axhline(0, linewidth=0.8, color="black")
     axis.set_xticks(range(1, 13))
     axis.set_xlabel("Mois")
