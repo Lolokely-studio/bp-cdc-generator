@@ -140,13 +140,16 @@ async def _close_the_application_pool():
     yield
     from app.agent.checkpointer import close_checkpointer
     from app.core.db import close_current_pool
+    from app.export import service as export_service
     from app.runs import registry
 
     # Le même ordre qu'à l'arrêt de l'application, et pour la même raison :
     # on annule d'abord les runs, ensuite seulement on ferme ce dont ils se
     # servent. L'inverse laisse une tâche vivante demander une connexion à un
     # pool fermé — ce qui lève dans psycopg, depuis une tâche que personne
-    # n'attend, donc nulle part.
+    # n'attend, donc nulle part. Une tâche d'export qui survivrait à son
+    # test écrirait dans une base que le test suivant croit à lui.
     await registry.cancel_all()
+    await export_service.cancel_all()
     await close_checkpointer()
     await close_current_pool()

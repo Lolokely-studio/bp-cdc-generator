@@ -170,3 +170,33 @@ async def fail_if_still_running(conn, project_id: UUID) -> bool:
             (project_id,),
         )
         return cur.rowcount > 0
+
+
+async def record_export(conn, project_id: UUID, *, document: str, format: str,
+                        storage_path: str, draft: bool, faithful: bool) -> None:
+    """Remplace l'export précédent du même document et du même format.
+
+    Le fichier est écrasé au même chemin : garder l'ancienne ligne ferait
+    pointer deux lignes vers un seul fichier.
+    """
+    async with conn.transaction():
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "delete from exports where project_id = %s and document = %s "
+                "and format = %s", (project_id, document, format))
+            await cur.execute(
+                "insert into exports (project_id, document, format, "
+                "storage_path, brouillon, fidele) values (%s, %s, %s, %s, %s, %s)",
+                (project_id, document, format, storage_path, draft, faithful))
+
+
+async def exports_of_project(conn, project_id: UUID) -> list[dict]:
+    """Les exports d'un projet. L'appelant a déjà vérifié la propriété par
+    `project_for_user` : cette requête ne filtre que sur le projet."""
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "select document, format, storage_path, brouillon, fidele, created_at "
+            "from exports where project_id = %s order by document, format",
+            (project_id,))
+        columns = [column.name for column in cur.description]
+        return [dict(zip(columns, row)) for row in await cur.fetchall()]

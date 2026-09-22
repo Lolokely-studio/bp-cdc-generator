@@ -95,6 +95,9 @@ async def lifespan(app: FastAPI):
         # d'être fermée, et l'erreur remonterait dans une tâche que
         # personne n'attend, donc nulle part.
         await registry.cancel_all()
+        from app.export.service import cancel_all as cancel_all_exports
+
+        await cancel_all_exports()
         try:
             await close_checkpointer()
         finally:
@@ -124,6 +127,9 @@ def create_app() -> FastAPI:
 
     from app.projects.routes import router as projects_router
     app.include_router(projects_router)
+
+    from app.projects.exports import router as exports_router
+    app.include_router(exports_router)
 
     return app
 
