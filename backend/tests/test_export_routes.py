@@ -384,3 +384,40 @@ async def test_a_project_listing_never_signs_another_projects_paths(client, acco
     assert all(f["lien"].startswith(f"https://signe.test/{first_id}/")
               for f in body["fichiers"])
     assert len(body["fichiers"]) == 2
+
+
+async def test_computations_are_read_from_the_checkpoint(monkeypatch):
+    """Le corps de `_computations`, et non une doublure qui le remplace.
+
+    Le test des graphiques remplace la fonction entière : son corps n'était
+    exécuté par aucun test, et rendre `{}` y passait inaperçu. On fournit ici
+    un graphe dont l'état porte des calculs, et on vérifie qu'ils sortent —
+    y compris quand l'état n'en porte aucun.
+    """
+    from types import SimpleNamespace
+
+    from app.export import service
+
+    class _Graph:
+        def __init__(self, values):
+            self.values = values
+            self.asked = None
+
+        async def aget_state(self, config):
+            self.asked = config
+            return SimpleNamespace(values=self.values)
+
+    graph = _Graph({"computations": {"tam_sam_som": {"numbers": [1.0]}}})
+
+    async def _compiled():
+        return graph
+
+    monkeypatch.setattr(service, "compiled_graph", _compiled)
+    assert await service._computations("fil-x") == {
+        "tam_sam_som": {"numbers": [1.0]}}
+    assert graph.asked == {"configurable": {"thread_id": "fil-x"}}
+
+    graph.values = {}
+    assert await service._computations("fil-x") == {}
+    graph.values = None
+    assert await service._computations("fil-x") == {}
