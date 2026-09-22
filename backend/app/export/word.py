@@ -3,6 +3,7 @@ from pathlib import Path
 
 from docx.shared import Cm
 from docxtpl import DocxTemplate
+from jinja2 import Environment, StrictUndefined
 
 from app.agent.state import BulletList, Paragraph, Placeholder, Table
 from app.export.charts import Chart
@@ -12,6 +13,12 @@ MODEL = Path(__file__).parent / "templates" / "model.docx"
 
 DRAFT_NOTICE = ("Brouillon — certaines sections ne sont pas encore validées. "
                 "Ce document n'est pas définitif.")
+
+# `autoescape` : le titre porte le nom du projet, du texte libre, substitué
+# tel quel dans le XML du document ; un « & » le rendait invalide.
+# `StrictUndefined` : une balise mal orthographiée dans un modèle refait à la
+# main lève à l'export au lieu de rendre un vide que personne ne remarquerait.
+_JINJA = Environment(undefined=StrictUndefined, autoescape=True)
 
 
 def _add_table(subdoc, block: Table) -> None:
@@ -69,7 +76,7 @@ def render_word(document: ExportDocument, charts: list[Chart]) -> bytes:
         "title": document.title,
         "draft_notice": DRAFT_NOTICE if document.draft else "",
         "body": body,
-    })
+    }, jinja_env=_JINJA, autoescape=True)
     output = io.BytesIO()
     template.save(output)
     return output.getvalue()

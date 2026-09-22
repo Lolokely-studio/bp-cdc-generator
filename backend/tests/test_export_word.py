@@ -88,3 +88,51 @@ def test_no_template_tag_survives_the_rendering():
     text = "\n".join(p.text for p in word.paragraphs)
     footer = word.sections[0].footer.paragraphs[0].text
     assert "{{" not in text and "{{" not in footer
+
+
+def test_a_project_name_with_xml_characters_renders():
+    document = _document()
+    document.title = "Business plan — Café & Associés <SARL>"
+    word = _read(render_word(document, []))
+    assert "Business plan — Café & Associés <SARL>" in [p.text for p in word.paragraphs]
+
+
+def test_a_misspelled_template_tag_fails_loudly(tmp_path, monkeypatch):
+    """Un modèle refait à la main avec `{{ titel }}` doit lever, pas rendre
+    un titre vide."""
+    import jinja2
+    from docx import Document as NewDocument
+
+    from app.export import word as word_module
+
+    model = tmp_path / "model.docx"
+    handmade = NewDocument()
+    handmade.add_paragraph("{{ titel }}")
+    handmade.add_paragraph("{{p body }}")
+    handmade.save(model)
+    monkeypatch.setattr(word_module, "MODEL", model)
+    import pytest
+
+    with pytest.raises(jinja2.UndefinedError):
+        render_word(_document(), [])
+
+
+def test_section_titles_are_first_level_headings():
+    word = _read(render_word(_document(), []))
+    styles = {p.text: p.style.name for p in word.paragraphs}
+    assert styles["Résumé"] == "Heading 1"
+    assert styles["Finances"] == "Heading 1"
+
+
+def test_an_inline_placeholder_keeps_its_label():
+    """Le libellé doit figurer dans le texte, là où la donnée manque, et pas
+    seulement dans l'annexe : on vide l'annexe pour que le test ne puisse pas
+    s'appuyer sur elle."""
+    word = _read(render_word(_document(missing=[]), []))
+    assert "[Donnée à compléter : taux d'emprunt]" in [p.text for p in word.paragraphs]
+
+
+def test_charts_come_after_the_sections():
+    word = _read(render_word(_document(), [Chart("Trésorerie", _png())]))
+    texts = [p.text for p in word.paragraphs]
+    assert texts.index("Graphiques") > texts.index("Finances")
