@@ -3847,3 +3847,53 @@ git commit -m "feat(projects): reprendre un run mort, rouvrir une section"
 ```
 
 ---
+
+- [ ] **Étape 9 : ce que la relecture de la tâche 7 a trouvé**
+
+Vingt-trois mutations, onze survivantes, et deux comportements faux.
+
+1. **Le démarrage ne doit jamais dépendre des tâches de ménage.**
+   `reconcile_orphan_runs` et `purge_finished_projects` tournent avant le
+   `yield` du cycle de vie. Une erreur de l'une ou l'autre, par exemple la base
+   qui répond mal au réveil, empêche l'application de démarrer : pas de
+   `/health`, et l'hébergeur peut la relancer en boucle. Chacune s'entoure
+   d'un `try/except` qui journalise et continue.
+2. **`/resume` ne reprend que ce qui est à reprendre.** Il n'agit que sur
+   `failed`, ou sur un `running` orphelin (plus aucune tâche vivante). Sur
+   `waiting`, `done` ou `idle`, il répond `{"reprise": false, "run_status": …}`
+   sans rien lancer. Sinon, sur un projet en attente, il rejouait
+   l'interruption et faisait refuser par un 409 la vraie réponse de
+   l'utilisateur, et sur un projet sans point de reprise il repartait d'un
+   plan vide vers un `failed` présenté comme reprenable.
+3. **Le commentaire de `/state` était faux.** L'état `waiting` avec
+   `interaction: null` existe déjà, sans que les lectures soient inversées.
+   Pendant un `/answer`, la ligne lue est encore `waiting` alors que le point
+   de reprise a déjà consommé la réponse. La relecture l'a reproduit en
+   élargissant la fenêtre. Le commentaire dit maintenant la vérité : c'est un
+   état de passage, et le front doit relire `/state` quand il le rencontre.
+   Le même texte copié dans `/answer`, qui ne lit aucune projection, est
+   corrigé aussi.
+4. **La réconciliation n'écrase pas un statut plus récent.** Elle ne passe à
+   `failed` que ce qui est encore `running`, via une mise à jour conditionnelle
+   (`where run_status = 'running'`).
+5. **Tests manquants :**
+   - la purge compte les points de reprise avant et après, et laisse intact un
+     projet qui n'est pas `done` ;
+   - le démarrage appelle bien la réconciliation et la purge ;
+   - l'arrêt annule les runs AVANT de fermer le point de reprise ;
+   - `/reopen` sur un projet `bp` et sur un projet `both` ;
+   - `/reopen` sur une section inconnue répond 404 ;
+   - le contenu exact de la réponse de `/reopen` ;
+   - `/resume` transmet à `save_facts` les faits du point de reprise, et non
+     un dictionnaire vide ;
+   - un cycle dans `depend_de` se termine (catalogue modifié en test) ;
+   - chaque correction ci-dessus a son test.
+
+**Reporté au plan suivant, avec la raison :**
+- la purge au démarrage refait tout le travail à chaque réveil, ce qui est un
+  coût, pas un défaut de correction ;
+- le statut `reopened` est écrit mais relu par personne, donc rouvrir une
+  section ne la fait pas réécrire : c'est au plan qui câblera la réécriture ;
+- deux `pool.open(wait=True)` concurrents dans `purge_checkpoints` lèvent, et
+  deux runs qui se terminent ensemble peuvent le déclencher : même défaut que
+  celui corrigé dans `saver()`, à traiter de la même façon.

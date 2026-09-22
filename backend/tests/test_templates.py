@@ -271,3 +271,23 @@ def test_an_unknown_section_is_refused():
 
     with pytest.raises(KeyError):
         load_catalogue().sections_depending_on("cdc.section_qui_n_existe_pas")
+
+
+def test_a_cycle_in_depend_de_terminates():
+    """`to_reopen` sert aussi de marquage, et sa docstring dit qu'un cycle
+    s'arrête de lui-même : rien ne le vérifiait. Un gabarit réel n'en déclare
+    pas, donc ce test construit le sien — sans lui, un cycle introduit par
+    erreur ferait déborder la file en boucle infinie plutôt que de lever une
+    erreur lisible."""
+    a = _minimal_section("a", []).model_copy(update={"depend_de": ["c"]})
+    b = _minimal_section("b", []).model_copy(update={"depend_de": ["a"]})
+    c = _minimal_section("c", []).model_copy(update={"depend_de": ["b"]})
+    catalogue = Catalogue(
+        cdc=_minimal_document("cdc", [a, b, c]),
+        bp=_minimal_document("bp", []),
+        facts={},
+    )
+
+    reopened = catalogue.sections_depending_on("cdc.a")
+
+    assert reopened == {"cdc.a", "cdc.b", "cdc.c"}

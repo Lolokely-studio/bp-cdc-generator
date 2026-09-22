@@ -308,3 +308,376 @@ async def test_reopening_calls_mark_for_reopening_with_the_transitive_closure(
 
     assert captured, "`mark_for_reopening` n'a pas été appelée par `/reopen`"
     assert captured[-1] == load_catalogue().sections_depending_on(f"cdc.{section_id}")
+
+
+# --- Étape 9 : `/resume` ne reprend que ce qui est à reprendre -------------
+
+
+async def test_resuming_a_waiting_project_starts_nothing(client, account):
+    """`waiting` n'est pas un crash : c'est une interruption bien vivante.
+    Relancer rejouerait le nœud interrompu et ferait refuser par le 409 de
+    `/answer` la vraie réponse que l'utilisateur est peut-être en train
+    d'envoyer."""
+    from app.runs.registry import cancel_all
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    for _ in range(100):
+        state_body = (await client.get(f"/projects/{project_id}/state",
+                                 headers=account)).json()
+        if state_body["interaction"] is not None:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le run n'a jamais atteint d'interruption")
+    interaction_before = state_body["interaction"]
+
+    # Neutralise le registre, comme les autres tests de ce fichier : le
+    # point est de tester la garde sur `run_status`, pas de dépendre du
+    # minutage exact auquel la tâche de fond quitte le registre.
+    await cancel_all()
+    await _force_status(project_id, "waiting")
+
+    response = await client.post(f"/projects/{project_id}/resume",
+                                headers=account)
+    assert response.status_code == 200
+    assert response.json() == {"reprise": False, "run_status": "waiting"}
+
+    state_body = (await client.get(f"/projects/{project_id}/state",
+                             headers=account)).json()
+    assert state_body["interaction"]["id"] == interaction_before["id"], (
+        "`/resume` a rejoué l'interruption alors que rien n'avait crashé"
+    )
+
+
+async def test_resuming_a_done_project_starts_nothing(client, account):
+    from app.runs.registry import cancel_all
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    await cancel_all()
+    await _force_status(project_id, "done")
+
+    response = await client.post(f"/projects/{project_id}/resume",
+                                headers=account)
+    assert response.status_code == 200
+    assert response.json() == {"reprise": False, "run_status": "done"}
+
+
+async def test_resuming_an_idle_project_starts_nothing(client, account):
+    """`idle` : le premier `ainvoke` n'a peut-être pas encore écrit de point
+    de reprise. Reprendre dans cette fenêtre repartirait d'un plan vide et
+    planterait dans un `failed` présenté à tort comme reprenable."""
+    from app.runs.registry import cancel_all
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    await cancel_all()
+    await _force_status(project_id, "idle")
+
+    response = await client.post(f"/projects/{project_id}/resume",
+                                headers=account)
+    assert response.status_code == 200
+    assert response.json() == {"reprise": False, "run_status": "idle"}
+
+
+async def test_resuming_an_orphaned_running_project_restarts_it(client, account):
+    """Le second cas où `/resume` doit agir : `running` sans tâche vivante
+    au registre — un redémarrage survenu avant que la réconciliation n'ait
+    eu la main."""
+    from app.runs.registry import cancel_all
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    for _ in range(100):
+        state_body = (await client.get(f"/projects/{project_id}/state",
+                                 headers=account)).json()
+        if state_body["interaction"] is not None:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le run n'a jamais atteint d'interruption")
+    interaction_before = state_body["interaction"]
+
+    await cancel_all()
+    # `running`, et non `failed` : l'autre statut sur lequel `/resume` doit
+    # agir.
+    await _force_status(project_id, "running")
+
+    response = await client.post(f"/projects/{project_id}/resume",
+                                headers=account)
+    assert response.status_code == 200
+    assert response.json() == {"reprise": True, "run_status": "running"}
+
+    for _ in range(100):
+        header = (await client.get(f"/projects/{project_id}", headers=account)).json()
+        if header["run_status"] == "waiting":
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("la reprise n'a jamais atteint une nouvelle interruption")
+
+    state_body = (await client.get(f"/projects/{project_id}/state",
+                             headers=account)).json()
+    assert state_body["interaction"]["id"] == interaction_before["id"]
+
+
+async def test_resuming_passes_the_checkpoints_facts_to_save_facts(
+        client, account, monkeypatch):
+    """`/resume` doit transmettre à `save_facts` les faits du point de
+    reprise, pas un dictionnaire vide : la seule assertion précédente était
+    que `save_facts` ait été appelée, ce qu'un appel avec `{}` satisfaisait
+    déjà."""
+    from tests.test_answer import _answer_for, _wait_for_interaction
+    from app.projects import routes
+    from app.runs.registry import cancel_all
+
+    captured = []
+    real_save_facts = routes.save_facts
+
+    async def _spy(conn, project_id, facts):
+        captured.append(facts)
+        return await real_save_facts(conn, project_id, facts)
+
+    monkeypatch.setattr(routes, "save_facts", _spy)
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    interaction = await _wait_for_interaction(client, project_id, account)
+    await client.post(f"/projects/{project_id}/answer",
+                      json={"interaction_id": interaction["id"],
+                            "reponse": _answer_for(interaction)},
+                      headers=account)
+
+    # Un statut arrêté ET une interruption réellement nouvelle : même motif
+    # que `test_answer.py::test_answering_advances_the_run` — une boucle qui
+    # s'arrête sur `interaction: null`, l'état de passage entre deux
+    # interruptions, capture un état transitoire et compare contre `None`.
+    for _ in range(200):
+        header = (await client.get(f"/projects/{project_id}", headers=account)).json()
+        pending = (await client.get(f"/projects/{project_id}/state",
+                                    headers=account)).json()["interaction"]
+        if (header["run_status"] == "waiting" and pending is not None
+                and pending["id"] != interaction["id"]):
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le run ne s'est pas arrêté sur l'interruption suivante")
+
+    await cancel_all()
+    await _force_status(project_id, "failed")
+
+    response = await client.post(f"/projects/{project_id}/resume",
+                                headers=account)
+    assert response.status_code == 200
+
+    assert captured, "`save_facts` n'a pas été appelée par `/resume`"
+    assert captured[-1] != {}, (
+        "`/resume` a transmis un dictionnaire vide à `save_facts` au lieu "
+        "des faits du point de reprise"
+    )
+
+
+# --- Étape 9 : la réconciliation n'écrase pas un statut plus récent --------
+
+
+async def test_reconciliation_does_not_overwrite_a_status_more_recent_than_running(
+        client, account, monkeypatch):
+    """Deux lectures désynchronisées : la réconciliation lit
+    `running_projects`, puis, avant d'écrire, le run atteint `waiting` de
+    lui-même. Sans la garde `where run_status = 'running'`, l'écriture agit
+    sur une photo périmée et écrase ce statut plus récent."""
+    from uuid import UUID
+
+    from app.main import reconcile_orphan_runs
+    from app.projects import repository
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    for _ in range(100):
+        header = (await client.get(f"/projects/{project_id}", headers=account)).json()
+        if header["run_status"] == "waiting":
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le run n'a jamais atteint `waiting`")
+    # Laisse le rappel de fin de tâche du registre s'exécuter : `advance`
+    # écrit `waiting` avant de rendre la main, le registre l'oublie au tour
+    # de boucle suivant, pas au même instant.
+    await asyncio.sleep(0.1)
+
+    async def _stale_snapshot(conn):
+        # La photo qu'aurait prise `running_projects` juste AVANT que le
+        # statut ne devienne `waiting` : la ligne y figure encore.
+        return [{"id": UUID(project_id), "thread_id": "peu importe"}]
+
+    monkeypatch.setattr(repository, "running_projects", _stale_snapshot)
+
+    reconciled = await reconcile_orphan_runs()
+
+    assert reconciled == 0, (
+        "la réconciliation a compté une ligne qu'elle n'a pas pu passer à "
+        "`failed`, faux positif"
+    )
+    header = (await client.get(f"/projects/{project_id}", headers=account)).json()
+    assert header["run_status"] == "waiting", (
+        "la réconciliation a écrasé un statut plus récent que `running`"
+    )
+
+
+# --- Étape 9 : tests manquants ---------------------------------------------
+
+
+async def test_purging_finished_projects_reduces_checkpoint_rows_and_leaves_others_alone(
+        client, account):
+    """La purge doit vraiment réduire le nombre de points de reprise d'un
+    projet `done`, et ne pas toucher à celui d'un projet qui ne l'est pas —
+    jusqu'ici, seul le COMPTE de projets purgés était vérifié."""
+    from uuid import UUID
+
+    from app.agent.checkpointer import checkpointer_pool
+    from app.main import purge_finished_projects
+    from app.projects.repository import set_run_status
+
+    done_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    other_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+
+    for pid in (done_id, other_id):
+        for _ in range(100):
+            state_body = (await client.get(f"/projects/{pid}/state",
+                                     headers=account)).json()
+            if state_body["interaction"] is not None:
+                break
+            await asyncio.sleep(0.05)
+        else:
+            raise AssertionError("le run n'a jamais atteint d'interruption")
+
+    async def _thread_id(pid):
+        async with connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "select thread_id from projects where id = %s", (UUID(pid),))
+                return (await cur.fetchone())[0]
+
+    async def _checkpoint_count(thread_id):
+        pool = checkpointer_pool()
+        await pool.open(wait=True)
+        async with pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                "select count(*) as n from checkpoints where thread_id = %s",
+                (thread_id,))
+            return (await cur.fetchone())["n"]
+
+    done_thread = await _thread_id(done_id)
+    other_thread = await _thread_id(other_id)
+
+    before_done = await _checkpoint_count(done_thread)
+    before_other = await _checkpoint_count(other_thread)
+    assert before_done > 1, (
+        "il faut plusieurs points de reprise pour que la purge ait un effet observable"
+    )
+
+    async with connection() as conn:
+        await set_run_status(conn, UUID(done_id), "done")
+
+    purged = await purge_finished_projects()
+    assert purged >= 1
+
+    after_done = await _checkpoint_count(done_thread)
+    after_other = await _checkpoint_count(other_thread)
+
+    assert after_done < before_done, "la purge n'a rien retiré du projet `done`"
+    assert after_other == before_other, "la purge a touché un projet qui n'est pas `done`"
+
+
+async def test_reopening_a_section_on_a_bp_project(client, account):
+    payload = {"nom": "Budget", "documents": "bp", "profil_bp": "banque",
+               "idee": "Une plateforme de coaching sportif à domicile."}
+    project_id = (await client.post(
+        "/projects", json=payload, headers=account)).json()["id"]
+    for _ in range(100):
+        state_body = (await client.get(f"/projects/{project_id}/state",
+                                 headers=account)).json()
+        if state_body["plan"]:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le plan n'a jamais été publié au point de reprise")
+    section_id = state_body["plan"][0]["section_id"]
+
+    response = await client.post(
+        f"/projects/{project_id}/sections/{section_id}/reopen",
+        headers=account)
+    assert response.status_code == 200
+    assert all(q.startswith("bp.") for q in response.json()["sections"])
+
+
+async def test_reopening_a_section_on_a_both_project(client, account):
+    payload = {"nom": "Complet", "documents": "both",
+               "profil_cdc": "consultation", "profil_bp": "banque",
+               "idee": "Une plateforme de coaching sportif à domicile."}
+    project_id = (await client.post(
+        "/projects", json=payload, headers=account)).json()["id"]
+    for _ in range(100):
+        state_body = (await client.get(f"/projects/{project_id}/state",
+                                 headers=account)).json()
+        if state_body["plan"]:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le plan n'a jamais été publié au point de reprise")
+    # Le CDC est posé entièrement avant le BP (`plan_for`) : le premier
+    # élément du plan est donc un `cdc`.
+    section_id = state_body["plan"][0]["section_id"]
+    assert state_body["plan"][0]["document"] == "cdc"
+
+    response = await client.post(
+        f"/projects/{project_id}/sections/{section_id}/reopen",
+        headers=account)
+    assert response.status_code == 200
+    assert all(q.startswith("cdc.") for q in response.json()["sections"])
+
+
+async def test_reopening_an_unknown_section_is_not_found(client, account):
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+
+    response = await client.post(
+        f"/projects/{project_id}/sections/section-qui-n-existe-pas/reopen",
+        headers=account)
+    assert response.status_code == 404
+    assert response.json() == {"detail": {"code": "section_introuvable"}}
+
+
+async def test_reopening_response_matches_the_closure_and_the_touched_count(
+        client, account):
+    """Le contenu exact de la réponse, pas seulement la présence de la clé
+    `sections` que le premier test de cette route vérifiait."""
+    from app.agent.templates import load_catalogue
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    for _ in range(100):
+        state_body = (await client.get(f"/projects/{project_id}/state",
+                                 headers=account)).json()
+        if state_body["plan"]:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le plan n'a jamais été publié au point de reprise")
+    section_id = state_body["plan"][0]["section_id"]
+    expected = load_catalogue().sections_depending_on(f"cdc.{section_id}")
+
+    response = await client.post(
+        f"/projects/{project_id}/sections/{section_id}/reopen",
+        headers=account)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"sections", "touchees"}
+    assert body["sections"] == sorted(expected)
+    # Un projet tout juste créé n'a encore aucune ligne `sections` :
+    # `mark_for_reopening` ne peut rien y marquer.
+    assert body["touchees"] == 0

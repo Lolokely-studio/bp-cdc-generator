@@ -116,16 +116,13 @@ async def state(project_id: UUID, user=Depends(active_user)):
     """
     # L'ORDRE DES TROIS LECTURES EST PORTEUR, et rien ne les synchronise.
     # La ligne d'abord, le point de reprise ensuite, les projections en
-    # dernier : le statut lu est donc le plus ancien des trois. Tant que les
-    # statuts n'avancent que dans un sens, l'écart penche du bon côté — on
-    # peut voir `running` à côté d'une interaction déjà présente, et le front
-    # affiche une question sous une bannière « en cours » périmée d'un
-    # sondage. Inverser les deux premières lectures donnerait `waiting` avec
-    # `interaction: null` : un état qui n'a jamais existé, et qu'un front
-    # rend en « répondez à la question qui n'est pas là ».
-    #
-    # La tâche 7 fait reculer les statuts (`failed` puis `running` à la
-    # reprise) : c'est là qu'il faudra reposer la question.
+    # dernier. `waiting` avec `interaction: null` EXISTE VRAIMENT, et pas
+    # seulement en théorie : reproduit en élargissant la fenêtre pendant
+    # laquelle `/answer` tourne — la ligne dit encore `waiting` alors que le
+    # point de reprise a déjà consommé la réponse et n'expose plus rien tant
+    # que le nœud suivant n'a pas écrit sa propre interruption. C'est un état
+    # DE PASSAGE, jamais définitif : le front qui le rencontre doit relire
+    # `/state`, pas l'interpréter comme une incohérence à corriger ici.
     row = await _owned(project_id, user)
     graph = await compiled_graph()
     config = {"configurable": {"thread_id": row["thread_id"]}}
@@ -177,18 +174,14 @@ async def answer(project_id: UUID, body: AnswerRequest,
     croire à l'utilisateur que sa réponse est passée alors qu'elle vient
     d'être jetée en silence.
     """
-    # L'ORDRE DES TROIS LECTURES EST PORTEUR, et rien ne les synchronise.
-    # La ligne d'abord, le point de reprise ensuite, les projections en
-    # dernier : le statut lu est donc le plus ancien des trois. Tant que les
-    # statuts n'avancent que dans un sens, l'écart penche du bon côté — on
-    # peut voir `running` à côté d'une interaction déjà présente, et le front
-    # affiche une question sous une bannière « en cours » périmée d'un
-    # sondage. Inverser les deux premières lectures donnerait `waiting` avec
-    # `interaction: null` : un état qui n'a jamais existé, et qu'un front
-    # rend en « répondez à la question qui n'est pas là ».
-    #
-    # La tâche 7 fait reculer les statuts (`failed` puis `running` à la
-    # reprise) : c'est là qu'il faudra reposer la question.
+    # DEUX LECTURES, ET RIEN NE LES SYNCHRONISE — contrairement à `/state`,
+    # cette route ne lit aucune projection : la ligne, pour `run_status`
+    # dans les réponses ci-dessous, puis le point de reprise, pour
+    # l'interruption en attente. `waiting` avec une interruption déjà
+    # consommée EXISTE VRAIMENT : c'est la fenêtre de CETTE requête elle-même
+    # — la ligne dit encore `waiting` pendant qu'un `/answer` concurrent (ou
+    # ce traitement-ci, une fois arrivé au `start_run` plus bas) a déjà fait
+    # avancer le point de reprise. Un état de passage, pas une incohérence.
     row = await _owned(project_id, user)
     graph = await compiled_graph()
     config = {"configurable": {"thread_id": row["thread_id"]}}
@@ -268,10 +261,24 @@ async def resume(project_id: UUID, user=Depends(active_user)):
     ne s'y trouvent pas — il ne porte que la section en cours — et elles se
     réparent d'elles-mêmes, `save` écrivant la projection avant d'avancer le
     curseur. Un run mort entre les deux refait simplement sa section.
+
+    N'AGIT QUE SUR `failed`, OU SUR UN `running` ORPHELIN (plus aucune tâche
+    vivante). Sur `waiting`, ce n'est pas un crash mais une vraie
+    interruption en attente : relancer rejouerait le nœud interrompu et
+    ferait refuser par le 409 de `/answer` la réponse que l'utilisateur est
+    peut-être en train d'envoyer. Sur `done`, il n'y a plus rien à faire.
+    Sur `idle`, le premier `ainvoke` n'a peut-être pas encore écrit le
+    premier point de reprise : repartir avec `None` dans cette fenêtre
+    reviendrait à reprendre un plan vide, qui plante et retombe en `failed`
+    — un `failed` présenté comme reprenable, donc une boucle.
     """
     row = await _owned(project_id, user)
     if registry.is_running(str(project_id)):
         return {"reprise": False, "run_status": "running"}
+    if row["run_status"] not in ("failed", "running"):
+        # Ici, `running` ne peut désigner qu'un run ORPHELIN : le garde
+        # ci-dessus a déjà écarté celui que le registre pilote encore.
+        return {"reprise": False, "run_status": row["run_status"]}
 
     graph = await compiled_graph()
     config = {"configurable": {"thread_id": row["thread_id"]}}

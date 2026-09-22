@@ -21,16 +21,21 @@ async def reconcile_orphan_runs() -> int:
 
     Le test du registre n'est pas superflu pour autant : cette fonction est
     aussi appelable à chaud, et un run bien vivant ne doit pas être abattu.
+
+    L'écriture est conditionnelle (`fail_if_still_running`) : rien ne
+    synchronise la lecture de `running_projects` avec les runs vivants, donc
+    un run peut atteindre `waiting` entre les deux. Écrire sans condition
+    écraserait ce statut plus récent par un `failed` périmé.
     """
-    from app.projects.repository import running_projects, set_run_status
+    from app.projects.repository import fail_if_still_running, running_projects
 
     reconciled = 0
     async with connection() as conn:
         for row in await running_projects(conn):
             if registry.is_running(str(row["id"])):
                 continue
-            await set_run_status(conn, row["id"], "failed")
-            reconciled += 1
+            if await fail_if_still_running(conn, row["id"]):
+                reconciled += 1
     return reconciled
 
 
@@ -61,12 +66,25 @@ async def lifespan(app: FastAPI):
     connection_pool = pool()
     await connection_pool.open(wait=True)
 
-    orphans = await reconcile_orphan_runs()
-    if orphans:
-        logger.warning("%d run(s) orphelin(s) repassés en échec", orphans)
-    # §9.3, la purge « en filet » : celle de fin de run a pu ne jamais
-    # tourner, précisément parce que le processus est mort en chemin.
-    await purge_finished_projects()
+    # Le démarrage ne doit JAMAIS dépendre de ces deux tâches de ménage.
+    # Sur un hébergement qui vient de se réveiller, une seule erreur de
+    # base — le cas le plus probable au réveil — empêchait l'application de
+    # démarrer avant cette garde : pas de `/health`, et l'hébergeur peut la
+    # relancer en boucle sans jamais réussir. Chacune s'entoure de son
+    # propre `try/except` : l'échec de l'une ne doit pas empêcher l'autre.
+    try:
+        orphans = await reconcile_orphan_runs()
+        if orphans:
+            logger.warning("%d run(s) orphelin(s) repassés en échec", orphans)
+    except Exception:
+        logger.exception("échec de la réconciliation des runs orphelins au démarrage")
+
+    try:
+        # §9.3, la purge « en filet » : celle de fin de run a pu ne jamais
+        # tourner, précisément parce que le processus est mort en chemin.
+        await purge_finished_projects()
+    except Exception:
+        logger.exception("échec de la purge de filet au démarrage")
 
     try:
         yield

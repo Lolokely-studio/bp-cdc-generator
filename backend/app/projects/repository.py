@@ -137,3 +137,26 @@ async def finished_projects(conn) -> list[dict]:
         rows = await cur.fetchall()
         columns = [column.name for column in cur.description]
     return [dict(zip(columns, row)) for row in rows]
+
+
+async def fail_if_still_running(conn, project_id: UUID) -> bool:
+    """Passe une ligne `running` à `failed`, mais seulement si elle est
+    TOUJOURS `running` au moment de l'écriture (`where run_status =
+    'running'`), et rend si l'écriture a eu lieu.
+
+    Sert la réconciliation du démarrage, qui lit `running_projects` puis
+    écrit sans rien qui les synchronise : un run peut atteindre `waiting`
+    entre les deux. Sans cette garde, l'écriture agirait sur une photo
+    périmée et écraserait ce statut plus récent — la réconciliation existe
+    précisément parce qu'elle tourne sans coordination avec les runs
+    vivants, donc cette course est réelle, pas hypothétique.
+    """
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            update projects set run_status = 'failed', updated_at = now()
+            where id = %s and run_status = 'running'
+            """,
+            (project_id,),
+        )
+        return cur.rowcount > 0
