@@ -37,6 +37,12 @@ if os.environ.get("ESQUISSE_NETWORK_TESTS") != "1":
     ):
         os.environ[_provider_key] = "cle-de-test"
 
+    # Même raison pour le stockage Supabase : la suite ordinaire ne doit
+    # jamais atteindre le vrai bucket. Seule la campagne `network` fournit
+    # les vraies SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY.
+    os.environ["SUPABASE_URL"] = "http://storage.test"
+    os.environ["SUPABASE_SERVICE_ROLE_KEY"] = "cle-de-test"
+
 # Même raison pour le drapeau du modèle simulé : un développeur qui laisse
 # `ESQUISSE_FAKE_LLM=true` dans son `.env` ferait tourner une autre suite que
 # celle de l'intégration continue.

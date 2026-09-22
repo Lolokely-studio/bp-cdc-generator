@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     # Le premier appel paie le réveil du service, environ une minute.
     gotenberg_timeout_seconds: float = 120.0
 
+    # Supabase Storage, pour les exports. La clé de service contourne les
+    # règles d'accès : elle ne sort jamais du serveur, et le navigateur ne
+    # reçoit que des liens signés à expiration courte.
+    supabase_url: str = ""
+    supabase_service_role_key: str = ""
+    supabase_bucket_name: str = "exports"
+
     @property
     def dsn(self) -> str:
         """DSN PostgreSQL construit à partir des variables SUPABASE_DB_*."""
