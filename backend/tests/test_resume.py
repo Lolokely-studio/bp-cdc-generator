@@ -681,3 +681,46 @@ async def test_reopening_response_matches_the_closure_and_the_touched_count(
     # Un projet tout juste créé n'a encore aucune ligne `sections` :
     # `mark_for_reopening` ne peut rien y marquer.
     assert body["touchees"] == 0
+
+
+async def test_reopening_counts_the_rows_it_actually_marked(client, account):
+    """`touchees` figé à 0 laissait passer tous les tests.
+
+    Un projet neuf n'a encore aucune ligne `sections`, donc 0 y est toujours
+    la bonne réponse : le test voisin ne pouvait pas distinguer un compte
+    juste d'un compte figé. On écrit d'abord les sections de la fermeture,
+    puis on exige qu'elles soient toutes comptées. Le run de fond s'arrête à
+    sa première interruption avant d'écrire la moindre section, donc rien ne
+    vient se mêler à ces lignes.
+    """
+    from app.agent.projections import save_section
+    from app.agent.state import Paragraph, SectionRef
+    from app.agent.templates import load_catalogue
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    for _ in range(100):
+        state_body = (await client.get(f"/projects/{project_id}/state",
+                                       headers=account)).json()
+        if state_body["plan"]:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le plan n'a jamais été publié au point de reprise")
+    section_id = state_body["plan"][0]["section_id"]
+    expected = load_catalogue().sections_depending_on(f"cdc.{section_id}")
+    assert len(expected) > 1, "la fermeture doit dépasser la section demandée"
+
+    async with connection() as conn:
+        for order, qualified in enumerate(sorted(expected), start=1):
+            document, _, bare = qualified.partition(".")
+            await save_section(
+                conn, project_id,
+                SectionRef(document=document, section_id=bare, order=order),
+                blocks=[Paragraph(text="x")], statut="done", note=8,
+                revisions=0)
+
+    response = await client.post(
+        f"/projects/{project_id}/sections/{section_id}/reopen",
+        headers=account)
+    assert response.json()["touchees"] == len(expected)
