@@ -16,7 +16,7 @@ quatre fichiers : le cahier des charges et le business plan, en Word et en PDF.
 |---|---|
 | [docs/mockup.html](docs/mockup.html) | Prototype cliquable, workflow en 18 étapes, stack technique. À ouvrir dans un navigateur. |
 | [docs/analyse-cdc-bp.md](docs/analyse-cdc-bp.md) | Ce que doivent contenir les deux documents, d'après les normes et d'après de vrais documents. Sources en fin de page. |
-| [backend/app/templates/](backend/app/templates/) | 30 sections et 74 faits, en YAML. Le cœur de valeur du produit. |
+| [backend/app/templates/](backend/app/templates/) | 30 sections et 75 faits, en YAML. Le cœur de valeur du produit. |
 | [docs/spec-implementation.md](docs/spec-implementation.md) | Spécification technique. |
 | [docs/plans/](docs/plans/) | Feuille de route et plans d'implémentation. |
 
@@ -61,11 +61,13 @@ base locale, et nomme l'hôte qu'elle a refusé.
 ### Tests
 
 ```bash
-cd backend && uv run pytest -v
+cd backend && uv run pytest -q
 ```
 
-Les tests utilisent la base jetable de `docker-compose.yml`, jamais la base
-distante. Aucun test ne joint un fournisseur de modèle.
+Environ 480 tests, en moins d'une minute. Ils utilisent la base jetable de
+`docker-compose.yml`, jamais la base distante, et aucun ne joint un
+fournisseur de modèle ni le stockage : les tests marqués `network` sont exclus
+par défaut (voir « La couche modèles »).
 
 ### Configuration
 
@@ -104,6 +106,62 @@ interroge chaque modèle du catalogue :
 ESQUISSE_NETWORK_TESTS=1 uv run pytest -m network -v
 ```
 
+## L'agent
+
+Un graphe LangGraph, dans `app/agent/`, conduit l'entretien section par
+section : il extrait de l'idée ce qu'il peut, pose un lot de questions quand un
+fait requis manque, calcule ce qui se calcule (dix calculs financiers dans
+`finance.py`, jamais confiés au modèle), rédige, se relit et ne soumet une
+section à l'utilisateur que si sa note est basse ou si le gabarit l'exige.
+L'état complet vit dans un point de reprise PostgreSQL, qui fait foi ; les
+tables `facts` et `sections` n'en sont que des projections, pour l'affichage.
+
+## L'API
+
+| Route | Rôle |
+|---|---|
+| `POST /projects` | Crée le projet et démarre son run en tâche de fond |
+| `GET /projects`, `GET /projects/{id}` | La liste du propriétaire, l'entête d'un projet |
+| `GET /projects/{id}/state` | Plan, faits, sections, interaction en attente |
+| `POST /projects/{id}/answer` | Répond à l'interaction en cours et relance le run |
+| `GET /projects/{id}/stream` | Le flux SSE de la rédaction |
+| `POST /projects/{id}/resume` | Relance un run mort (après un plantage ou un redémarrage) |
+| `POST /projects/{id}/sections/{sid}/reopen` | Rouvre une section et celles qui en dépendent |
+
+Un projet qui n'appartient pas à l'appelant répond toujours `404`, jamais
+`403`, avec le même corps qu'un projet inexistant.
+
+**Un run ne vit jamais dans une requête HTTP.** Il avance dans une tâche de
+fond et publie sur un bus d'événements en mémoire ; le flux SSE s'y abonne.
+Une connexion coupée ne perd rien : le front se reconnecte et relit `/state`.
+Trois comportements que le front doit connaître :
+
+- `/answer` renvoie **`409 run_deja_en_cours`** quand une reprise avance
+  déjà ; le front relit `/state` et renvoie sa réponse si l'interaction est
+  toujours la même ;
+- `/state` peut montrer un instant `run_status: waiting` avec
+  `interaction: null`, pendant qu'une réponse est consommée ; le front relit ;
+- au démarrage, l'application passe à `failed` les runs qu'aucune tâche ne
+  pilote plus, et `/resume` les relance.
+
+**Une seule instance.** Le bus et le registre des runs vivent en mémoire du
+processus : la commande de démarrage fixe `--workers 1`. Voir aussi le risque
+de déploiement plus bas.
+
+## L'export *(plan 5, en cours)*
+
+Chaque document sort en Word et en PDF, depuis les blocs structurés et jamais
+depuis le texte affiché. Le Word part d'un modèle, `app/export/templates/model.docx`,
+que l'on peut remplacer par un fichier refait dans Word tant qu'il garde les
+balises `{{ title }}`, `{{ draft_notice }}` et `{{p body }}`. Le PDF vient de
+Gotenberg ; s'il échoue, un PDF est produit depuis du HTML, et l'utilisateur
+voit qu'il n'est plus identique au Word. Les fichiers sont déposés dans un
+bucket Supabase **privé** et servis par lien signé de dix minutes.
+
+Il faut pour cela, dans `backend/.env` : `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY` (qui ne quitte jamais le serveur) et
+`SUPABASE_BUCKET_NAME`.
+
 ### Comptes
 
 L'inscription est ouverte, mais un compte créé n'est pas utilisable. Le drapeau
@@ -136,3 +194,17 @@ commencent par `./backend/`.
 
 Les variables marquées `sync: false` se saisissent dans le tableau de bord du
 service. Aucun identifiant de production ne vit dans le dépôt.
+
+**Deux services.** L'API, et Gotenberg pour la conversion en PDF. Les services
+privés sont payants chez Render : Gotenberg est donc un service web public,
+protégé par son authentification de base. Tous deux s'endorment après quinze
+minutes ; Gotenberg n'est réveillé qu'à l'export. Ne mettez jamais en place de
+ping pour les garder éveillés : les 750 heures gratuites du mois sont
+partagées entre les services, et un seul service allumé en permanence les
+épuise.
+
+**Risque accepté : ne pas déployer pendant qu'un run est actif.** Pendant un
+déploiement, l'ancienne et la nouvelle instance tournent ensemble environ
+90 secondes, et la nouvelle passerait à `failed` les runs vivants de
+l'ancienne. Sans utilisateur réel, le risque est nul ; il doit être traité
+avant la mise en service (spec §9.2).
