@@ -47,6 +47,11 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      # Explicite, comme ESQUISSE_FAKE_LLM : le réglage retombe sur « exports »
+      # par défaut, mais le bucket de production se lit ici plutôt qu'il ne se
+      # déduit du code.
+      - key: SUPABASE_BUCKET_NAME
+        value: exports
 
   # Image officielle épinglée. Un service déployé depuis une image
   # pré-construite ne se redéploie pas tout seul : c'est voulu ici.
