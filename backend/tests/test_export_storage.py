@@ -1,5 +1,4 @@
 import json
-import os
 
 import httpx
 import pytest
@@ -76,7 +75,14 @@ async def test_deleting_a_prefix_lists_every_object_under_it():
 async def test_the_real_bucket_round_trips():
     """La seule preuve que les détails de l'API REST sont les bons. Exige
     SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY et le bucket privé `exports`."""
-    if not os.environ.get("SUPABASE_URL", "").startswith("https://"):
+    from app.core.config import settings
+
+    # La configuration, pas `os.environ` : les clés vivent dans `backend/.env`,
+    # que `pydantic-settings` lit sans le verser dans l'environnement du
+    # processus. Tester `os.environ` faisait sauter ce test partout, y compris
+    # quand le stockage était configuré — il ne prouvait donc jamais rien.
+    settings.cache_clear()
+    if not settings().supabase_url.startswith("https://"):
         pytest.skip("stockage Supabase non configuré")
     path = "essai-reseau/aller-retour.txt"
     await storage.upload(path, b"bonjour", "text/plain")
