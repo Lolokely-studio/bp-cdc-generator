@@ -201,3 +201,110 @@ async def test_purging_finished_projects_purges_their_checkpoints(client, accoun
     purged = await purge_finished_projects()
 
     assert purged >= 1
+
+
+async def test_resuming_a_run_still_registered_is_a_noop(client, account):
+    """Le garde `registry.is_running` de `/resume` : rien ne l'exerçait, et
+    le retirer laissait les cinq autres tests de ce fichier verts. Sans lui,
+    `/resume` relancerait un fil déjà piloté par une tâche vivante — deux
+    tâches asyncio avançant le même point de reprise, la corruption exacte
+    que `app/runs/registry.py` existe pour empêcher.
+
+    On force l'entrée du registre avec une tâche factice plutôt que de
+    compter sur le timing du vrai run de fond : le vrai run peut avoir déjà
+    atteint son interruption (et donc quitté le registre) avant que ce test
+    n'ait la main, ce qui rendrait un sondage sur le vrai run non fiable.
+    """
+    from app.runs import registry
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+
+    async def _still_running():
+        await asyncio.sleep(30)
+
+    # Remplace l'entrée du registre, quel que soit son état : `register`
+    # ne retire que la tâche dont il connaît l'IDENTITÉ (voir sa docstring),
+    # donc la vraie tâche de création, si elle se termine ensuite, ne pourra
+    # pas effacer celle-ci par erreur.
+    registry.register(project_id, asyncio.create_task(_still_running()))
+    assert registry.is_running(project_id)
+
+    response = await client.post(f"/projects/{project_id}/resume",
+                                headers=account)
+    assert response.status_code == 200
+    assert response.json() == {"reprise": False, "run_status": "running"}
+
+
+async def test_resuming_rewrites_facts_before_relaunching(client, account, monkeypatch):
+    """`/resume` doit réécrire les faits depuis le point de reprise AVANT de
+    relancer (§4.6) : rien ne le vérifiait, et retirer l'appel à `save_facts`
+    laissait les cinq autres tests de ce fichier verts."""
+    from app.projects import routes
+    from app.runs.registry import cancel_all
+
+    captured = []
+    real_save_facts = routes.save_facts
+
+    async def _spy(conn, project_id, facts):
+        captured.append(facts)
+        return await real_save_facts(conn, project_id, facts)
+
+    monkeypatch.setattr(routes, "save_facts", _spy)
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    for _ in range(100):
+        state_body = (await client.get(f"/projects/{project_id}/state",
+                                 headers=account)).json()
+        if state_body["interaction"] is not None:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le run n'a jamais atteint d'interruption")
+
+    await cancel_all()
+    await _force_status(project_id, "failed")
+
+    response = await client.post(f"/projects/{project_id}/resume",
+                                headers=account)
+    assert response.status_code == 200
+    assert captured, "`save_facts` n'a pas été appelée par `/resume`"
+
+
+async def test_reopening_calls_mark_for_reopening_with_the_transitive_closure(
+        client, account, monkeypatch):
+    """`mark_for_reopening` trouve enfin un appelant (constat de la revue du
+    plan 3) : rien ne vérifiait qu'il est bien appelé, ni avec quoi. Retirer
+    l'appel — ou lui passer autre chose que la fermeture transitive de
+    `sections_depending_on` — laissait `..._marks_it_and_its_dependents`
+    vert, puisque cette route-là ne vérifie que la forme de la réponse."""
+    from app.agent.templates import load_catalogue
+    from app.projects import routes
+
+    captured = []
+    real_mark = routes.mark_for_reopening
+
+    async def _spy(conn, project_id, qualified_ids):
+        captured.append(qualified_ids)
+        return await real_mark(conn, project_id, qualified_ids)
+
+    monkeypatch.setattr(routes, "mark_for_reopening", _spy)
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    for _ in range(100):
+        state_body = (await client.get(f"/projects/{project_id}/state",
+                                 headers=account)).json()
+        if state_body["plan"]:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le plan n'a jamais été publié au point de reprise")
+    section_id = state_body["plan"][0]["section_id"]
+
+    await client.post(f"/projects/{project_id}/sections/{section_id}/reopen",
+                      headers=account)
+
+    assert captured, "`mark_for_reopening` n'a pas été appelée par `/reopen`"
+    assert captured[-1] == load_catalogue().sections_depending_on(f"cdc.{section_id}")
