@@ -162,8 +162,19 @@ async def test_a_gotenberg_answer_that_is_not_a_pdf_falls_back(monkeypatch):
 
 
 async def test_the_word_file_is_sent_as_gotenberg_expects_it(monkeypatch):
-    """La route LibreOffice lit le champ `files` et le type du fichier."""
+    """La route LibreOffice lit le champ `files` et le type du fichier.
+
+    La devinette de type est neutralisée : sur macOS, `mimetypes` reconnaît
+    `.docx` grâce aux fichiers système et ce test passait même sans type
+    explicite. Dans l'image de production (`python:3.12-slim`), la même
+    devinette rend `None`, et httpx enverrait `application/octet-stream`. Le
+    type explicite est donc porteur, et le test doit le voir.
+    """
+    import mimetypes
+
     from app.core import config
+
+    monkeypatch.setattr(mimetypes, "guess_type", lambda *args, **kwargs: (None, None))
 
     monkeypatch.setenv("GOTENBERG_URL", "http://gotenberg.test")
     config.settings.cache_clear()
