@@ -141,3 +141,45 @@ async def test_without_gotenberg_configured_it_is_never_contacted(monkeypatch):
         config.settings.cache_clear()
     assert result.faithful is False
     assert result.data.startswith(_PDF)
+
+
+async def test_a_gotenberg_answer_that_is_not_a_pdf_falls_back(monkeypatch):
+    from app.core import config
+
+    monkeypatch.setenv("GOTENBERG_URL", "http://gotenberg.test")
+    config.settings.cache_clear()
+    try:
+        for body in (b"", b"<html>erreur du proxy</html>"):
+            def handler(request, body=body):
+                return httpx.Response(200, content=body)
+
+            result = await render_pdf(b"word", _document(), [],
+                                      client=_gotenberg(handler))
+            assert result.faithful is False
+            assert result.data.startswith(_PDF)
+    finally:
+        config.settings.cache_clear()
+
+
+async def test_the_word_file_is_sent_as_gotenberg_expects_it(monkeypatch):
+    """La route LibreOffice lit le champ `files` et le type du fichier."""
+    from app.core import config
+
+    monkeypatch.setenv("GOTENBERG_URL", "http://gotenberg.test")
+    config.settings.cache_clear()
+    seen = {}
+
+    def handler(request):
+        seen["body"] = request.content
+        return httpx.Response(200, content=b"%PDF-1.7")
+
+    try:
+        await render_pdf(b"contenu-word", _document(), [],
+                         client=_gotenberg(handler))
+    finally:
+        config.settings.cache_clear()
+    assert b'name="files"' in seen["body"]
+    assert b'filename="document.docx"' in seen["body"]
+    assert (b"application/vnd.openxmlformats-officedocument."
+            b"wordprocessingml.document") in seen["body"]
+    assert b"contenu-word" in seen["body"]

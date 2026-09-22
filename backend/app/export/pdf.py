@@ -39,6 +39,12 @@ async def _convert_with_gotenberg(word: bytes, client: httpx.AsyncClient) -> byt
         timeout=config.gotenberg_timeout_seconds,
     )
     response.raise_for_status()
+    if not response.content.startswith(b"%PDF"):
+        # Un 200 ne prouve rien : une écriture tronquée ou la page d'erreur
+        # d'un intermédiaire arrivent aussi avec ce statut. Ce qui n'est pas
+        # un PDF va au repli, qui le dira à l'utilisateur, au lieu d'être
+        # livré comme un PDF fidèle.
+        raise httpx.DecodingError("Gotenberg a répondu sans PDF")
     return response.content
 
 
