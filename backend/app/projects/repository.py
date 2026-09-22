@@ -16,24 +16,34 @@ async def create_project(
     profil_bp: str | None,
     thread_id: str,
     templates_version: str,
+    idee: str | None = None,
 ) -> UUID:
-    """Les six derniers paramètres sont nommés obligatoirement.
+    """Les sept derniers paramètres sont nommés obligatoirement.
 
     Ce sont des chaînes voisines, interchangeables pour le typage : intervertir
     `profil_cdc` et `profil_bp`, ou `nom` et `documents`, donnerait un appel
     parfaitement valide qui écrirait les valeurs dans les mauvaises colonnes.
     Aucun test ne le verrait, puisqu'un test écrit avec la même interversion
     passerait aussi. L'étoile transforme cette corruption silencieuse en
-    `TypeError` au point d'appel."""
+    `TypeError` au point d'appel.
+
+    `idee` a un défaut à `None` — seule concession à cette règle — parce que
+    de nombreux tests créent un projet sans se soucier de la reconstruction
+    de `/resume` (migration 0004). Le défaut ne dispense pas `routes.create`
+    de la fournir : c'est le seul appelant qui la lit d'une vraie requête, et
+    une ligne écrite sans elle est précisément le cas qu'un projet ancien,
+    migré avant 0004, laisse derrière lui."""
     async with conn.cursor() as cur:
         await cur.execute(
             """
             insert into projects
-                (user_id, nom, documents, profil_cdc, profil_bp, thread_id, templates_version)
-            values (%s, %s, %s, %s, %s, %s, %s)
+                (user_id, nom, documents, profil_cdc, profil_bp, thread_id,
+                 templates_version, idee)
+            values (%s, %s, %s, %s, %s, %s, %s, %s)
             returning id
             """,
-            (user_id, nom, documents, profil_cdc, profil_bp, thread_id, templates_version),
+            (user_id, nom, documents, profil_cdc, profil_bp, thread_id,
+             templates_version, idee),
         )
         return (await cur.fetchone())[0]
 
@@ -46,7 +56,7 @@ async def project_for_user(conn, project_id: UUID, user_id: UUID) -> dict:
         await cur.execute(
             """
             select id, user_id, nom, documents, profil_cdc, profil_bp,
-                   thread_id, run_status, templates_version,
+                   thread_id, run_status, templates_version, idee,
                    created_at, updated_at
             from projects where id = %s and user_id = %s
             """,

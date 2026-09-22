@@ -3897,3 +3897,90 @@ Vingt-trois mutations, onze survivantes, et deux comportements faux.
 - deux `pool.open(wait=True)` concurrents dans `purge_checkpoints` lèvent, et
   deux runs qui se terminent ensemble peuvent le déclencher : même défaut que
   celui corrigé dans `saver()`, à traiter de la même façon.
+
+---
+
+### Tâche 8 : ce que la revue finale a trouvé entre les tâches
+
+**Fichiers :**
+- Créer : `backend/migrations/versions/0004_projects_idee.py`
+- Modifier : `backend/Dockerfile`, `backend/app/runs/runner.py`,
+  `backend/app/projects/routes.py`, `backend/app/projects/repository.py`
+- Test : `backend/tests/test_runner.py`, `backend/tests/test_resume.py`,
+  `backend/tests/test_migrations.py` si elle vérifie la liste des révisions
+
+La revue finale a regardé les sept tâches ensemble, ce qu'aucun relecteur de
+tâche ne pouvait faire. Elle déconseille la fusion en l'état. Les trois
+premiers constats ci-dessous ont été vérifiés par sondes. Le quatrième repose
+sur le code et sur la documentation de Render.
+
+**1. Un run qui échoue avant son premier point de reprise ne peut jamais être
+relancé, alors qu'on le présente comme reprenable.** Si `compiled_graph` lève
+au premier `advance` (par exemple sur un délai d'attente du pool du point de
+reprise), la ligne passe à `failed` sans aucun point de reprise. `/resume`
+appelle alors `advance(..., None)`, LangGraph répond « Received no input for
+__start__ », et la ligne repasse à `failed` avec `reprenable: true`. Cela se
+répète à chaque tentative. Il en va de même d'un processus tué entre
+l'insertion et le démarrage de la tâche : la ligne reste `idle` pour
+toujours.
+
+   Correctif : quand `snapshot.values` est vide, `/resume` reconstruit
+   `initial_state` depuis la ligne (`documents`, profils, idée) au lieu de
+   passer `None`. L'idée n'est pas stockée aujourd'hui. D'où :
+   - une migration `0004` qui ajoute `idee text` à `projects` (nullable, pour
+     les lignes existantes) ;
+   - `create_project` qui l'écrit ;
+   - `project_for_user` qui la lit.
+
+   `/resume` accepte alors `idle` s'il n'y a **pas** de point de reprise, car
+   c'est exactement le projet mort-né. Il continue de refuser `idle` s'il y en
+   a un. Sur une ligne ancienne dont `idee` est nulle, on refuse avec
+   `{"reprise": false, ...}` plutôt que de relancer sur une idée vide.
+
+**2. Ce qui échoue après le `try` d'`advance` perd l'événement final.** Si
+`purge_checkpoints` lève, la ligne est `done` mais aucun événement `done`
+n'est publié, et l'exception sort d'une tâche que personne n'attend. Le client
+SSE ne reçoit plus que des battements, ne se reconnecte jamais, et l'écran
+reste sur « rédaction en cours ». Si c'est `_status("waiting")` qui lève, la
+ligne reste `running` pour toujours.
+
+   Correctif : la purge passe dans un `try/except` qui journalise, et `done` est
+   publié dans tous les cas. Une purge ratée n'est qu'un coût de stockage, la
+   purge de filet du démarrage la rattrapera. Les écritures de statut situées
+   après le `try` passent par `_fail` en cas d'échec, comme celles qui sont
+   dedans.
+
+**3. Un double clic sur « Reprendre » rend un 500.** Deux `/resume`
+concurrents passent tous deux le garde `is_running`, puis attendent
+`aget_state` et `save_facts` avant d'appeler `start_run`. Le second lève
+`RunAlreadyRunning`, qui n'est pas rattrapé. Correctif : on le rattrape et on
+répond `{"reprise": false, "run_status": "running"}`. Ici c'est vrai : rien
+n'est perdu, puisqu'une reprise ne porte aucune charge utile.
+
+**4. Deux processus peuvent piloter le même fil.** `--workers` prend par
+défaut la valeur de `$WEB_CONCURRENCY`, que Render fixe d'après le nombre de
+processeurs. La commande de démarrage ne le fige pas, donc passer à un plan
+plus grand démarrerait deux workers sans que rien ne le dise. Correctif :
+`--workers 1` dans le `CMD` du `Dockerfile`, avec un commentaire qui renvoie
+au §9.2.
+
+   Le chevauchement des déploiements sans interruption relève du même défaut,
+   mais n'est **pas** corrigé ici. Render démarre la nouvelle instance à côté
+   de l'ancienne, et la réconciliation de la nouvelle passerait à `failed` les
+   runs vivants de l'ancienne. Un seuil d'âge ne suffirait pas : un run vivant
+   peut passer plusieurs minutes sans changer de statut. La décision est
+   laissée au propriétaire (voir le compte rendu).
+
+**Tests** (chacun doit échouer si on retire son correctif) :
+- un run dont le premier `advance` lève, puis `/resume` : la ligne atteint
+  `waiting` ;
+- un projet `idle` sans point de reprise : `/resume` le démarre ;
+- un projet ancien sans `idee` : `/resume` refuse ;
+- une purge qui lève en fin de run : l'événement `done` est quand même publié
+  et la ligne est `done` ;
+- `_status("waiting")` qui lève : la ligne n'est pas laissée à `running`, et un
+  événement `error` part ;
+- deux `/resume` concurrents : ni l'un ni l'autre ne rend 500 ;
+- la migration `0004` monte et descend proprement.
+
+Commit : `fix(runs): un run mort-né se relance, et la fin d'un run publie toujours son événement`.

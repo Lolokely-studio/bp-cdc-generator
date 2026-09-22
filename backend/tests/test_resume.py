@@ -3,7 +3,7 @@ import asyncio
 import pytest_asyncio
 
 from app.core.db import connection
-from tests.test_project_routes import CREATION, _active_account
+from tests.test_project_routes import CREATION, MOT_DE_PASSE, _active_account
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -46,6 +46,43 @@ async def _force_status(project_id, statut):
             await cur.execute(
                 "update projects set run_status = %s where id = %s",
                 (statut, UUID(project_id)))
+
+
+async def _stillborn_project(client, label, *, idee="Une idée jamais lancée."):
+    """Un projet dont le fil n'a JAMAIS tourné : aucun point de reprise
+    n'existe pour lui, par construction plutôt que par minutage.
+
+    Contrairement aux autres comptes de ce fichier, on n'appelle pas
+    `POST /projects` : la route démarre un vrai run en tâche de fond, et
+    rien ne garantit qu'il n'a pas déjà écrit son premier point de reprise
+    avant qu'on ne le tue — un test qui dépendrait de ce minutage passerait
+    ou non selon la machine. On écrit la ligne directement, sans jamais
+    appeler `start_run`, ce qui rend l'absence de point de reprise certaine
+    et non probable.
+    """
+    from uuid import uuid4
+
+    from app.projects.repository import create_project
+
+    email = f"{label}-{uuid4()}@exemple.fr"
+    await client.post("/auth/register",
+                      json={"email": email, "mot_de_passe": MOT_DE_PASSE})
+    async with connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "update users set is_active = true where email = %s", (email,))
+            await cur.execute("select id from users where email = %s", (email,))
+            user_id = (await cur.fetchone())[0]
+        project_id = await create_project(
+            conn, user_id, nom="Mort-né", documents="cdc",
+            profil_cdc="consultation", profil_bp=None,
+            thread_id=f"thread-{uuid4()}", templates_version="0.1",
+            idee=idee,
+        )
+    response = await client.post(
+        "/auth/login", json={"email": email, "mot_de_passe": MOT_DE_PASSE})
+    headers = {"Authorization": f"Bearer {response.json()['jeton']}"}
+    return str(project_id), headers
 
 
 async def test_a_run_left_running_by_a_restart_is_marked_failed(client, account):
@@ -364,14 +401,24 @@ async def test_resuming_a_done_project_starts_nothing(client, account):
     assert response.json() == {"reprise": False, "run_status": "done"}
 
 
-async def test_resuming_an_idle_project_starts_nothing(client, account):
-    """`idle` : le premier `ainvoke` n'a peut-être pas encore écrit de point
-    de reprise. Reprendre dans cette fenêtre repartirait d'un plan vide et
-    planterait dans un `failed` présenté à tort comme reprenable."""
+async def test_resuming_an_idle_project_with_a_checkpoint_starts_nothing(client, account):
+    """`idle` avec un point de reprise DÉJÀ écrit n'est pas mort-né : c'est
+    une écriture de statut en retard sur un run par ailleurs vivant à son
+    premier tour. `/resume` continue de le refuser — seul un `idle` SANS
+    point de reprise devient reprenable (constat 1 de la revue finale)."""
     from app.runs.registry import cancel_all
 
     project_id = (await client.post(
         "/projects", json=CREATION, headers=account)).json()["id"]
+    for _ in range(100):
+        state_body = (await client.get(f"/projects/{project_id}/state",
+                                 headers=account)).json()
+        if state_body["interaction"] is not None:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le run n'a jamais atteint d'interruption")
+
     await cancel_all()
     await _force_status(project_id, "idle")
 
@@ -379,6 +426,128 @@ async def test_resuming_an_idle_project_starts_nothing(client, account):
                                 headers=account)
     assert response.status_code == 200
     assert response.json() == {"reprise": False, "run_status": "idle"}
+
+
+async def test_resuming_a_stillborn_idle_project_starts_it(client, migrated_db):
+    """Constat 1 de la revue finale : un processus tué entre l'insertion de
+    la ligne et le démarrage de la tâche la laisse `idle` sans le moindre
+    point de reprise — pour toujours, avant ce correctif. `/resume` doit
+    reconstruire `initial_state` depuis la ligne et repartir."""
+    project_id, headers = await _stillborn_project(client, "mort-ne-idle")
+
+    response = await client.post(f"/projects/{project_id}/resume", headers=headers)
+    assert response.status_code == 200
+    assert response.json() == {"reprise": True, "run_status": "running"}
+
+    for _ in range(100):
+        header = (await client.get(f"/projects/{project_id}", headers=headers)).json()
+        if header["run_status"] == "waiting":
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError(
+            "le projet mort-né relancé n'a jamais atteint sa première interruption")
+
+
+async def test_resuming_a_stillborn_project_without_an_idea_refuses(client, migrated_db):
+    """Constat 1 de la revue finale : une ligne écrite avant la migration
+    0004 n'a pas d'idée. La reconstruire depuis la ligne relancerait le
+    graphe sur une idée vide — `/resume` refuse plutôt."""
+    project_id, headers = await _stillborn_project(
+        client, "mort-ne-sans-idee", idee=None)
+    async with connection() as conn:
+        async with conn.cursor() as cur:
+            from uuid import UUID
+
+            await cur.execute(
+                "update projects set run_status = 'failed' where id = %s",
+                (UUID(project_id),))
+
+    response = await client.post(f"/projects/{project_id}/resume", headers=headers)
+    assert response.status_code == 200
+    assert response.json() == {"reprise": False, "run_status": "failed"}
+
+
+async def test_a_run_whose_first_advance_fails_can_be_resumed_to_waiting(
+        client, account, monkeypatch):
+    """Constat 1 de la revue finale, chemin complet : le premier `advance`
+    échoue AVANT d'écrire le moindre point de reprise (un délai d'attente du
+    pool du point de reprise, par exemple), la ligne passe `failed`. Avant
+    le correctif, `/resume` rejouait `advance(..., None)`, LangGraph
+    refusait, et la ligne retombait en `failed` en boucle."""
+    from app.runs import runner
+
+    real_compiled_graph = runner.compiled_graph
+    should_fail = True
+
+    async def _flaky_compiled_graph():
+        nonlocal should_fail
+        if should_fail:
+            should_fail = False
+            raise RuntimeError("délai d'attente simulé du pool du point de reprise")
+        return await real_compiled_graph()
+
+    monkeypatch.setattr(runner, "compiled_graph", _flaky_compiled_graph)
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+
+    for _ in range(100):
+        header = (await client.get(f"/projects/{project_id}", headers=account)).json()
+        if header["run_status"] == "failed":
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le premier `advance` n'a jamais échoué")
+
+    response = await client.post(f"/projects/{project_id}/resume",
+                                headers=account)
+    assert response.status_code == 200
+    assert response.json() == {"reprise": True, "run_status": "running"}
+
+    for _ in range(100):
+        header = (await client.get(f"/projects/{project_id}", headers=account)).json()
+        if header["run_status"] == "waiting":
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError(
+            "le run mort-né relancé n'a jamais atteint d'interruption")
+
+
+async def test_two_concurrent_resumes_never_return_500(client, account):
+    """Constat 3 de la revue finale : deux `/resume` concurrents passent
+    tous deux le garde `is_running`, attendent `aget_state` et `save_facts`,
+    puis se disputent `start_run` — le second lève `RunAlreadyRunning`, qui
+    doit être rattrapé plutôt que de rendre un 500."""
+    from app.runs.registry import cancel_all
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    for _ in range(100):
+        state_body = (await client.get(f"/projects/{project_id}/state",
+                                 headers=account)).json()
+        if state_body["interaction"] is not None:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le run n'a jamais atteint d'interruption")
+
+    await cancel_all()
+    await _force_status(project_id, "failed")
+
+    results = await asyncio.gather(
+        client.post(f"/projects/{project_id}/resume", headers=account),
+        client.post(f"/projects/{project_id}/resume", headers=account),
+    )
+    statuses = [r.status_code for r in results]
+    assert all(s == 200 for s in statuses), (
+        f"un double clic sur « Reprendre » a rendu {statuses}"
+    )
+    bodies = [r.json() for r in results]
+    assert {"reprise": True, "run_status": "running"} in bodies, (
+        "aucune des deux requêtes concurrentes n'a relancé le run"
+    )
 
 
 async def test_resuming_an_orphaned_running_project_restarts_it(client, account):

@@ -176,6 +176,86 @@ async def test_a_finished_run_marks_done_then_purges_then_says_so(project, monke
     )
 
 
+async def test_a_failing_purge_still_marks_done_and_publishes_it(project, monkeypatch):
+    """Constat 2 de la revue finale : une purge ratée n'est qu'un coût de
+    stockage — la purge de filet du démarrage la rattrape — mais elle ne
+    doit jamais faire perdre l'événement `done`. Avant le correctif,
+    l'exception sortait d'une tâche que personne n'attend : le client SSE ne
+    recevait plus que des battements et l'écran restait sur « rédaction en
+    cours » alors que la ligne était bel et bien `done`."""
+    from types import SimpleNamespace
+
+    from app.agent import checkpointer
+    from app.runs import runner
+
+    class _FinishedGraph:
+        async def ainvoke(self, graph_input, config):
+            return {}
+
+        async def aget_state(self, config):
+            return SimpleNamespace(interrupts=(), values={})
+
+    async def _finished_graph():
+        return _FinishedGraph()
+
+    async def _failing_purge(thread_id, keep=1):
+        raise RuntimeError("purge ratée")
+
+    monkeypatch.setattr(runner, "compiled_graph", _finished_graph)
+    monkeypatch.setattr(checkpointer, "purge_checkpoints", _failing_purge)
+
+    async with subscribe(str(project["project_id"])) as events:
+        await advance(str(project["project_id"]), project["thread_id"], None)
+        received = []
+        try:
+            while True:
+                received.append(await asyncio.wait_for(anext(events), timeout=0.2))
+        except (StopAsyncIteration, asyncio.TimeoutError):
+            pass
+
+    assert await _status(project["project_id"], project["user_id"]) == "done", (
+        "une purge ratée ne doit pas empêcher la ligne de passer `done`"
+    )
+    assert [e.name for e in received] == ["done"], (
+        "l'événement `done` doit partir même si la purge qui le précède a levé"
+    )
+
+
+async def test_a_failing_status_write_on_waiting_does_not_leave_the_row_running(
+        project, monkeypatch):
+    """Constat 2 de la revue finale : si `_status("waiting")` lève, la ligne
+    ne doit pas rester `running` pour toujours. L'écriture est maintenant
+    dans le `try` d'`advance`, donc son échec passe par `_fail` comme
+    n'importe quel autre — et publie son événement `error`."""
+    from app.runs import runner
+
+    real_status = runner._status
+
+    async def _refuse_waiting(project_id, status):
+        if status == "waiting":
+            raise RuntimeError("base injoignable")
+        await real_status(project_id, status)
+
+    monkeypatch.setattr(runner, "_status", _refuse_waiting)
+
+    graph_input = initial_state(str(project["project_id"]), "cdc",
+                                "consultation", None, "Une idée.")
+    async with subscribe(str(project["project_id"])) as events:
+        await advance(str(project["project_id"]), project["thread_id"], graph_input)
+        received = []
+        try:
+            while True:
+                received.append(await asyncio.wait_for(anext(events), timeout=0.2))
+        except (StopAsyncIteration, asyncio.TimeoutError):
+            pass
+
+    assert await _status(project["project_id"], project["user_id"]) == "failed", (
+        "l'échec de l'écriture de `waiting` a laissé la ligne à `running` pour toujours"
+    )
+    errors = [e for e in received if e.name == "error"]
+    assert errors, "l'échec de l'écriture de `waiting` doit publier une erreur"
+
+
 async def test_the_status_is_written_before_the_event_leaves(project, monkeypatch):
     """L'ordre, et pas seulement le contenu.
 

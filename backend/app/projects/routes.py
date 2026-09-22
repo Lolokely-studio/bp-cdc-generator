@@ -81,6 +81,7 @@ async def create(body: ProjectCreate, user=Depends(active_user)):
             profil_cdc=body.profil_cdc, profil_bp=body.profil_bp,
             thread_id=thread_id,
             templates_version=str(catalogue.cdc.version),
+            idee=body.idee,
         )
     graph_input["project_id"] = str(project_id)
     start_run(str(project_id), thread_id, graph_input)
@@ -262,28 +263,57 @@ async def resume(project_id: UUID, user=Depends(active_user)):
     réparent d'elles-mêmes, `save` écrivant la projection avant d'avancer le
     curseur. Un run mort entre les deux refait simplement sa section.
 
-    N'AGIT QUE SUR `failed`, OU SUR UN `running` ORPHELIN (plus aucune tâche
-    vivante). Sur `waiting`, ce n'est pas un crash mais une vraie
-    interruption en attente : relancer rejouerait le nœud interrompu et
-    ferait refuser par le 409 de `/answer` la réponse que l'utilisateur est
-    peut-être en train d'envoyer. Sur `done`, il n'y a plus rien à faire.
-    Sur `idle`, le premier `ainvoke` n'a peut-être pas encore écrit le
-    premier point de reprise : repartir avec `None` dans cette fenêtre
-    reviendrait à reprendre un plan vide, qui plante et retombe en `failed`
-    — un `failed` présenté comme reprenable, donc une boucle.
+    N'AGIT QUE SUR `failed`, `running` ORPHELIN (plus aucune tâche vivante),
+    OU `idle` SANS AUCUN POINT DE REPRISE. Sur `waiting`, ce n'est pas un
+    crash mais une vraie interruption en attente : relancer rejouerait le
+    nœud interrompu et ferait refuser par le 409 de `/answer` la réponse que
+    l'utilisateur est peut-être en train d'envoyer. Sur `done`, il n'y a plus
+    rien à faire.
+
+    UN PROJET MORT-NÉ n'a jamais écrit le moindre point de reprise, donc
+    `snapshot.values` est vide : soit le premier `advance` a levé avant d'y
+    parvenir (un délai d'attente du pool, par exemple, et la ligne est
+    `failed`), soit le processus a été tué entre l'insertion de la ligne et
+    le démarrage de la tâche (et la ligne est restée `idle`). Repasser
+    `None` à LangGraph dans ce cas fait lever « Received no input for
+    __start__ » : la ligne retombe en `failed`, présentée comme reprenable,
+    et la même tentative se répète indéfiniment. On reconstruit alors
+    `initial_state` depuis la ligne plutôt que de reprendre un point de
+    reprise qui n'existe pas — c'est pour cela que `/resume` accepte `idle`
+    exactement ici, et nulle part ailleurs : un `idle` qui a DÉJÀ un point de
+    reprise n'est pas mort-né, il attend son premier tour de boucle. Sur une
+    ligne ancienne dont `idee` est nulle (écrite avant la migration 0004), on
+    refuse plutôt que de relancer sur une idée vide.
     """
     row = await _owned(project_id, user)
     if registry.is_running(str(project_id)):
         return {"reprise": False, "run_status": "running"}
-    if row["run_status"] not in ("failed", "running"):
-        # Ici, `running` ne peut désigner qu'un run ORPHELIN : le garde
-        # ci-dessus a déjà écarté celui que le registre pilote encore.
-        return {"reprise": False, "run_status": row["run_status"]}
 
     graph = await compiled_graph()
     config = {"configurable": {"thread_id": row["thread_id"]}}
     snapshot = await graph.aget_state(config)
     values = snapshot.values or {}
+
+    if not values:
+        if row["run_status"] not in ("idle", "failed", "running"):
+            return {"reprise": False, "run_status": row["run_status"]}
+        if not row["idee"]:
+            return {"reprise": False, "run_status": row["run_status"]}
+        graph_input = initial_state(str(project_id), row["documents"],
+                                    row["profil_cdc"], row["profil_bp"],
+                                    row["idee"])
+        try:
+            start_run(str(project_id), row["thread_id"], graph_input)
+        except RunAlreadyRunning:
+            # Constat 3 de la revue finale, voir plus bas : rien n'est perdu,
+            # une reprise ne porte aucune charge utile.
+            return {"reprise": False, "run_status": "running"}
+        return {"reprise": True, "run_status": "running"}
+
+    if row["run_status"] not in ("failed", "running"):
+        # Ici, `running` ne peut désigner qu'un run ORPHELIN : le garde
+        # ci-dessus a déjà écarté celui que le registre pilote encore.
+        return {"reprise": False, "run_status": row["run_status"]}
 
     # `save_facts` et non `reproject` : le point de reprise porte les faits,
     # jamais les sections déjà validées. Voir la note ci-dessous — ce n'est
@@ -293,7 +323,16 @@ async def resume(project_id: UUID, user=Depends(active_user)):
 
     # `None` et non un état neuf : LangGraph repart du point de reprise. Lui
     # passer un état reconstruit écraserait ce qu'il a gardé.
-    start_run(str(project_id), row["thread_id"], None)
+    try:
+        start_run(str(project_id), row["thread_id"], None)
+    except RunAlreadyRunning:
+        # Un double clic sur « Reprendre » : les deux requêtes passent le
+        # garde `is_running` ci-dessus avant que l'une ou l'autre n'ait pu
+        # s'enregistrer, attendent toutes deux `aget_state` et `save_facts`,
+        # puis se disputent `start_run`. La seconde lève ici plutôt que de
+        # rendre un 500 — et c'est sans perte : une reprise ne porte aucune
+        # charge utile, contrairement à `/answer`.
+        return {"reprise": False, "run_status": "running"}
     return {"reprise": True, "run_status": "running"}
 
 

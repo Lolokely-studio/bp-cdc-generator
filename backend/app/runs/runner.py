@@ -46,6 +46,22 @@ async def advance(project_id: str, thread_id: str, graph_input) -> None:
         graph = await compiled_graph()
         await graph.ainvoke(graph_input, config=config)
         snapshot = await graph.aget_state(config)
+
+        # Le statut AVANT la publication, dans les deux sorties. Un client
+        # qui appelle `/state` en réaction à l'événement doit trouver la
+        # colonne déjà à jour ; l'ordre inverse lui montrerait l'état
+        # d'avant, une fois sur on ne sait combien.
+        #
+        # CES DEUX ÉCRITURES SONT DANS LE `try` : constat 2 de la revue
+        # finale. Si `_status("waiting")` lève, la ligne restait `running`
+        # pour toujours faute d'être rattrapée ; elle passe maintenant par
+        # `_fail`, comme n'importe quel autre échec du run.
+        if snapshot.interrupts:
+            await _status(project_id, "waiting")
+            await _publish_interrupt(project_id, snapshot.interrupts[0])
+            return
+
+        await _status(project_id, "done")
     except asyncio.CancelledError:
         # L'arrêt de l'application. On ne touche pas au statut : la ligne
         # reste `running` et la réconciliation du démarrage suivant la
@@ -63,20 +79,22 @@ async def advance(project_id: str, thread_id: str, graph_input) -> None:
         await _fail(project_id, error)
         return
 
-    # Le statut AVANT la publication, dans les deux sorties. Un client qui
-    # appelle `/state` en réaction à l'événement doit trouver la colonne déjà
-    # à jour ; l'ordre inverse lui montrerait l'état d'avant, une fois sur
-    # on ne sait combien.
-    if snapshot.interrupts:
-        await _status(project_id, "waiting")
-        await _publish_interrupt(project_id, snapshot.interrupts[0])
-        return
-
-    await _status(project_id, "done")
     # §9.3 : la purge tourne à la fin d'un run. L'appel passe par le module
     # et non par un nom importé, pour que le test puisse le remplacer.
-    removed = await checkpointer.purge_checkpoints(thread_id)
-    logger.info("run %s terminé, %d points de reprise purgés", project_id, removed)
+    #
+    # HORS DU `try` CI-DESSUS, ET DANS SON PROPRE `try/except` : constat 2 de
+    # la revue finale. Une purge ratée n'est qu'un coût de stockage — la
+    # purge de filet du démarrage (§9.3, `purge_finished_projects`) la
+    # rattrapera — mais elle ne doit jamais faire perdre l'événement `done`.
+    # Le laisser lever depuis une tâche que personne n'attend faisait sortir
+    # l'exception en silence : le client SSE ne recevait plus que des
+    # battements, ne se reconnectait jamais, et l'écran restait sur
+    # « rédaction en cours » alors que la ligne était bel et bien `done`.
+    try:
+        removed = await checkpointer.purge_checkpoints(thread_id)
+        logger.info("run %s terminé, %d points de reprise purgés", project_id, removed)
+    except Exception:
+        logger.exception("run %s : purge des points de reprise en échec", project_id)
     publish(project_id, RunEvent("done", {"project_id": project_id}))
 
 
