@@ -140,6 +140,38 @@ class Catalogue(BaseModel):
             to_reopen |= self.sections_using(fact_id)
         return to_reopen
 
+    def sections_depending_on(self, qualified_id: str) -> set[str]:
+        """La section demandée et, transitivement, celles qui en dépendent.
+
+        `depend_de` nomme des sections du MÊME document, sans préfixe : la
+        fermeture ne traverse donc jamais la frontière entre le CDC et le
+        business plan. C'est voulu — les deux documents se recoupent par les
+        faits, pas par les sections, et c'est `sections_to_reopen` qui porte
+        ce chemin-là.
+
+        Transitive, parce qu'une dépendance l'est : si C dépend de B et B de
+        A, rouvrir A sans rouvrir C laisserait C appuyée sur un B qui va
+        changer. La file évite la récursion, qu'un cycle dans les gabarits
+        ferait déborder ; `to_reopen` sert aussi de marquage, donc un cycle
+        s'arrête de lui-même.
+        """
+        document, _, section_id = qualified_id.partition(".")
+        template = self._document(document)
+        if not any(s.id == section_id for s in template.sections):
+            raise KeyError(f"section inconnue : {qualified_id}")
+
+        to_reopen = {qualified_id}
+        queue = [section_id]
+        while queue:
+            current = queue.pop()
+            for section in template.sections:
+                if current in section.depend_de:
+                    qualified = f"{document}.{section.id}"
+                    if qualified not in to_reopen:
+                        to_reopen.add(qualified)
+                        queue.append(section.id)
+        return to_reopen
+
     def plan_for(
         self,
         documents: Literal["cdc", "bp", "both"],

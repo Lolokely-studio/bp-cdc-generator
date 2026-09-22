@@ -82,3 +82,31 @@ async def connection():
                 entry.ready = True
     async with entry.pool.connection() as conn:
         yield conn
+
+
+async def close_current_pool() -> None:
+    """Ferme le pool de la boucle courante et oublie son entrée.
+
+    Oublier l'entrée n'est pas facultatif : un pool psycopg fermé ne se
+    rouvre jamais, donc le laisser dans le dictionnaire condamnerait tout
+    appel ultérieur sur la même boucle. On le retire, et le prochain appel en
+    construira un neuf.
+
+    Cette fonction existe pour les tests. En production, c'est le cycle de vie
+    de l'application qui ferme le pool — mais ce cycle ne tourne jamais sous
+    pytest : `httpx.ASGITransport` n'exécute pas les événements de cycle de
+    vie ASGI, ce qui se lit à sa signature, dépourvue de paramètre
+    `lifespan`. Les tâches de fond du pool survivaient donc à chaque test
+    touchant la base, et leur annulation en masse à la fermeture de la boucle
+    faisait récurser `Task.cancel()` dans les futures chaînées de psycopg
+    jusqu'à la `RecursionError`. Celle-ci était avalée par le gestionnaire
+    d'exceptions par défaut d'asyncio, donc invisible : la suite pendait sans
+    rien dire.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:  # pragma: no cover — appelée depuis du code async
+        return
+    entry = _by_loop.pop(loop, None)
+    if entry is not None and entry.ready:
+        await entry.pool.close()

@@ -107,3 +107,35 @@ def _fresh_pacers():
 
     reset_pacers()
     yield
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _close_the_application_pool():
+    """Ferme le pool applicatif à la fin de chaque test.
+
+    En production, le cycle de vie de l'application s'en charge. En test, ce
+    cycle ne tourne jamais : `httpx.ASGITransport` n'exécute pas les
+    événements de cycle de vie ASGI — sa signature n'a pas de paramètre
+    `lifespan`, on peut le vérifier à l'introspection. Le pool restait donc
+    ouvert après chaque test touchant la base, avec ses tâches de fond, et
+    pytest-asyncio les annulait en bloc en fermant la boucle. `Task.cancel()`
+    récursait alors dans les futures chaînées de psycopg jusqu'à la
+    `RecursionError`, que le gestionnaire d'exceptions par défaut d'asyncio
+    avale dans un rappel : personne ne la voyait, et la suite pendait.
+
+    Le pool étant par boucle et pytest-asyncio en donnant une neuve à chaque
+    test, le fermer ici ne prive aucun test suivant du sien.
+    """
+    yield
+    from app.agent.checkpointer import close_checkpointer
+    from app.core.db import close_current_pool
+    from app.runs import registry
+
+    # Le même ordre qu'à l'arrêt de l'application, et pour la même raison :
+    # on annule d'abord les runs, ensuite seulement on ferme ce dont ils se
+    # servent. L'inverse laisse une tâche vivante demander une connexion à un
+    # pool fermé — ce qui lève dans psycopg, depuis une tâche que personne
+    # n'attend, donc nulle part.
+    await registry.cancel_all()
+    await close_checkpointer()
+    await close_current_pool()

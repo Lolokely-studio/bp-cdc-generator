@@ -317,6 +317,10 @@ Le navigateur se connecte **directement au backend**, sans passer par les foncti
 
 `POST /answer` porte l'identifiant de l'interaction à laquelle il répond. Si le run a déjà dépassé ce point — double clic, reconnexion, onglet resté ouvert — la requête ne rejoue rien et renvoie l'état courant avec `200`. Sans cela, un réseau instable fait avancer le graphe deux fois.
 
+**Une exception, décidée pendant le plan 4.** Si un run avance déjà sur le même fil au moment de la réponse, `/answer` renvoie `409` avec le code `run_deja_en_cours`, et non `200`. Ce cas arrive quand une reprise (`/resume`) est en cours : un run planté laisse son interruption en attente, donc la réponse porte un identifiant encore valide, mais c'est la reprise qui avance. Répondre `200` avec `rejoue: false` ferait croire à l'utilisateur que sa réponse est passée alors qu'elle est jetée. Le front, sur ce `409`, relit `/state` et renvoie la réponse si l'interruption est toujours la même.
+
+**Un état de passage à connaître.** Pendant un `/answer`, `/state` peut renvoyer `run_status: waiting` avec `interaction: null` : la ligne n'est pas encore mise à jour alors que le point de reprise a déjà consommé la réponse. Le front relit `/state` quand il rencontre cet état.
+
 ---
 
 ## 7. Export
@@ -360,6 +364,10 @@ Vérifié le 17 septembre 2026 sur la base cible.
 ### 9.2 Une seule instance
 
 La limitation de débit et tout cache éventuel vivent en mémoire du processus, ce qui n'est correct que tant qu'il n'y a qu'une instance. C'est une hypothèse à écrire dans le code, pas à sous-entendre.
+
+Depuis le plan 4, le bus d'événements et le registre des runs vivent aussi en mémoire. La commande de démarrage fixe donc `--workers 1` : sans cela, uvicorn lit `WEB_CONCURRENCY`, que Render fixe d'après le nombre de processeurs, et un plan plus grand démarrerait deux workers sans que rien ne le signale.
+
+**Risque accepté : ne pas déployer pendant qu'un run est actif.** Lors d'un déploiement sans interruption, Render démarre la nouvelle instance à côté de l'ancienne pendant environ 90 secondes. La réconciliation au démarrage de la nouvelle passerait à `failed` les runs encore vivants de l'ancienne, et un clic sur « Reprendre » en lancerait un second sur le même point de reprise. Ce risque est accepté tant qu'il n'y a pas d'utilisateur réel. Il doit être traité avant la mise en service : soit en désactivant le déploiement sans interruption, soit par un verrou en base indiquant quelle instance pilote quel run.
 
 ### 9.3 Purge des points de reprise
 

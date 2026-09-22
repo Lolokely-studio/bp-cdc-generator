@@ -13,4 +13,9 @@ COPY . .
 RUN uv sync --frozen --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# --workers 1, figé : le bus d'événements et le registre des runs vivent en
+# mémoire du processus (§9.2, une seule instance). `--workers` prend sinon
+# par défaut $WEB_CONCURRENCY, que Render fixe d'après le nombre de
+# processeurs — passer à un plan plus grand démarrerait alors deux workers,
+# chacun croyant être seul à piloter les runs, sans que rien ne le dise.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]

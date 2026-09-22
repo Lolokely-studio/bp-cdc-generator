@@ -33,14 +33,21 @@ Chaque plan ci-dessous produit un logiciel qui tourne et qui se teste seul. On �
 
 Tirées de l'exécution du plan 1, où elles ont manqué.
 
-**Un seul commit de plan par tâche.** Quand une relecture trouve un défaut dans
-le code que le plan impose, le plan se corrige — sinon le brief régénéré fait
-réécrire le même défaut à la tâche suivante. Mais ces corrections se groupent
-par tâche, en un commit, et non une par constat. Le plan 1 en a produit dix-huit
-sur un seul fichier, ce qui noie l'historique du code dans du bruit de
-documentation.
+**Une correction de plan ne fait jamais un commit à elle seule.** Quand une
+relecture trouve un défaut dans le code que le plan impose, le plan se
+corrige — mais cette correction voyage avec le commit de code qu'elle
+provoque, et non devant lui. Un plan qui change sans que rien ne change dans
+le code décrit une intention ; les deux ensemble décrivent un fait. Le plan 4
+a produit quatre commits de plan là où il fallait quatre commits tout court,
+et l'historique se lit deux fois moins bien.
 
-**Corriger le plan et le brief dans le même geste.** Deux fois pendant le plan 1,
+En pratique : on édite le plan, on régénère les briefs, on dispatche, et
+c'est l'implémenteur qui met `docs/plans/` dans son `git add` avec son code.
+La protection contre l'effacement d'un travail non commité reste
+l'interdiction de `git checkout`, `restore`, `stash`, `clean` et `reset`
+portée par chaque dispatche, pas le commit préventif.
+
+**Le plan se corrige avec le brief, dans le même geste.** Deux fois pendant le plan 1,
 le brief a été régénéré sans que le plan soit corrigé, ou l'inverse. Les deux
 divergences portaient sur des protections réelles — l'affectation ferme des
 variables de test, un nom de test. Le plan est la source, le brief en dérive :
@@ -88,11 +95,17 @@ Relecture des consignes et des grilles des 30 sections, plafond par compte, réi
       qu'en mesurant cette exécution, jamais par les tests unitaires : le modèle
       simulé inventait les identifiants de faits, et la règle des faits utiles
       annoncée dans l'en-tête du catalogue n'avait jamais été implémentée.
-- [ ] Plan 4 — **écrit, à exécuter** : [2026-09-21-05-api-projet-et-flux.md](2026-09-21-05-api-projet-et-flux.md)
-      Sept tâches. Un run vit dans une tâche asyncio de fond et publie sur un bus
-      en mémoire ; les connexions SSE s'y abonnent, et une coupure ne perd rien.
-      Les trois fonctions du plan 3 restées sans appelant — `purge_checkpoints`,
-      `reproject`, `mark_for_reopening` — en trouvent un ici, et `depend_de`,
-      déclaré dans les gabarits et appliqué nulle part, sert enfin.
+- [x] Plan 4 — **livré et fusionné** : [2026-09-21-05-api-projet-et-flux.md](2026-09-21-05-api-projet-et-flux.md) — 467 tests
+      Huit tâches : bus d'événements, publication depuis le graphe, pilote de run
+      en tâche de fond, routes de projet, réponse idempotente, flux SSE, reprise
+      et réouverture, puis les correctifs de la revue finale. Chaque tâche a été
+      relue par mutation, et chaque relecture a trouvé des tests qui passaient
+      pour une mauvaise raison. Défauts de fond trouvés en chemin : la suite qui
+      pendait sans rien dire, une réponse mal formée qui bloquait un projet pour
+      de bon, la route SSE qu'on pouvait supprimer sans qu'aucun test échoue.
+      Reporté au plan suivant : `reproject`, jamais appelée car écrite sur une
+      prémisse fausse ; le statut `reopened`, que rien ne relit ; le coût de la
+      purge à chaque réveil. Risque accepté : pas de déploiement pendant un run
+      actif (spec §9.2).
 - [ ] Plan 5
 - [ ] Plan 6

@@ -25,8 +25,13 @@ les reprises, §9.2 et §9.3 pour l'instance unique et la purge.
 **Revue du plan 3 :** [2026-09-18-04-agent-revue.md](2026-09-18-04-agent-revue.md).
 Trois constats y attendent ce plan-ci, et sont traités par les tâches
 ci-dessous plutôt que reportés encore : `purge_checkpoints` sans appelant
-(tâches 3 et 7), `reproject` sans appelant (tâche 7), `mark_for_reopening`
-sans appelant (tâche 7).
+(tâches 3 et 7) et `mark_for_reopening` sans appelant (tâche 7).
+
+`reproject` était du lot dans la première version de ce plan. Elle en sort :
+sa prémisse est fausse, le point de reprise ne porte pas les sections déjà
+validées et ne peut donc pas les réécrire. La tâche 7 dit pourquoi, et le
+constat part au plan suivant plutôt que d'être refermé par un appel de
+complaisance.
 
 ---
 
@@ -217,8 +222,30 @@ async def test_a_subscriber_that_falls_behind_is_dropped_with_an_error():
         for index in range(SUBSCRIBER_QUEUE_SIZE + 10):
             publish("projet-f", RunEvent("token", {"text": str(index)}))
         received = []
-        async for event in events:
-            received.append(event)
+        # Un délai par élément, et non un simple `async for` : sans lui, une
+        # régression qui n'émettrait jamais l'avis de retard ferait PENDRE ce
+        # test au lieu de l'échouer, et une mutation qui fait pendre ne
+        # prouve rien.
+        #
+        # Mais ce délai ouvre un second trou, qu'il faut refermer dans le
+        # même geste : il finit la boucle aussi bien quand l'itérateur
+        # s'arrête tout seul que quand il ne s'arrête JAMAIS. Sans distinguer
+        # les deux, supprimer le `return` d'`_iterate` laisserait les sept
+        # tests au vert — le dernier élément reçu resterait l'avis de retard,
+        # et seule la connexion SSE, plus tard, finirait par couper. Le
+        # contrat du bus serait alors tenu par le caprice du client.
+        ended_by = None
+        try:
+            while True:
+                received.append(
+                    await asyncio.wait_for(anext(events), timeout=1))
+        except StopAsyncIteration:
+            ended_by = "exhausted"
+        except asyncio.TimeoutError:
+            ended_by = "timeout"
+    assert ended_by == "exhausted", (
+        "l'itérateur ne s'est pas arrêté de lui-même après l'avis de retard"
+    )
     assert received[-1].name == "error"
     assert received[-1].data == LAGGED.data
     assert len(received) == SUBSCRIBER_QUEUE_SIZE
@@ -282,8 +309,8 @@ LAGGED = RunEvent("error", {
 # CE DICTIONNAIRE VIT EN MÉMOIRE DU PROCESSUS. C'est l'hypothèse « une seule
 # instance » du §9.2, et elle est écrite ici plutôt que sous-entendue : avec
 # deux instances derrière un répartiteur, un navigateur abonné sur l'une ne
-# verrait rien de ce que publie l'other_account, sans la moindre erreur. Le jour où
-# une second instance devient nécessaire, ce module devient un real_purge courtier
+# verrait rien de ce que publie l'autre, sans la moindre erreur. Le jour où
+# une seconde instance devient nécessaire, ce module devient un vrai courtier
 # — Redis ou `LISTEN/NOTIFY` — et c'est le seul à changer.
 _channels: dict[str, set[asyncio.Queue]] = {}
 
@@ -292,27 +319,36 @@ def publish(project_id: str, event: RunEvent) -> None:
     """Publie sans bloquer et sans rien attendre de personne.
 
     Synchrone à dessein : les nœuds du graphe l'appellent au milieu d'un flux
-    de tokens, et un `await` de plus par fragment coûterait une bascule de
+    de fragments, et un `await` de plus par fragment coûterait une bascule de
     tâche par mot rédigé. `put_nowait` sur une file bornée suffit.
     """
-    for queue in _channels.get(project_id, ()):
+    subscribers = _channels.get(project_id)
+    if not subscribers:
+        return
+    # Une copie : `_drop_lagging` retire l'abonné du canal, et muter un
+    # ensemble qu'on parcourt lèverait une `RuntimeError`.
+    for queue in list(subscribers):
         try:
             queue.put_nowait(event)
         except asyncio.QueueFull:
-            # L'abonné est trop lent. On ne jette pas d'événement au hasard :
-            # on le coupe proprement. `_close` se charge du reste ; ici on ne
-            # peut pas muter l'ensemble qu'on parcourt.
-            _mark_lagged(queue)
+            _drop_lagging(project_id, queue)
 
 
-def _mark_lagged(queue: asyncio.Queue) -> None:
-    """Remplace le plus ancien élément par l'avis de retard.
+def _drop_lagging(project_id: str, queue: asyncio.Queue) -> None:
+    """Coupe l'abonné en retard, une fois pour toutes.
+
+    Le retirer du canal AVANT de poser l'avis est ce qui rend l'opération
+    idempotente, et ce n'est pas une élégance : sans cela, chaque publication
+    suivante retrouverait la file pleine, sortirait un fragment de plus et
+    glisserait un nouvel avis derrière. L'abonné recevrait alors des
+    fragments amputés AVANT de voir le premier avis — exactement ce que
+    cette branche existe pour éviter.
 
     La file est pleine par définition : pour y glisser `LAGGED`, il faut
     d'abord faire de la place. On sort le plus ancien, ce qui est le moins
-    mauvais choix — l'abonné sera coupé de toute façon, autant qu'il reçoive
-    l'avis le plus tôt possible.
+    mauvais choix — l'abonné sera coupé de toute façon.
     """
+    _channels.get(project_id, set()).discard(queue)
     try:
         queue.get_nowait()
     except asyncio.QueueEmpty:  # pragma: no cover — la file est pleine
@@ -367,7 +403,9 @@ chaque mutation, lancez `tests/test_events.py`, restaurez.
 
 | Mutation | Doit faire tomber |
 |---|---|
-| `except asyncio.QueueFull: pass` au lieu d'appeler `_mark_lagged` | `..._falls_behind_is_dropped_with_an_error` |
+| `except asyncio.QueueFull: pass` au lieu d'appeler `_drop_lagging` | `..._falls_behind_is_dropped_with_an_error` |
+| `_drop_lagging` sans le `discard` du canal | le même — l'abonné recevrait des fragments après l'avis |
+| `_iterate` sans son `if event is LAGGED: return` | le même — trouvé par la relecture, c'est la mutation qui survivait |
 | retirer le `del _channels[project_id]` | `..._channel_disappears_when_its_last_subscriber_leaves` |
 | `_channels.get(project_id, ())` → parcourir tous les canaux | `..._subscriber_of_another_project_receives_nothing` |
 
@@ -573,7 +611,7 @@ Puis, dans `write`, à l'intérieur de la boucle `async for event in stream(...)
             # peine de coller un faux départ devant le texte relancé.
             pieces = []
             # Le front doit vider son affichage pour la même raison, sinon il
-            # montrerait le faux départ suivi du real_purge texte.
+            # montrerait le faux départ suivi du vrai texte.
             publish(state["project_id"], RunEvent("section_restart", {
                 "document": ref.document, "section_id": ref.section_id,
             }))
@@ -638,13 +676,153 @@ Attendu : 4 passés.
 | `"cursor": state["cursor"]` au lieu de `+ 1` | `test_saving_publishes_the_section_and_the_progress` |
 | publier `section_saved` **après** `progress` | le même (l'ordre est une valeur de contrat) |
 
+
+- [ ] **Étape 7 bis : les quatre trous que la relecture a trouvés par mutation**
+
+L'implémentation de `nodes.py` est juste — le relecteur a construit tous les
+chemins, y compris ceux que la suite ne couvre pas, et n'a trouvé aucun
+défaut de comportement. Mais **quatre mutations survivent**, c'est-à-dire que
+quatre propriétés du contrat ne sont tenues par rien. La couche SSE de la
+tâche 6 s'appuiera sur deux d'entre elles.
+
+Ajouter ces tests à `backend/tests/test_node_events.py` :
+
+```python
+async def test_a_restart_is_published_between_the_false_start_and_the_real_text(project):
+    """L'ordre est le contrat, autant que la charge utile.
+
+    Publié trop tôt, le navigateur effacerait du texte valide ; trop tard, il
+    laisserait le faux départ collé devant le vrai. Et sans `document` ni
+    `section_id`, il ne saurait pas quelle section vider — un projet `both`
+    en a soixante.
+
+    `FakeTransport` ne rompt jamais un flux : ce chemin ne s'atteint qu'avec
+    le simulé sous script de `test_nodes.py`.
+    """
+    from app.llm.errors import ProviderUnavailable
+    from tests.test_nodes import _RestartingTransport
+
+    stub = _RestartingTransport({
+        ("gemini", "gemini-3.1-flash-lite"): [
+            "Un faux départ jamais gardé.",
+            ProviderUnavailable("gemini", "erreur", "flux rompu"),
+        ],
+        ("mistral", "ministral-8b-latest"): ["Le texte définitif de la section."],
+    })
+    async with subscribe(project) as events:
+        await nodes.write(_state(project), transport=stub)
+        received = await _collect(events, 200)
+
+    names = [e.name for e in received]
+    assert "section_restart" in names, "la reprise de flux n'a pas été publiée"
+    cut = names.index("section_restart")
+    before = "".join(e.data["text"] for e in received[:cut] if e.name == "token")
+    after = "".join(e.data["text"] for e in received[cut + 1:] if e.name == "token")
+    assert "faux départ" in before, "le faux départ n'a pas été publié avant la reprise"
+    assert "définitif" in after, "le vrai texte n'a pas été publié après la reprise"
+
+    restart = received[cut]
+    ref = _state(project)["plan"][0]
+    assert restart.data == {"document": ref.document, "section_id": ref.section_id}
+
+
+async def test_no_empty_fragment_is_ever_published(project):
+    """Un `token` vide n'est pas anodin.
+
+    Il signifierait que la publication a quitté la branche `TextDelta` et
+    s'applique aussi aux trames de service — reprise de flux, fin de flux.
+    Le navigateur recevrait alors des fragments qui ne sont pas du texte, et
+    rien dans la concaténation ne le dirait : coller des chaînes vides ne
+    change pas le résultat, c'est pourquoi l'assertion sur le texte assemblé
+    ne suffit pas à garder cette propriété.
+    """
+    async with subscribe(project) as events:
+        await nodes.write(_state(project), transport=FakeTransport())
+        received = await _collect(events, 200)
+
+    tokens = [e for e in received if e.name == "token"]
+    assert tokens
+    assert all(e.data["text"] for e in tokens), "un fragment vide a été publié"
+
+
+async def test_the_progress_total_follows_the_state_plan_and_not_the_catalogue(project):
+    """`total` vient de `state["plan"]`, et l'écart compte.
+
+    Les deux expressions donnent le même nombre dans le cas nominal, ce qui
+    rendait ce contrat intestable : la fixture a toujours un plan qui coïncide
+    avec ce qu'une relecture du catalogue produirait. On tronque donc le plan,
+    et les deux sources divergent.
+
+    Ce n'est pas une contorsion de test : le plan de l'état est ce qui reste
+    juste quand il a été réduit — une reprise partielle, une section rouverte
+    — alors qu'une relecture du catalogue rendrait toujours la liste entière
+    et afficherait une progression fausse à l'utilisateur.
+    """
+    from app.agent.state import Paragraph
+
+    state = _state(project, draft=[Paragraph(text="Un texte.")], score=9)
+    state["plan"] = state["plan"][:3]
+
+    async with subscribe(project) as events:
+        await nodes.save(state)
+        received = await _collect(events, 2)
+
+    progress = next(e for e in received if e.name == "progress")
+    assert progress.data["total"] == 3, (
+        "`total` ne vient pas de `state[\"plan\"]` mais d'une relecture du "
+        "catalogue, qui ignore un plan réduit"
+    )
+
+
+async def test_the_published_score_matches_the_returned_one_when_nothing_parses(project):
+    """Un navigateur à qui l'on montre une note que le graphe n'a pas suivie
+    est un navigateur à qui l'on ment.
+
+    Le chemin de repli — le modèle rend quelque chose d'inexploitable — n'est
+    exercé par aucun test : `FakeTransport` rend toujours un schéma valide.
+    Or ce repli n'est pas théorique : une note de zéro passe sous
+    `REWRITE_SCORE` et renvoie donc la section en réécriture.
+    """
+    from app.llm.types import Completion
+
+    class _UnparsableTransport(FakeTransport):
+        async def chat(self, provider, model, messages, *, schema=None):
+            return Completion(text="{}", provider=provider.name, model=model,
+                              tokens=1, parsed=None)
+
+    async with subscribe(project) as events:
+        maj = await nodes.critique(
+            _state(project, draft=[Paragraph(text="Un texte.")]),
+            transport=_UnparsableTransport())
+        received = await _collect(events, 1)
+
+    assert maj["score"] == 0 and maj["problems"] == []
+    published = next(e for e in received if e.name == "score")
+    assert published.data["score"] == maj["score"]
+    assert published.data["problems"] == maj["problems"]
+```
+
+`Paragraph` s'importe depuis `app.agent.state` ; le fichier le fait déjà
+dans une autre fonction, remontez l'import en tête plutôt que de le répéter.
+
+- [ ] **Étape 7 ter : rejouer les quatre mutations qui survivaient**
+
+| Mutation | Doit faire tomber |
+|---|---|
+| publier `token` hors de la branche `TextDelta`, par `getattr(event, "text", "")` | `..._no_empty_fragment_is_ever_published` |
+| `section_restart` publié avec `{}` | `..._restart_is_published_between...` |
+| `"total": len(_catalogue().plan_for(...))` au lieu de `len(state["plan"])` | `..._progress_total_follows_the_state_plan...` |
+| `critique` publiant `verdict.score` au lieu de `score` | `..._published_score_matches_the_returned_one...` |
+
+Les quatre laissaient les 385 tests au vert avant ces ajouts. Si l'une reste
+verte après, c'est le test qu'il faut corriger, pas la mutation.
 - [ ] **Étape 8 : lancer la suite complète**
 
 ```bash
 cd backend && uv run pytest -m "not network" -q
 ```
 
-Attendu : 385 passés, 5 désélectionnés. **Si un test antérieur change de
+Attendu : 389 passés, 5 désélectionnés. **Si un test antérieur change de
 couleur, la publication est au mauvais endroit** — c'est le signal que la
 tâche a débordé, pas une broutille à contourner.
 
@@ -676,7 +854,7 @@ git commit -m "feat(agent): les nœuds publient la rédaction, la note et l'avan
     corps de la tâche, testable sans asyncio de fond
   - `RunAlreadyRunning` — exception levée par `start_run` si une tâche vit
     déjà pour ce projet
-  - `set_run_status(conn, project_id: UUID, statut: str) -> None`
+  - `set_run_status(conn, project_id: UUID, status: str) -> None`
   - `RUN_STATUSES = ("idle", "running", "waiting", "failed", "done")`
 
 **Ce que le pilote doit garantir, et pourquoi :**
@@ -704,7 +882,7 @@ Dans `backend/app/projects/repository.py`, à la suite de `project_for_user` :
 RUN_STATUSES = ("idle", "running", "waiting", "failed", "done")
 
 
-async def set_run_status(conn, project_id: UUID, statut: str) -> None:
+async def set_run_status(conn, project_id: UUID, status: str) -> None:
     """Le seul chemin d'écriture de `run_status`.
 
     Le contrôle sur `RUN_STATUSES` est ici et non à l'appelant : la colonne
@@ -714,12 +892,12 @@ async def set_run_status(conn, project_id: UUID, statut: str) -> None:
     `updated_at` suit : l'index de la liste du propriétaire trie dessus, et
     un projet qui avance sans remonter dans la liste serait déroutant.
     """
-    if statut not in RUN_STATUSES:
-        raise ValueError(f"statut de run inconnu : {statut}")
+    if status not in RUN_STATUSES:
+        raise ValueError(f"statut de run inconnu : {status}")
     async with conn.cursor() as cur:
         await cur.execute(
             "update projects set run_status = %s, updated_at = now() where id = %s",
-            (statut, project_id),
+            (status, project_id),
         )
 ```
 
@@ -728,7 +906,7 @@ async def set_run_status(conn, project_id: UUID, statut: str) -> None:
 ```python
 # backend/tests/test_runner.py
 import asyncio
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 import pytest_asyncio
@@ -741,7 +919,15 @@ from app.runs.runner import RunAlreadyRunning, advance, start_run
 
 
 @pytest_asyncio.fixture
-async def project(migrated_db):
+async def project(migrated_db, monkeypatch):
+    # `ESQUISSE_FAKE_LLM` n'est pas un détail de confort : le pilote appelle
+    # le graphe SANS lui passer de transport, et la passerelle lit donc le
+    # réglage. Sans cette ligne, `advance` partirait vers les vrais
+    # fournisseurs au milieu d'une suite qui s'annonce hors-réseau. Même
+    # montage que `tests/test_graph.py::project`.
+    monkeypatch.setenv("ESQUISSE_FAKE_LLM", "true")
+    from app.core import config
+    config.settings.cache_clear()
     async with connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
@@ -761,6 +947,13 @@ async def project(migrated_db):
         )
     yield {"project_id": project_id, "user_id": user_id,
            "thread_id": thread_id}
+    # Démontage : le point de reprise ouvre un pool lié à la boucle
+    # d'événements du test, et pytest-asyncio en donne une neuve à chacun.
+    # Le laisser derrière soi ferait échouer un test suivant sans rapport.
+    from app.agent.checkpointer import close_checkpointer
+
+    await close_checkpointer()
+    config.settings.cache_clear()
 
 
 async def _status(project_id, user_id):
@@ -816,28 +1009,237 @@ async def test_a_failing_run_is_marked_failed_and_publishes_an_error(project):
     assert errors[-1].data["reprenable"] is True
 
 
-async def test_a_finished_run_purges_its_checkpoints(project):
-    """`purge_checkpoints` est écrit et testé depuis le plan 3 et n'avait
-    aucun appelant — constat 8 de la revue finale. Il en a un ici."""
+async def test_a_finished_run_marks_done_then_purges_then_says_so(project, monkeypatch):
+    """Le VRAI chemin de fin, pas une trappe de test.
+
+    La première version de ce test passait par un paramètre `_force_done`
+    qui sautait tout le bloc `try` : elle prouvait que la trappe purgeait,
+    jamais qu'un graphe terminé purge. Mettre tout le corps de fin derrière
+    ce drapeau laissait les 394 tests au vert. On remplace donc le graphe,
+    pas le chemin.
+
+    `purge_checkpoints` est écrit et testé depuis le plan 3 et n'avait aucun
+    appelant — constat 8 de la revue finale. Il en a un ici.
+    """
+    from types import SimpleNamespace
+
     from app.agent import checkpointer
+    from app.runs import runner
+
+    class _FinishedGraph:
+        async def ainvoke(self, graph_input, config):
+            return {}
+
+        async def aget_state(self, config):
+            return SimpleNamespace(interrupts=(), values={})
+
+    async def _finished_graph():
+        return _FinishedGraph()
 
     calls = []
+    # `order` enregistre les deux effets dans l'ordre réel. Sans lui, le test
+    # constate que la purge a eu lieu et que le statut vaut `done`, mais
+    # jamais lequel des deux est venu en premier — et intervertir les deux
+    # laissait la suite verte.
+    #
+    # L'ordre compte : purger avant d'écrire `done`, c'est risquer de mourir
+    # entre les deux et de laisser un projet marqué `running` dont les points
+    # de reprise ont disparu. Dans l'autre sens, la mort entre les deux
+    # laisse un projet `done` dont les points de reprise survivent — ce que
+    # la purge de filet du démarrage ramasse sans rien perdre.
+    order = []
+    real_status = runner._status
+
+    async def _record_status(project_id, status):
+        order.append(f"status:{status}")
+        await real_status(project_id, status)
 
     async def _count_calls(thread_id, keep=1):
+        order.append("purge")
         calls.append((thread_id, keep))
         return 0
 
-    real_purge = checkpointer.purge_checkpoints
-    checkpointer.purge_checkpoints = _count_calls
-    try:
-        await advance(str(project["project_id"]), project["thread_id"],
-                      None, _force_done=True)
-    finally:
-        checkpointer.purge_checkpoints = real_purge
+    monkeypatch.setattr(runner, "compiled_graph", _finished_graph)
+    monkeypatch.setattr(runner, "_status", _record_status)
+    monkeypatch.setattr(checkpointer, "purge_checkpoints", _count_calls)
 
-    assert calls, "un run terminé doit purger ses points de reprise"
-    assert calls[0][0] == project["thread_id"]
+    async with subscribe(str(project["project_id"])) as events:
+        await advance(str(project["project_id"]), project["thread_id"], None)
+        received = []
+        try:
+            while True:
+                received.append(await asyncio.wait_for(anext(events), timeout=0.2))
+        except (StopAsyncIteration, asyncio.TimeoutError):
+            pass
+
+    assert calls == [(project["thread_id"], 1)], (
+        "un run terminé doit purger ses points de reprise"
+    )
     assert await _status(project["project_id"], project["user_id"]) == "done"
+    assert [e.name for e in received] == ["done"]
+    assert order.index("status:done") < order.index("purge"), (
+        "la purge a précédé l'écriture de `done` : mourir entre les deux "
+        "laisserait un projet `running` sans points de reprise"
+    )
+
+
+async def test_the_status_is_written_before_the_event_leaves(project, monkeypatch):
+    """L'ordre, et pas seulement le contenu.
+
+    Un client qui appelle `/state` en réaction à un événement doit trouver la
+    colonne déjà à jour. On enregistre l'ordre réel des deux effets plutôt
+    que de guetter une course : un test qui dépend de l'ordonnanceur passe ou
+    non selon la machine, ce qui est la pire sorte.
+    """
+    from app.runs import runner
+
+    order = []
+    real_status, real_publish = runner._status, runner.publish
+
+    async def _record_status(project_id, status):
+        order.append(f"status:{status}")
+        await real_status(project_id, status)
+
+    def _record_publish(project_id, event):
+        order.append(f"publish:{event.name}")
+        real_publish(project_id, event)
+
+    monkeypatch.setattr(runner, "_status", _record_status)
+    monkeypatch.setattr(runner, "publish", _record_publish)
+
+    graph_input = initial_state(str(project["project_id"]), "cdc",
+                                "consultation", None, "Une idée.")
+    await advance(str(project["project_id"]), project["thread_id"], graph_input)
+
+    assert order[0] == "status:running", (
+        "le run doit s'annoncer en cours avant de faire quoi que ce soit"
+    )
+    assert "status:waiting" in order and "publish:interaction" in order
+    assert order.index("status:waiting") < order.index("publish:interaction")
+
+
+async def test_the_error_event_leaves_even_if_the_database_is_unreachable(project, monkeypatch):
+    """Le filet ne doit pas pouvoir être tué par ce qui l'a rendu nécessaire.
+
+    `_status` ouvre une connexion. Si la base est la cause de l'échec, elle
+    lèvera aussi en marquant l'échec — et dans l'ordre inverse cette seconde
+    levée emporterait la publication, depuis une tâche que personne
+    n'attend. Le run mourrait alors en silence, ce que ce bloc existe pour
+    empêcher.
+    """
+    from app.runs import runner
+
+    real_status = runner._status
+
+    async def _refuse_failed(project_id, status):
+        if status == "failed":
+            raise RuntimeError("base injoignable")
+        await real_status(project_id, status)
+
+    monkeypatch.setattr(runner, "_status", _refuse_failed)
+
+    async with subscribe(str(project["project_id"])) as events:
+        await advance(str(project["project_id"]), project["thread_id"],
+                      {"plan": [], "cursor": 5})
+        received = []
+        try:
+            while True:
+                received.append(await asyncio.wait_for(anext(events), timeout=0.2))
+        except (StopAsyncIteration, asyncio.TimeoutError):
+            pass
+
+    errors = [e for e in received if e.name == "error"]
+    assert errors, (
+        "l'événement d'erreur n'est pas parti : une base injoignable a "
+        "emporté le filet qu'elle rendait nécessaire"
+    )
+
+
+async def test_the_error_event_does_not_wait_for_the_database(project, monkeypatch):
+    """Publier d'abord, écrire ensuite — et le test voisin ne suffit pas.
+
+    La garde autour de l'écriture du statut protège d'une base qui LÈVE :
+    l'exception est absorbée sur place, et l'événement part quel que soit
+    l'ordre des deux. Ce test-là ne distingue donc pas les deux ordres, ce
+    que la mutation a montré en restant verte.
+
+    Une base qui TRAÎNE les distingue. Le pool peut mettre plusieurs
+    secondes à rendre une connexion — c'est même le cas courant sur un
+    hébergement qui sort de veille — et dans l'ordre inverse le navigateur
+    attendrait tout ce temps avant d'apprendre que son run est mort.
+    """
+    from app.runs import runner
+
+    real_status = runner._status
+
+    async def _slow_failed(project_id, status):
+        if status == "failed":
+            await asyncio.sleep(5)
+        await real_status(project_id, status)
+
+    monkeypatch.setattr(runner, "_status", _slow_failed)
+
+    async with subscribe(str(project["project_id"])) as events:
+        running = asyncio.create_task(advance(
+            str(project["project_id"]), project["thread_id"],
+            {"plan": [], "cursor": 5}))
+        try:
+            event = await asyncio.wait_for(anext(events), timeout=1)
+        finally:
+            running.cancel()
+
+    assert event.name == "error", (
+        "le navigateur a attendu la base avant d'apprendre l'échec"
+    )
+
+
+async def test_an_unknown_run_status_is_refused():
+    """La seule logique neuve de `repository.py`, et rien ne l'exerçait.
+
+    La colonne est du texte libre côté base : une faute de frappe y passerait
+    sans bruit pour ne se voir qu'à l'affichage, des heures plus tard.
+    """
+    async with connection() as conn:
+        with pytest.raises(ValueError, match="statut de run inconnu"):
+            await set_run_status(conn, uuid4(), "en_cours")
+
+
+async def test_a_finished_task_never_unregisters_its_successor():
+    """Le défaut que la relecture a reproduit.
+
+    Le rappel de fin retirait par clé. La tâche A qui se termine effaçait
+    donc l'entrée de la tâche B qui venait de la remplacer : `is_running`
+    répondait « non » pour un run bien vivant, le garde de
+    `RunAlreadyRunning` tombait, et `cancel_all` ne voyait plus l'orpheline.
+    """
+    from app.runs import registry
+
+    async def _immediate():
+        return None
+
+    async def _long():
+        await asyncio.sleep(10)
+
+    first = asyncio.create_task(_immediate())
+    registry.register("projet-course", first)
+    await first
+
+    second = asyncio.create_task(_long())
+    registry.register("projet-course", second)
+    try:
+        # On déclenche le rappel de la PREMIÈRE tâche à la main, après que la
+        # seconde a pris sa place. Compter sur l'ordonnanceur pour produire
+        # cet entrelacement donnerait un test qui passe ou non selon la
+        # machine — et, de fait, `await first` draine déjà le rappel avant
+        # que la seconde existe, si bien que la fenêtre ne s'ouvre jamais.
+        # C'est ce qui rendait la première version de ce test aveugle à la
+        # mutation qu'elle devait attraper.
+        registry._forget("projet-course")(first)
+        assert registry.is_running("projet-course"), (
+            "le rappel de la tâche terminée a désenregistré sa remplaçante"
+        )
+    finally:
+        await registry.cancel_all()
 
 
 async def test_two_starts_for_the_same_project_are_refused(project):
@@ -867,6 +1269,9 @@ Attendu : `ModuleNotFoundError: No module named 'app.runs.runner'`.
 ```python
 # backend/app/runs/registry.py
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Une tâche par projet, sur la durée de vie du processus.
 #
@@ -881,10 +1286,28 @@ _tasks: dict[str, asyncio.Task] = {}
 
 def register(project_id: str, task: asyncio.Task) -> None:
     _tasks[project_id] = task
-    # Se retirer soi-même à la fin : sans ce rappel, un projet dont le run
-    # est terminé resterait marqué « en cours » et aucune reprise ne
-    # repartirait jamais.
-    task.add_done_callback(lambda _: _tasks.pop(project_id, None))
+    # Le rappel de fin vérifie l'IDENTITÉ de la tâche avant de retirer
+    # l'entrée, et ce n'est pas une précaution de style.
+    #
+    # `is_running` passe à faux dès qu'une tâche se termine, mais le rappel
+    # ne s'exécute qu'au tour de boucle suivant. Dans cet intervalle, une
+    # coroutine déjà prête — une requête `/answer` qui reprend, par exemple —
+    # passe le garde, `register` remplace l'entrée, puis le rappel de la
+    # tâche A efface l'entrée de la tâche B. Deux tâches avancent alors le
+    # même `thread_id` — exactement la corruption que ce module existe pour
+    # empêcher — et `cancel_all` ne voit plus l'orpheline.
+    #
+    # Reproduit, pas supposé : la relecture de cette tâche en a produit une
+    # démonstration autonome.
+    task.add_done_callback(_forget(project_id))
+
+
+def _forget(project_id: str):
+    """Le rappel qui ne retire que sa propre tâche."""
+    def _callback(task: asyncio.Task) -> None:
+        if _tasks.get(project_id) is task:
+            del _tasks[project_id]
+    return _callback
 
 
 def is_running(project_id: str) -> bool:
@@ -893,19 +1316,29 @@ def is_running(project_id: str) -> bool:
 
 
 async def cancel_all() -> None:
-    """Annule tout et attend que ce soit fait. Appelée à l'arrêt de
-    l'application, et par les tests qui ont lancé une tâche de fond — sans
-    quoi une tâche survivrait à son test et écrirait dans une base que le
-    test suivant croit à lui."""
-    tasks = list(_tasks.values())
-    for task in tasks:
+    """Annule tout et attend que ce soit fait.
+
+    Appelée à l'arrêt de l'application, et par les tests qui ont lancé une
+    tâche de fond — sans quoi une tâche survivrait à son test et écrirait
+    dans une base que le test suivant croit à lui.
+    """
+    pending = dict(_tasks)
+    for task in pending.values():
         task.cancel()
-    for task in tasks:
+    for project_id, task in pending.items():
         try:
             await task
-        except (asyncio.CancelledError, Exception):
-            pass
-    _tasks.clear()
+        except BaseException:
+            # `BaseException` et non `Exception` : l'annulation qu'on vient
+            # de demander se présente en `CancelledError`, qui n'hérite plus
+            # d'`Exception` depuis Python 3.8. Un vrai échec de run remonte
+            # aussi par ici à l'arrêt ; on le journalise plutôt que de le
+            # perdre en silence.
+            logger.debug("run %s terminé à l'arrêt", project_id, exc_info=True)
+        # On ne retire que ce qu'on a annulé. Un `_tasks.clear()` final
+        # emporterait une tâche enregistrée pendant qu'on attendait.
+        if _tasks.get(project_id) is task:
+            del _tasks[project_id]
 ```
 
 - [ ] **Étape 5 : écrire le pilote**
@@ -948,44 +1381,43 @@ def start_run(project_id: str, thread_id: str, graph_input) -> None:
     registry.register(project_id, task)
 
 
-async def advance(project_id: str, thread_id: str, graph_input,
-                  *, _force_done: bool = False) -> None:
+async def advance(project_id: str, thread_id: str, graph_input) -> None:
     """Avance le graphe jusqu'à l'interruption suivante ou jusqu'au bout.
 
     Fonction séparée de `start_run` pour être appelable directement : un test
     du pilote n'a pas à se battre avec l'ordonnanceur pour savoir quand la
     tâche a fini.
-
-    `_force_done` sert au test de la purge, qui a besoin d'atteindre le
-    chemin de fin sans dérouler trente sections.
     """
     config = {"configurable": {"thread_id": thread_id}}
     await _status(project_id, "running")
     try:
-        if not _force_done:
-            graph = await compiled_graph()
-            await graph.ainvoke(graph_input, config=config)
-            snapshot = await graph.aget_state(config)
-            if snapshot.interrupts:
-                await _publish_interrupt(project_id, snapshot.interrupts[0])
-                await _status(project_id, "waiting")
-                return
+        graph = await compiled_graph()
+        await graph.ainvoke(graph_input, config=config)
+        snapshot = await graph.aget_state(config)
     except asyncio.CancelledError:
-        # L'arrêt de l'application. Le point de reprise a déjà tout ce qu'il
-        # faut ; la réconciliation du démarrage suivant remettra le projet en
-        # `failed` et proposera « Reprendre ».
+        # L'arrêt de l'application. On ne touche pas au statut : la ligne
+        # reste `running` et la réconciliation du démarrage suivant la
+        # repassera en `failed` en proposant « Reprendre » (tâche 7). Tant
+        # que cette réconciliation n'existe pas, la colonne ment après une
+        # annulation — c'est assumé, et c'est la tâche 7 qui le referme.
+        #
+        # Cette clause est documentaire : depuis Python 3.8,
+        # `CancelledError` hérite de `BaseException` et non d'`Exception`,
+        # donc le bloc suivant ne l'aurait pas attrapée de toute façon. On
+        # l'écrit pour que le lecteur sache que le cas a été pesé, pas
+        # oublié.
         raise
     except Exception as error:
-        # Une tâche dont personne n'attend le résultat avale son exception
-        # jusqu'au ramasse-miettes : sans ce bloc, un run mourrait en silence
-        # et `run_status` resterait à `running` pour toujours.
-        logger.exception("run %s en échec", project_id)
-        await _status(project_id, "failed")
-        publish(project_id, RunEvent("error", {
-            "code": "run_en_echec",
-            "message": str(error) or error.__class__.__name__,
-            "reprenable": True,
-        }))
+        await _fail(project_id, error)
+        return
+
+    # Le statut AVANT la publication, dans les deux sorties. Un client qui
+    # appelle `/state` en réaction à l'événement doit trouver la colonne déjà
+    # à jour ; l'ordre inverse lui montrerait l'état d'avant, une fois sur
+    # on ne sait combien.
+    if snapshot.interrupts:
+        await _status(project_id, "waiting")
+        await _publish_interrupt(project_id, snapshot.interrupts[0])
         return
 
     await _status(project_id, "done")
@@ -996,12 +1428,40 @@ async def advance(project_id: str, thread_id: str, graph_input,
     publish(project_id, RunEvent("done", {"project_id": project_id}))
 
 
-async def _publish_interrupt(project_id: str, interrupt) -> None:
-    """Publie l'interruption avec son project_id.
+async def _fail(project_id: str, error: Exception) -> None:
+    """Marque l'échec sans jamais le perdre.
 
-    L'project_id vient de LangGraph et non de nous : c'est lui que
+    L'événement part AVANT l'écriture en base, et l'écriture est elle-même
+    gardée. `_status` ouvre une connexion : si la base est la cause de
+    l'échec initial — le cas le plus probable — elle lèvera ici aussi. Dans
+    l'ordre inverse, cette seconde levée emporterait la publication et
+    s'échapperait d'une tâche que personne n'attend : le run mourrait en
+    silence et `run_status` resterait à `running` pour toujours, c'est-à-dire
+    exactement ce que ce bloc existe pour empêcher. Constaté sur une sonde,
+    pas déduit.
+
+    `logger.exception` est appelé sous une exception active, il journalise
+    donc la trace complète.
+    """
+    logger.exception("run %s en échec", project_id)
+    publish(project_id, RunEvent("error", {
+        "code": "run_en_echec",
+        "message": str(error) or error.__class__.__name__,
+        "reprenable": True,
+    }))
+    try:
+        await _status(project_id, "failed")
+    except Exception:
+        logger.exception(
+            "run %s : impossible d'écrire le statut d'échec", project_id)
+
+
+async def _publish_interrupt(project_id: str, interrupt) -> None:
+    """Publie l'interruption avec son identifiant.
+
+    L'identifiant vient de LangGraph et non de nous : c'est lui que
     `POST /answer` renverra, et c'est en le comparant à l'interruption
-    current qu'on saura si la requête rejoue un point déjà dépassé (§6.2).
+    courante qu'on saura si la requête rejoue un point déjà dépassé (§6.2).
     """
     publish(project_id, RunEvent("interaction", {
         "id": interrupt.id,
@@ -1009,11 +1469,11 @@ async def _publish_interrupt(project_id: str, interrupt) -> None:
     }))
 
 
-async def _status(project_id: str, statut: str) -> None:
+async def _status(project_id: str, status: str) -> None:
     from uuid import UUID
 
     async with connection() as conn:
-        await set_run_status(conn, UUID(project_id), statut)
+        await set_run_status(conn, UUID(project_id), status)
 ```
 
 - [ ] **Étape 6 : lancer les tests pour les voir passer**
@@ -1022,7 +1482,7 @@ async def _status(project_id: str, statut: str) -> None:
 cd backend && uv run pytest tests/test_runner.py -v
 ```
 
-Attendu : 5 passés.
+Attendu : 10 passés.
 
 **`interrupt.id` existe bien**, vérifié sur la version installée avant
 d'écrire ce plan : `langgraph.types.Interrupt` est une dataclass à deux
@@ -1035,10 +1495,20 @@ qui les emploie, il est périmé.
 
 | Mutation | Doit faire tomber |
 |---|---|
-| retirer l'appel à `purge_checkpoints` | `..._finished_run_purges_its_checkpoints` |
-| `except Exception` qui relève au lieu de marquer `failed` | `..._failing_run_is_marked_failed...` |
+| retirer l'appel à `purge_checkpoints` | `..._finished_run_marks_done_then_purges_then_says_so` |
+| `except Exception` qui relève au lieu d'appeler `_fail` | `..._failing_run_is_marked_failed...` |
 | `registry.is_running` rendant toujours `False` | `..._two_starts_for_the_same_project_are_refused` |
 | ne pas publier l'identifiant dans `interaction` | `..._interruption_is_published` |
+| purger AVANT d'écrire `done` | `..._finished_run_marks_done_then_purges_then_says_so` |
+| écrire `waiting` APRÈS avoir publié l'interruption | `..._status_is_written_before_the_event_leaves` |
+| supprimer l'écriture de `running` | le même |
+| `_fail` écrivant le statut AVANT de publier | `..._error_event_does_not_wait_for_the_database` — et non le test voisin, qui ne distingue pas les deux ordres |
+| retirer le contrôle sur `RUN_STATUSES` | `..._unknown_run_status_is_refused` |
+| `_forget` retirant par clé sans contrôler l'identité | `..._finished_task_never_unregisters_its_successor` |
+| purger AVANT d'écrire `done` (déjà listée) | vérifiée par l'ordre enregistré, pas par la seule présence des effets |
+
+Ces six dernières laissaient les 394 tests au vert avant cette correction.
+La relecture les a trouvées par mutation, aucune par lecture.
 
 - [ ] **Étape 8 : lancer la suite complète, puis commiter**
 
@@ -1049,7 +1519,7 @@ git add backend/app/runs/registry.py backend/app/runs/runner.py \
 git commit -m "feat(runs): un pilote qui conduit le graphe hors de la requête HTTP"
 ```
 
-Attendu : 390 passés, 5 désélectionnés.
+Attendu : 399 passés, 5 désélectionnés.
 
 ---
 
@@ -1112,6 +1582,24 @@ index (`row[0]`), ce qui indique que le curseur ne rend pas des dicts par
 défaut. Vérifiez comment `app/core/db.py` configure `row_factory` avant
 d'écrire `dict(row)`, et alignez-vous sur ce que fait déjà
 `project_for_user` plutôt que d'introduire un second usage.
+
+- [ ] **Étape 1 bis : `project_for_user` rend aussi les horodatages**
+
+`ProjectSummary` porte `created_at` et `updated_at`, mais `project_for_user`
+ne les sélectionne pas : deux des trois routes qui rendent ce schéma
+répondaient donc toujours `null`, tandis que la liste les renseignait. Même
+schéma, deux sens selon la route — un front qui affiche « modifié le »
+d'après l'entête n'obtient rien. Ajoutez les deux colonnes au `select` :
+
+```sql
+            select id, user_id, nom, documents, profil_cdc, profil_bp,
+                   thread_id, run_status, templates_version,
+                   created_at, updated_at
+            from projects where id = %s and user_id = %s
+```
+
+Rien d'autre à changer : la fonction construit déjà ses clés depuis
+`cur.description`.
 
 - [ ] **Étape 2 : écrire les schémas**
 
@@ -1190,14 +1678,25 @@ CREATION = {
 MOT_DE_PASSE = "motdepasse123"
 
 
-async def _active_account(client, email: str) -> dict:
+async def _active_account(client, label: str) -> dict:
     """Inscrit, active en base, se connecte, rend l'en-tête d'autorisation.
 
     Même motif que `tests/test_login.py::_register_and_activate` : le contrat
     d'API est en français — `mot_de_passe` à l'entrée, `jeton` à la sortie.
+
+    L'adresse porte un suffixe unique, et ce n'est pas de la coquetterie :
+    `migrated_db` a la portée de la SESSION, donc la base n'est pas remise à
+    zéro entre deux tests d'un même fichier. Avec une adresse fixe, chaque
+    test hérite des projets créés par ses prédécesseurs — constaté :
+    `..._list_only_holds_the_owners_projects` voyait deux « CoachDom » et
+    échouait, tout en passant lorsqu'on le lançait seul. Un test qui dépend
+    de l'ordre de ses voisins est un test qu'on finit par désactiver.
     """
+    from uuid import uuid4
+
     from app.core.db import connection
 
+    email = f"{label}-{uuid4()}@exemple.fr"
     await client.post("/auth/register",
                       json={"email": email, "mot_de_passe": MOT_DE_PASSE})
     async with connection() as conn:
@@ -1211,7 +1710,7 @@ async def _active_account(client, email: str) -> dict:
 
 @pytest_asyncio.fixture
 async def account(client, migrated_db):
-    return await _active_account(client, "projets@exemple.fr")
+    return await _active_account(client, "projets")
 
 
 async def test_creating_a_project_returns_its_header(client, account):
@@ -1237,8 +1736,8 @@ async def test_a_project_without_its_profile_is_refused(client, account):
 async def test_the_list_only_holds_the_owners_projects(client, account):
     await client.post("/projects", json=CREATION, headers=account)
 
-    # Un second account, avec son propre projet.
-    other_account = await _active_account(client, "intrus@exemple.fr")
+    # Un second compte, avec son propre projet.
+    other_account = await _active_account(client, "intrus")
     await client.post("/projects", json={**CREATION, "nom": "PasÀToi"},
                       headers=other_account)
 
@@ -1248,7 +1747,7 @@ async def test_the_list_only_holds_the_owners_projects(client, account):
 
 
 async def test_another_users_project_is_not_found_never_forbidden(client, account):
-    owner = await _active_account(client, "owner@exemple.fr")
+    owner = await _active_account(client, "owner")
     project_id = (await client.post(
         "/projects", json=CREATION, headers=owner)).json()["id"]
 
@@ -1256,7 +1755,7 @@ async def test_another_users_project_is_not_found_never_forbidden(client, accoun
         response = await client.get(chemin, headers=account)
         assert response.status_code == 404, (
             f"{chemin} a répondu {response.status_code} : un 403 confirmerait "
-            "que l'project_id existe, ce qui suffit à énumérer les projets "
+            "que l'identifiant existe, ce qui suffit à énumérer les projets "
             "des autres"
         )
 
@@ -1317,7 +1816,7 @@ from app.projects.repository import (
     projects_of_user,
 )
 from app.projects.schemas import ProjectCreate, ProjectState, ProjectSummary
-from app.runs.runner import RunAlreadyRunning, start_run
+from app.runs.runner import start_run
 
 router = APIRouter(prefix="/projects", tags=["projets"])
 
@@ -1351,6 +1850,19 @@ async def create(body: ProjectCreate, user=Depends(active_user)):
     """
     thread_id = f"projet-{uuid4()}"
     catalogue = load_catalogue()
+    # L'état de départ est construit AVANT l'insertion, et ce n'est pas un
+    # détail d'ordre. `initial_state` appelle `plan_for`, qui LÈVE sur un
+    # profil absent de `profils_disponibles`. Construit après, il laisserait
+    # une ligne `projects` derrière lui que personne ne pourra jamais faire
+    # avancer : l'appelant reçoit un 500 sans identifiant, et aucune route de
+    # ce plan ne sait reprendre un projet dont on ignore l'existence.
+    #
+    # Le cas ne peut pas se produire aujourd'hui — les `Literal` des schémas
+    # et les `profils_disponibles` des YAML coïncident — mais ce sont deux
+    # listes tenues dans deux fichiers que rien ne relie. Vérifié : en
+    # faisant lever `start_run`, la ligne survit bel et bien.
+    graph_input = initial_state("", body.documents, body.profil_cdc,
+                                body.profil_bp, body.idee)
     async with connection() as conn:
         project_id = await create_project(
             conn, user["id"], nom=body.nom, documents=body.documents,
@@ -1358,11 +1870,8 @@ async def create(body: ProjectCreate, user=Depends(active_user)):
             thread_id=thread_id,
             templates_version=str(catalogue.cdc.version),
         )
-    start_run(
-        str(project_id), thread_id,
-        initial_state(str(project_id), body.documents, body.profil_cdc,
-                      body.profil_bp, body.idee),
-    )
+    graph_input["project_id"] = str(project_id)
+    start_run(str(project_id), thread_id, graph_input)
     # On ne guette pas un statut « stable » avant de répondre : le run vient
     # de partir en tâche de fond et la ligne peut porter encore `idle`.
     # Attendre ici rendrait la création lente et le code de retour
@@ -1393,6 +1902,18 @@ async def state(project_id: UUID, user=Depends(active_user)):
     interruption est en attente, les projections répondent sans réhydrater
     le graphe — ce qui est tout leur objet (§4.6).
     """
+    # L'ORDRE DES TROIS LECTURES EST PORTEUR, et rien ne les synchronise.
+    # La ligne d'abord, le point de reprise ensuite, les projections en
+    # dernier : le statut lu est donc le plus ancien des trois. Tant que les
+    # statuts n'avancent que dans un sens, l'écart penche du bon côté — on
+    # peut voir `running` à côté d'une interaction déjà présente, et le front
+    # affiche une question sous une bannière « en cours » périmée d'un
+    # sondage. Inverser les deux premières lectures donnerait `waiting` avec
+    # `interaction: null` : un état qui n'a jamais existé, et qu'un front
+    # rend en « répondez à la question qui n'est pas là ».
+    #
+    # La tâche 7 fait reculer les statuts (`failed` puis `running` à la
+    # reprise) : c'est là qu'il faudra reposer la question.
     row = await _owned(project_id, user)
     graph = await compiled_graph()
     config = {"configurable": {"thread_id": row["thread_id"]}}
@@ -1457,6 +1978,236 @@ jour les deux divergent, cette ligne est l'endroit où le problème se pose.
 | `projects_of_user` sans le `where user_id` | `..._list_only_holds_the_owners_projects` |
 | retirer le `model_validator` de `ProjectCreate` | `..._without_its_profile_is_refused` |
 
+
+- [ ] **Étape 9 bis : ce que la relecture a trouvé par mutation**
+
+Seize mutations jouées, **onze non attrapées**. Les routes sont justes — le
+relecteur a vérifié le 404 sur les quatre, corps et en-têtes compris, et n'a
+trouvé aucun canal temporel. Ce sont les tests qui ne regardent pas.
+
+D'abord, **renforcer les tests existants**. Dans
+`test_creating_a_project_returns_its_header`, après les assertions déjà
+présentes :
+
+```python
+    # Ce que la création a réellement écrit. Sans ces lignes, intervertir
+    # `profil_cdc` et `profil_bp` à l'insertion laissait les 405 tests verts
+    # — alors que l'étoile de `create_project` existe précisément pour
+    # empêcher cette confusion au site d'appel.
+    assert body["documents"] == CREATION["documents"]
+    assert body["profil_cdc"] == CREATION["profil_cdc"]
+    assert body["profil_bp"] is None
+    # Les horodatages valent sur TOUTES les routes qui rendent ce schéma,
+    # pas seulement sur la liste.
+    assert body["created_at"] and body["updated_at"]
+    # Le jeu de clés exact : `thread_id` et `user_id` ne sortent jamais. Ils
+    # sont filtrés deux fois aujourd'hui — par `response_model` et parce que
+    # pydantic ignore les clés en trop — mais deux coïncidences ne font pas
+    # un contrat.
+    assert set(body) == {"id", "nom", "documents", "profil_cdc", "profil_bp",
+                         "run_status", "created_at", "updated_at"}
+```
+
+Dans `test_another_users_project_is_not_found_never_forbidden`, à l'intérieur
+de la boucle, après le contrôle du statut :
+
+```python
+        assert response.json() == {"detail": {"code": "projet_introuvable"}}, (
+            "le corps distingue « n'existe pas » de « pas à vous » : c'est "
+            "un oracle d'énumération complet, exactement ce que le 404 "
+            "existe pour fermer"
+        )
+```
+
+Puis **quatre tests neufs** :
+
+```python
+async def test_an_unknown_project_answers_exactly_like_someone_elses(client, account):
+    """Le code de statut ne suffit pas à fermer le trou d'énumération.
+
+    Vérifié par mutation : un corps qui distingue les deux sortes d'absence
+    laissait les six tests verts, alors qu'il suffit à énumérer les projets
+    des autres.
+    """
+    from uuid import uuid4
+
+    owner = await _active_account(client, "corps-404")
+    someone_elses = (await client.post("/projects", json=CREATION,
+                                       headers=owner)).json()["id"]
+    unknown = str(uuid4())
+
+    bodies = []
+    for candidate in (someone_elses, unknown):
+        for path in (f"/projects/{candidate}", f"/projects/{candidate}/state"):
+            response = await client.get(path, headers=account)
+            assert response.status_code == 404
+            bodies.append(response.json())
+    assert all(b == bodies[0] for b in bodies), (
+        "les deux sortes d'absence ne se répondent pas à l'identique"
+    )
+
+
+async def test_the_header_status_agrees_with_the_state(client, account):
+    """`run_status` pilote toute l'interface, et rien ne le regardait.
+
+    Une valeur figée à `idle` dans le schéma laissait les 405 tests verts.
+    """
+    import asyncio
+
+    project_id = (await client.post("/projects", json=CREATION,
+                                    headers=account)).json()["id"]
+    for _ in range(100):
+        header = (await client.get(f"/projects/{project_id}",
+                                   headers=account)).json()
+        if header["run_status"] == "waiting":
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("l'entête n'a jamais annoncé `waiting`")
+
+    state_body = (await client.get(f"/projects/{project_id}/state",
+                                   headers=account)).json()
+    assert state_body["interaction"] is not None, (
+        "l'entête annonce `waiting` alors que rien n'attend de réponse"
+    )
+    # Le jeu de clés de CETTE route-ci. Le contrôle posé sur la création ne
+    # la couvre pas — elle n'appelle que `POST /projects` — et sans cette
+    # ligne, retirer `response_model` de `header` rendrait la ligne brute,
+    # `thread_id` et `user_id` compris, sans que rien ne bronche.
+    assert set(header) == {"id", "nom", "documents", "profil_cdc", "profil_bp",
+                           "run_status", "created_at", "updated_at"}
+
+
+async def test_the_state_interaction_id_is_the_one_langgraph_gave(client, account):
+    """Toute l'idempotence de la tâche 5 repose sur cet identifiant.
+
+    Le test précédent ne vérifiait que sa PRÉSENCE : une constante y passait,
+    et la suite entière restait verte. On le compare donc à la source.
+    """
+    import asyncio
+    from uuid import UUID
+
+    from app.agent.graph import compiled_graph
+    from app.core.db import connection
+
+    project_id = (await client.post("/projects", json=CREATION,
+                                    headers=account)).json()["id"]
+    for _ in range(100):
+        state_body = (await client.get(f"/projects/{project_id}/state",
+                                       headers=account)).json()
+        if state_body["interaction"] is not None:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le run n'a jamais atteint d'interruption")
+
+    async with connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("select thread_id from projects where id = %s",
+                              (UUID(project_id),))
+            thread_id = (await cur.fetchone())[0]
+    graph = await compiled_graph()
+    snapshot = await graph.aget_state({"configurable": {"thread_id": thread_id}})
+
+    assert state_body["interaction"]["id"] == snapshot.interrupts[0].id
+
+
+async def test_a_both_document_project_carries_the_two_profiles(client, account):
+    """`profil_bp` n'était renseigné nulle part dans toute la suite.
+
+    La moitié du validateur de `ProjectCreate` et la moitié de `plan_for`
+    n'étaient donc jamais traversées par HTTP. Un projet `both` produit aussi
+    le plan le plus long, ce qui exerce le chemin où le curseur enjambe deux
+    catalogues.
+    """
+    creation = {**CREATION, "nom": "LesDeux", "documents": "both",
+                "profil_bp": "banque"}
+    body = (await client.post("/projects", json=creation,
+                              headers=account)).json()
+    assert body["profil_cdc"] == "consultation"
+    assert body["profil_bp"] == "banque"
+
+    # Le sondage n'est pas facultatif : `start_run` rend la main avant que le
+    # pilote ait eu son tour d'ordonnanceur, donc `snapshot.values` est vide
+    # et `plan` vaut `[]` si on interroge tout de suite. Constaté, trois fois
+    # sur trois.
+    import asyncio
+
+    for _ in range(100):
+        state_body = (await client.get(f"/projects/{body['id']}/state",
+                                       headers=account)).json()
+        if state_body["plan"]:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le plan est resté vide")
+
+    documents = {ref["document"] for ref in state_body["plan"]}
+    assert documents == {"cdc", "bp"}, (
+        "un projet `both` doit porter les deux documents à son plan"
+    )
+
+
+async def test_the_list_is_ordered_most_recently_modified_first(client, account):
+    """Le tri est la seule raison d'être de l'index que la docstring invoque,
+    et rien ne le vérifiait.
+
+    Les horodatages sont posés à la main : les runs de fond écrivent
+    `updated_at` à leur rythme, et un test qui dépend de leur ordonnancement
+    passerait selon la machine.
+    """
+    from uuid import UUID
+
+    from app.core.db import connection
+
+    # L'ordre d'insertion doit être l'INVERSE de l'ordre attendu, sinon le
+    # test est aveugle : sans clause de tri, PostgreSQL rend ces deux lignes
+    # fraîches dans l'ordre où elles ont été écrites, et si cet ordre est
+    # déjà le bon l'assertion passe pour rien. C'est l'erreur de la première
+    # version de ce test, constatée par mutation.
+    #
+    # On insère donc le PLUS ANCIEN d'abord, et on attend le plus récent en
+    # tête.
+    older = (await client.post("/projects", json={**CREATION, "nom": "Ancien"},
+                               headers=account)).json()["id"]
+    newer = (await client.post("/projects", json={**CREATION, "nom": "Recent"},
+                               headers=account)).json()["id"]
+    async with connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "update projects set updated_at = now() - interval '1 hour' "
+                "where id = %s", (UUID(older),))
+            await cur.execute(
+                "update projects set updated_at = now() where id = %s",
+                (UUID(newer),))
+
+    names = [p["nom"] for p in (await client.get("/projects",
+                                                 headers=account)).json()]
+    assert names.index("Recent") < names.index("Ancien"), (
+        "la liste n'est pas triée par date de modification décroissante"
+    )
+```
+
+- [ ] **Étape 9 ter : rejouer les mutations qui survivaient**
+
+| Mutation | Doit faire tomber |
+|---|---|
+| le corps du 404 distingue « pas à vous » de « n'existe pas » | `..._unknown_project_answers_exactly_like_someone_elses` |
+| `ProjectSummary` fige `run_status = "idle"` | `..._header_status_agrees_with_the_state` |
+| `interaction["id"]` remplacé par une constante | `..._state_interaction_id_is_the_one_langgraph_gave` |
+| `create` intervertit `profil_cdc` et `profil_bp` | `..._creating_a_project_returns_its_header` |
+| `header` sans `response_model`, rendant la ligne brute | `..._header_status_agrees_with_the_state` — et NON le test de création, qui n'appelle jamais cette route |
+| `projects_of_user` sans `order by updated_at desc` | `..._list_is_ordered_most_recently_modified_first` |
+| `project_for_user` cessant de lire les horodatages | `..._creating_a_project_returns_its_header` |
+| `start_run` qui lève, après l'insertion | aucune — voir ci-dessous |
+
+Les sept premières laissaient les 405 tests au vert. **La huitième n'a pas
+de test** : éprouver qu'une levée de `start_run` ne laisse pas de ligne
+derrière demanderait de faire lever une fonction qui, telle qu'elle est
+écrite, ne lève plus — l'ordre du code est la garantie, et c'est le
+commentaire qui la porte. C'est assumé, et c'est écrit ici pour que
+personne ne croie l'avoir oublié.
+
 - [ ] **Étape 9 : commiter**
 
 ```bash
@@ -1512,9 +2263,34 @@ import pytest_asyncio
 from tests.test_project_routes import CREATION, _active_account
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _fake_llm(monkeypatch):
+    """Bascule le graphe sur le modèle simulé.
+
+    Obligatoire dans TOUT fichier de test qui appelle `POST /projects` :
+    la route démarre un vrai run en tâche de fond, et sans cette bascule
+    `advance` appellerait la passerelle avec `ESQUISSE_FAKE_LLM=false` — la
+    valeur que `tests/conftest.py` fixe pour toute la suite — donc de vraies
+    requêtes réseau avec des clés factices. C'est exactement ce que la suite
+    `not network` interdit, et c'est passé inaperçu jusqu'à la tâche 3.
+
+    Le nettoyage des runs et des pools n'est PAS ici : `tests/conftest.py`
+    porte un démontage autouse qui annule les runs, ferme le point de
+    reprise et ferme le pool applicatif, dans cet ordre. Le dupliquer ferait
+    deux endroits à tenir d'accord, et c'est toujours le second qu'on
+    oublie.
+    """
+    monkeypatch.setenv("ESQUISSE_FAKE_LLM", "true")
+    from app.core import config
+
+    config.settings.cache_clear()
+    yield
+    config.settings.cache_clear()
+
+
 @pytest_asyncio.fixture
 async def account(client, migrated_db):
-    return await _active_account(client, "reponses@exemple.fr")
+    return await _active_account(client, "reponses")
 
 
 async def _wait_for_interaction(client, project_id, headers):
@@ -1541,6 +2317,25 @@ def _answer_for(interaction):
     return []
 
 
+async def _wait_for_status(client, project_id, headers, expected):
+    """Attend que l'entête annonce `expected`, et le rend.
+
+    Le statut et le point de reprise ne deviennent pas visibles au même
+    instant : le second l'est dès la fin d'`ainvoke`, le premier une
+    écriture en base plus tard. Un test qui a vu l'interruption n'a donc
+    aucune garantie sur le statut.
+    """
+    import asyncio
+
+    for _ in range(100):
+        header = (await client.get(f"/projects/{project_id}",
+                                   headers=headers)).json()
+        if header["run_status"] == expected:
+            return header
+        await asyncio.sleep(0.05)
+    raise AssertionError(f"le statut n'a jamais atteint `{expected}`")
+
+
 async def test_answering_advances_the_run(client, account):
     project_id = (await client.post(
         "/projects", json=CREATION, headers=account)).json()["id"]
@@ -1553,16 +2348,35 @@ async def test_answering_advances_the_run(client, account):
         headers=account)
     assert response.status_code == 200
 
-    # Le run repart : soit il atteint une other_account interruption, soit il finit.
+    # Le run repart : soit il atteint une autre interruption, soit il finit.
+    # On attend que le graphe se soit ARRÊTÉ sur l'interruption suivante, et
+    # non simplement qu'il ait quitté la précédente. Entre deux
+    # interruptions, `/state` rend `interaction: null` de façon transitoire :
+    # une boucle qui s'arrête là capture un état de passage, et la
+    # comparaison finale porte alors contre `None`. C'est ce qui rendait ce
+    # test instable — cinq échecs sur six en isolement, sur un `TypeError`
+    # et non sur son assertion.
+    # Deux conditions ensemble, et il faut les deux. Attendre `interaction:
+    # null` capture un état de PASSAGE entre deux interruptions, et la
+    # comparaison finale porte alors contre `None` — cinq échecs sur six, sur
+    # un `TypeError`. Mais attendre le seul statut `waiting` ne suffit pas non
+    # plus : `start_run` rend la main avant que la tâche de fond écrive
+    # `running`, donc on retrouve le `waiting` D'AVANT la réponse et on
+    # repart avec l'ancienne interruption.
+    #
+    # On exige donc un statut arrêté ET une interruption réellement nouvelle.
     for _ in range(200):
-        state_body = (await client.get(f"/projects/{project_id}/state",
-                                 headers=account)).json()
-        current = state_body["interaction"]
-        if current is None or current["id"] != interaction["id"]:
+        header = (await client.get(f"/projects/{project_id}",
+                                   headers=account)).json()
+        pending = (await client.get(f"/projects/{project_id}/state",
+                                    headers=account)).json()["interaction"]
+        if (header["run_status"] == "waiting" and pending is not None
+                and pending["id"] != interaction["id"]):
             break
         await asyncio.sleep(0.05)
     else:
-        raise AssertionError("le run n'a pas dépassé l'interruption répondue")
+        raise AssertionError(
+            "le run ne s'est pas arrêté sur l'interruption suivante")
 
 
 async def test_answering_twice_does_not_advance_twice(client, account):
@@ -1579,11 +2393,28 @@ async def test_answering_twice_does_not_advance_twice(client, account):
              "reponse": _answer_for(interaction)}
 
     first = await client.post(f"/projects/{project_id}/answer",
-                                 json=body, headers=account)
-    second = await client.post(f"/projects/{project_id}/answer",
-                                json=body, headers=account)
-
+                              json=body, headers=account)
     assert first.status_code == 200
+
+    # Le second appel n'est envoyé qu'une fois le run passé à autre chose.
+    # Un aller-retour immédiat serait absorbé par le registre
+    # (`RunAlreadyRunning`, tâche 3) parce que le premier run tourne
+    # encore : ce test passerait alors pour CETTE raison-là, et non parce
+    # que l'identifiant est reconnu comme périmé. Constaté par mutation —
+    # retirer la comparaison d'identifiant ne faisait tomber que le test
+    # voisin, celui-ci restait vert pour la mauvaise raison.
+    for _ in range(200):
+        state_body = (await client.get(f"/projects/{project_id}/state",
+                                       headers=account)).json()
+        current = state_body["interaction"]
+        if current is None or current["id"] != interaction["id"]:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le run n'a pas dépassé l'interruption répondue")
+
+    second = await client.post(f"/projects/{project_id}/answer",
+                               json=body, headers=account)
     assert second.status_code == 200, (
         "une réponse déjà consommée doit renvoyer l'état courant, pas une "
         "erreur : le front ne peut pas distinguer un double-clic d'un échec"
@@ -1612,7 +2443,7 @@ async def test_a_stale_interaction_id_changes_nothing(client, account):
 
 
 async def test_answering_another_users_project_is_not_found(client, account):
-    owner = await _active_account(client, "other_account-proprio@exemple.fr")
+    owner = await _active_account(client, "autre-proprio")
     project_id = (await client.post(
         "/projects", json=CREATION, headers=owner)).json()["id"]
 
@@ -1647,7 +2478,7 @@ class AnswerRequest(BaseModel):
 
     `reponse` n'est pas typée : les cinq interruptions du §4.5 portent des
     charges utiles différentes — un dictionnaire de faits, une décision de
-    relecture, une listing d'arbitrages. Les typer ici obligerait à une union
+    relecture, une liste d'arbitrages. Les typer ici obligerait à une union
     discriminée qui devrait suivre chaque évolution du graphe, alors que
     c'est le graphe qui valide ce qu'il reçoit.
     """
@@ -1664,19 +2495,31 @@ class AnswerRequest(BaseModel):
 @router.post("/{project_id}/answer")
 async def answer(project_id: UUID, body: AnswerRequest,
                  user=Depends(active_user)):
-    """Répond à l'interaction current et relance le run (§6.2).
+    """Répond à l'interaction courante et relance le run (§6.2).
 
-    L'idempotence se joue ici, pas dans le graphe : on compare l'project_id
+    L'idempotence se joue ici, pas dans le graphe : on compare l'identifiant
     reçu à celui de l'interruption en attente et on ne reprend que s'ils
     coïncident. Un double-clic, une reconnexion, un onglet resté ouvert sur
     un état dépassé — tous répondent 200 avec `rejoue: false`, et rien ne
     bouge.
 
     Répondre 409 serait défendable en théorie et désastreux en pratique : le
-    front ne peut pas distinguer « tu as cliqué deux fois » d'un real_purge échec,
+    front ne peut pas distinguer « tu as cliqué deux fois » d'un vrai échec,
     et afficherait une erreur à un utilisateur dont la réponse est bien
     passée.
     """
+    # L'ORDRE DES TROIS LECTURES EST PORTEUR, et rien ne les synchronise.
+    # La ligne d'abord, le point de reprise ensuite, les projections en
+    # dernier : le statut lu est donc le plus ancien des trois. Tant que les
+    # statuts n'avancent que dans un sens, l'écart penche du bon côté — on
+    # peut voir `running` à côté d'une interaction déjà présente, et le front
+    # affiche une question sous une bannière « en cours » périmée d'un
+    # sondage. Inverser les deux premières lectures donnerait `waiting` avec
+    # `interaction: null` : un état qui n'a jamais existé, et qu'un front
+    # rend en « répondez à la question qui n'est pas là ».
+    #
+    # La tâche 7 fait reculer les statuts (`failed` puis `running` à la
+    # reprise) : c'est là qu'il faudra reposer la question.
     row = await _owned(project_id, user)
     graph = await compiled_graph()
     config = {"configurable": {"thread_id": row["thread_id"]}}
@@ -1720,11 +2563,284 @@ cd backend && uv run pytest -m "not network" -q
 | Mutation | Doit faire tomber |
 |---|---|
 | retirer la comparaison `en_attente.id != corps.interaction_id` | `..._twice_does_not_advance_twice` **et** `..._stale_interaction_id_changes_nothing` |
-| `Command(resume=corps.reponse)` au lieu du dictionnaire | `..._answering_advances_the_run` |
+| `Command(resume=body.reponse)` au lieu du dictionnaire | **aucun test, et c'est normal** — voir ci-dessous |
 | répondre `409` au lieu de `200` sur une réponse périmée | `..._twice_does_not_advance_twice` |
 
 Si la première mutation ne fait tomber qu'**un seul** des deux tests,
 l'autre passe pour une mauvaise raison — corrigez-le avant de continuer.
+C'est arrivé : le double-clic était absorbé par le registre au lieu d'être
+reconnu comme périmé, d'où l'attente ajoutée au test ci-dessus.
+
+**La forme à dictionnaire n'est pas testable sur ce graphe, et le dire vaut
+mieux que l'inventer.** Le graphe est strictement linéaire :
+`ask_questions`, `review` et `arbitrate` n'interrompent jamais en parallèle,
+donc `snapshot.interrupts` ne porte jamais plus d'une entrée. Or une valeur
+simple vise « la prochaine interruption », qui est ici la seule qui existe :
+les deux formes sont donc rigoureusement équivalentes aujourd'hui, et aucune
+mutation ne peut les distinguer.
+
+On garde le dictionnaire quand même, pour deux raisons. Il dit explicitement
+à quoi l'on répond, ce qui est la seule lecture correcte de la route. Et le
+jour où un nœud interrompra en parallèle — un arbitrage par incohérence,
+par exemple — la forme simple deviendrait fausse en silence, sur un chemin
+que personne ne rejoue.
+
+
+- [ ] **Étape 7 bis : une réponse mal formée ne doit pas condamner le projet**
+
+Le constat le plus grave du plan, trouvé par la relecture et reproduit deux
+fois. `POST /answer` accepte `"reponse"` de n'importe quelle forme — le
+schéma la type `Any` au motif que « c'est le graphe qui valide ». C'est faux
+sur ce chemin : `ask_questions` fait `(answers or {}).items()`, donc une
+liste, une chaîne ou un nombre y lèvent une `AttributeError`. La route a déjà
+répondu `200 {"rejoue": true}`, le run meurt, `run_status` passe à `failed`.
+
+Le pire vient après. L'interruption reste en attente au point de reprise, et
+LangGraph **rejoue la valeur stockée** : une reprise correcte replante donc à
+l'identique, trois fois sur trois. Le projet est coincé pour de bon, sans
+aucun chemin de retour par l'API — et le `/resume` de la tâche 7 rejouerait
+le même poison.
+
+On corrige à deux niveaux, parce qu'ils ne font pas le même travail.
+
+**Le nœud ne doit jamais mourir sur ce que le client envoie.** Dans
+`backend/app/agent/graph.py`, ajouter en tête `import logging` et
+`logger = logging.getLogger(__name__)`, puis dans `ask_questions`, juste
+après l'`interrupt` :
+
+```python
+    # `answers` vient du client par `Command(resume=…)` et n'est validé par
+    # personne avant d'arriver ici. Une liste, une chaîne ou un nombre y
+    # produisaient une `AttributeError` qui tuait le run — et, LangGraph
+    # rejouant la valeur stockée au point de reprise, une reprise correcte
+    # replantait à l'identique. Le projet restait coincé pour de bon.
+    #
+    # `review` porte déjà ce garde (`isinstance(feedback, dict)`) ; il
+    # manquait ici. On ignore ce qu'on ne sait pas lire plutôt que de mourir
+    # dessus : la section reposera ses questions au tour suivant. C'est
+    # aussi ce qui désempoisonne un point de reprise déjà corrompu.
+    if not isinstance(answers, dict):
+        if answers is not None:
+            logger.warning("réponse ignorée, forme inattendue : %s",
+                           type(answers).__name__)
+        answers = {}
+```
+
+et remplacer `(answers or {}).items()` par `answers.items()`.
+
+**La route refuse au seuil ce qu'elle peut voir de travers.** Ignorer
+silencieusement ferait disparaître la réponse d'un utilisateur sans rien lui
+dire ; un 422 est honnête, puisque rien n'a été consommé et qu'il peut
+renvoyer. Dans `backend/app/projects/routes.py`, au-dessus de la route :
+
+```python
+# La forme que chaque interruption attend, telle que les nœuds la lisent.
+# `ask_questions` veut une correspondance fait → valeur, `review` un
+# dictionnaire d'action, `arbitrate` une liste d'arbitrages.
+_EXPECTED_ANSWER = {"questions": dict, "review": dict, "inconsistencies": list}
+```
+
+et, dans `answer`, juste après la comparaison d'identifiant :
+
+```python
+    expected = _EXPECTED_ANSWER.get(pending.value.get("kind"))
+    if (expected is not None and body.reponse is not None
+            and not isinstance(body.reponse, expected)):
+        # Refuser ici plutôt que de laisser le nœud s'en étrangler. Rien n'a
+        # été consommé : l'interruption reste en attente et le client peut
+        # renvoyer. `Any` sur le schéma reste le bon choix — les cinq
+        # interruptions portent des charges utiles différentes — mais « le
+        # graphe valide ce qu'il reçoit » n'était vrai que de `review`.
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            {"code": "reponse_mal_formee"})
+```
+
+- [ ] **Étape 7 ter : huit mutations survivaient, dont le défaut du §6.2 lui-même**
+
+Onze mutations jouées par la relecture, **huit survivantes**. La plus grave :
+la branche « périmé » peut reprendre le run *quand même* tout en répondant
+`rejoue: False`, et les quatre tests restent verts. Le test du double-clic
+passe donc au vert pendant que le graphe avance deux fois — précisément ce
+que sa propre docstring décrit comme le défaut à empêcher.
+
+Deux raisons : il n'assertait que le drapeau, jamais le graphe ; et
+l'assertion d'état du test voisin lisait `/state` **immédiatement** après la
+requête, donc elle gagnait une course au lieu de vérifier quoi que ce soit.
+
+Corriger les deux tests existants. Dans
+`test_a_stale_interaction_id_changes_nothing`, avant l'assertion finale :
+
+```python
+    # L'attente n'est pas du confort. Sans elle, la tâche de fond n'a pas
+    # bougé quand on lit, et l'assertion gagne une course au lieu de
+    # vérifier quelque chose : avec l'attente elle passe sur le code livré
+    # et TOMBE sur une route qui reprendrait malgré l'identifiant périmé.
+    await asyncio.sleep(1)
+```
+
+Dans `test_answering_twice_does_not_advance_twice`, après le second appel :
+
+```python
+    # Le drapeau ne suffit pas : une route qui reprend quand même tout en
+    # répondant `rejoue: False` le laissait au vert. On regarde donc le
+    # graphe, pas la réponse.
+    after = (await client.get(f"/projects/{project_id}/state",
+                              headers=account)).json()["interaction"]
+    assert after is not None and after["id"] == pending["id"], (
+        "le second appel a fait avancer le graphe"
+    )
+```
+
+Puis **cinq tests neufs** :
+
+```python
+async def test_a_malformed_answer_is_refused_and_consumes_nothing(client, account):
+    """Le constat le plus grave du plan, réduit à un test.
+
+    Une liste au lieu d'une correspondance tuait le run, et le point de
+    reprise gardant la valeur, une reprise correcte replantait à
+    l'identique : le projet ne revenait plus jamais.
+    """
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    interaction = await _wait_for_interaction(client, project_id, account)
+
+    refused = await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": interaction["id"], "reponse": ["a", "b"]},
+        headers=account)
+    assert refused.status_code == 422
+
+    # Rien n'a été consommé : la même interruption attend toujours, et une
+    # réponse correcte passe.
+    state_body = (await client.get(f"/projects/{project_id}/state",
+                                   headers=account)).json()
+    assert state_body["interaction"]["id"] == interaction["id"]
+    accepted = await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": interaction["id"],
+              "reponse": _answer_for(interaction)},
+        headers=account)
+    assert accepted.status_code == 200
+    assert accepted.json()["rejoue"] is True
+
+
+async def test_the_answer_reaches_the_graph_unchanged(client, account, monkeypatch):
+    """Rien ne vérifiait que la réponse de l'utilisateur arrive au graphe.
+
+    Reprendre avec une charge vide laissait les quatre tests verts. On
+    intercepte donc le `Command` remis au pilote — les faits répondus ne
+    sont projetés qu'au nœud `save`, bien plus tard, donc `/state` ne peut
+    pas servir de témoin ici.
+    """
+    from app.projects import routes
+
+    captured = []
+    real_start_run = routes.start_run
+    monkeypatch.setattr(routes, "start_run",
+                        lambda pid, tid, gi: captured.append(gi))
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    interaction = await _wait_for_interaction(client, project_id, account)
+    payload = _answer_for(interaction)
+    await client.post(f"/projects/{project_id}/answer",
+                      json={"interaction_id": interaction["id"],
+                            "reponse": payload},
+                      headers=account)
+
+    assert captured, "le pilote n'a pas été appelé"
+    assert captured[-1].resume == {interaction["id"]: payload}
+
+
+async def test_a_race_on_the_same_answer_is_absorbed(client, account, monkeypatch):
+    """La seule branche écrite pour une vraie course, et rien ne l'exerçait.
+
+    Supprimer son `except` laissait les 414 tests verts, alors qu'un vrai
+    double-clic simultané rend alors un 500.
+    """
+    from app.projects import routes
+    from app.runs.runner import RunAlreadyRunning
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    interaction = await _wait_for_interaction(client, project_id, account)
+
+    def _already(project_id, thread_id, graph_input):
+        raise RunAlreadyRunning(project_id)
+
+    monkeypatch.setattr(routes, "start_run", _already)
+    response = await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": interaction["id"],
+              "reponse": _answer_for(interaction)},
+        headers=account)
+
+    assert response.status_code == 200
+    assert response.json() == {"rejoue": False, "run_status": "running"}
+
+
+async def test_every_answer_reports_the_run_status(client, account):
+    """La moitié du contrat de réponse n'était assertée nulle part : retirer
+    `run_status` des trois retours laissait la suite verte."""
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    interaction = await _wait_for_interaction(client, project_id, account)
+    # `_wait_for_interaction` sonde `/state`, qui lit le point de reprise —
+    # et celui-ci devient visible À L'INTÉRIEUR d'`ainvoke`, donc AVANT que
+    # le pilote écrive `waiting`. Attendre l'interruption ne garantit donc
+    # pas le statut : il faut attendre le statut lui-même, sinon
+    # l'assertion ci-dessous gagne une course au lieu de vérifier un fait.
+    #
+    # Le contrôle de la tâche 5 l'a prouvé en glissant un délai avant
+    # l'écriture du statut : l'assertion rendait alors « running ». Elle ne
+    # cassait jamais en pratique, seulement parce que l'écriture est rapide
+    # devant l'aller-retour HTTP suivant.
+    await _wait_for_status(client, project_id, account, "waiting")
+
+    stale = (await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": "depuis-longtemps-perime", "reponse": {}},
+        headers=account)).json()
+    assert set(stale) == {"rejoue", "run_status"}
+    assert stale["run_status"] in {"idle", "running", "waiting", "failed", "done"}
+
+    fresh = (await client.post(
+        f"/projects/{project_id}/answer",
+        json={"interaction_id": interaction["id"],
+              "reponse": _answer_for(interaction)},
+        headers=account)).json()
+    assert set(fresh) == {"rejoue", "run_status"}
+
+
+async def test_the_request_body_and_the_token_are_both_required(client, account):
+    """Ni le 401 ni le 422 n'étaient couverts."""
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+
+    assert (await client.post(f"/projects/{project_id}/answer",
+                              json={"reponse": {}})).status_code in (401, 403)
+    assert (await client.post(f"/projects/{project_id}/answer",
+                              json={"reponse": {}},
+                              headers=account)).status_code == 422
+    assert (await client.post(f"/projects/{project_id}/answer",
+                              json={"interaction_id": "", "reponse": {}},
+                              headers=account)).status_code == 422
+```
+
+Les mutations à rejouer, toutes survivantes avant cette correction :
+
+| Mutation | Doit faire tomber |
+|---|---|
+| la branche « périmé » reprend quand même, en annonçant `rejoue: False` | `..._twice_does_not_advance_twice` **et** `..._stale_interaction_id_changes_nothing` |
+| `Command(resume={id: None})` — la charge de l'utilisateur jetée | `..._answer_reaches_the_graph_unchanged` |
+| `resume` indexé sur `pending.id` au lieu de `body.interaction_id` | le même |
+| supprimer l'`except RunAlreadyRunning` | `..._race_on_the_same_answer_is_absorbed` |
+| retirer `run_status` des trois retours | `..._every_answer_reports_the_run_status` |
+| la branche « périmé » annonce `run_status: "done"` | le même |
+| `interaction_id: str \| None = None` | `..._request_body_and_the_token_are_both_required` |
+| retirer `Field(min_length=1)` | le même |
+| `ask_questions` sans son garde de forme | `..._malformed_answer_is_refused_and_consumes_nothing` |
 
 - [ ] **Étape 8 : commiter**
 
@@ -1768,6 +2884,20 @@ que de mettre des f-strings dans la route :
    intermédiaires. Un commentaire SSE (`: battement\n\n`) toutes les quinze
    secondes tient la connexion sans être vu du client.
 
+**Le blocage que vous pourriez craindre est déjà trouvé et corrigé.** La
+tâche 4 a révélé que la suite PENDAIT dès qu'une requête HTTP lisait la base
+pendant qu'un run avançait : `httpx.ASGITransport` n'exécute pas le cycle de
+vie ASGI, donc le pool applicatif n'était jamais fermé, et l'annulation en
+masse de ses tâches récursait dans psycopg jusqu'à une `RecursionError`
+qu'asyncio avale dans un rappel. `tests/conftest.py` porte désormais un
+démontage autouse qui annule les runs, ferme le point de reprise et ferme le
+pool, dans cet ordre. Vous n'avez rien à ajouter — et surtout rien à
+dupliquer.
+
+Si malgré cela un test pend, **arrêtez-vous et dites-le** plutôt que
+d'attendre : ce serait une forme neuve, et la connaître vaut mieux qu'un
+contournement.
+
 **Pourquoi pas `sse-starlette` :** une dépendance de plus à suivre, à
 verrouiller et à déployer, pour vingt lignes qu'on veut de toute façon
 pouvoir tester unitairement. Le jour où le protocole se complique — reprise
@@ -1787,9 +2917,34 @@ from app.projects.stream import HEARTBEAT, encode
 from tests.test_project_routes import CREATION, _active_account
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _fake_llm(monkeypatch):
+    """Bascule le graphe sur le modèle simulé.
+
+    Obligatoire dans TOUT fichier de test qui appelle `POST /projects` :
+    la route démarre un vrai run en tâche de fond, et sans cette bascule
+    `advance` appellerait la passerelle avec `ESQUISSE_FAKE_LLM=false` — la
+    valeur que `tests/conftest.py` fixe pour toute la suite — donc de vraies
+    requêtes réseau avec des clés factices. C'est exactement ce que la suite
+    `not network` interdit, et c'est passé inaperçu jusqu'à la tâche 3.
+
+    Le nettoyage des runs et des pools n'est PAS ici : `tests/conftest.py`
+    porte un démontage autouse qui annule les runs, ferme le point de
+    reprise et ferme le pool applicatif, dans cet ordre. Le dupliquer ferait
+    deux endroits à tenir d'accord, et c'est toujours le second qu'on
+    oublie.
+    """
+    monkeypatch.setenv("ESQUISSE_FAKE_LLM", "true")
+    from app.core import config
+
+    config.settings.cache_clear()
+    yield
+    config.settings.cache_clear()
+
+
 @pytest_asyncio.fixture
 async def account(client, migrated_db):
-    return await _active_account(client, "flux@exemple.fr")
+    return await _active_account(client, "flux")
 
 
 def test_an_event_is_encoded_as_two_fields_and_a_blank_line():
@@ -1840,7 +2995,7 @@ async def test_the_stream_delivers_what_the_run_publishes(client, account):
 
 
 async def test_another_users_stream_is_not_found(client, account):
-    owner = await _active_account(client, "flux-proprio@exemple.fr")
+    owner = await _active_account(client, "flux-proprio")
     project_id = (await client.post(
         "/projects", json=CREATION, headers=owner)).json()["id"]
 
@@ -1961,6 +3116,177 @@ sur `event_stream` que par un test d'intégration qui ment.
 | `HEARTBEAT = "event: ping\n\n"` | `..._heartbeat_is_a_comment_and_not_an_event` |
 | retirer l'appel à `_owned` avant d'ouvrir le flux | `..._another_users_stream_is_not_found` |
 
+
+- [ ] **Étape 5 bis : la route entière peut disparaître sans qu'un test bronche**
+
+Douze mutations jouées par la relecture, **huit survivantes**. Deux sont
+graves, et la première l'est au point de vider la tâche de son sens.
+
+**`test_another_users_stream_is_not_found` passe avec la route supprimée.**
+Il n'assertait que `status_code == 404` — or FastAPI répond 404 sur un chemin
+qui n'existe pas. Vérifié : en retirant tout le bloc `@router.get(".../stream")`,
+la suite complète reste à 425 passés. C'est l'unique test HTTP de la tâche,
+donc rien ne tient l'existence de la route, ni sa méthode, ni son chemin, ni
+son câblage.
+
+**Le correctif qui a justifié cette tâche n'a pas de test de non-régression.**
+Remettre le `asyncio.wait_for` du brief — le défaut même que le passage à
+`asyncio.wait` corrige, celui qui tue le flux après le premier battement —
+laisse la suite à 425 passés.
+
+Ajouter à `backend/tests/test_stream.py` :
+
+```python
+def test_the_heartbeat_is_frequent_enough_to_hold_a_connection():
+    # Le commentaire du module invoque la fenêtre d'inactivité de trente à
+    # soixante secondes des intermédiaires. Le test voisin ne regarde que la
+    # FORME du battement ; porter le délai à cent mille secondes laissait la
+    # suite verte.
+    from app.projects.stream import HEARTBEAT_SECONDS
+
+    assert HEARTBEAT_SECONDS <= 30
+
+
+async def test_the_stream_survives_its_own_heartbeats(monkeypatch):
+    """Le défaut qui a justifié cette tâche, réduit à un test.
+
+    `asyncio.wait_for(anext(it), …)` ANNULE l'`anext` à l'expiration, ce qui
+    ferme le générateur asynchrone : le flux mourait après le premier
+    battement, en silence, au bout de quinze secondes. Sans ce test, rien
+    n'empêche quiconque de réintroduire la forme d'origine.
+    """
+    from app.projects import stream as st
+
+    monkeypatch.setattr(st, "HEARTBEAT_SECONDS", 0.02)
+    project_id = f"battements-{uuid4()}"
+    frames = st.event_stream(project_id)
+
+    beats = [await asyncio.wait_for(anext(frames), timeout=1) for _ in range(3)]
+    assert beats == [st.HEARTBEAT] * 3
+
+    # Et après trois battements, un vrai événement passe encore.
+    publish(project_id, RunEvent("token", {"text": "vivant"}))
+    frame = await asyncio.wait_for(anext(frames), timeout=1)
+    assert frame.startswith("event: token")
+    await frames.aclose()
+
+
+async def test_the_lag_notice_reaches_the_client():
+    """Le bus coupe l'abonné en retard ; encore faut-il que l'avis sorte.
+
+    `tests/test_events.py` couvre le bus. Rien ne couvrait la traversée :
+    faire avaler l'avis par `event_stream` laissait la suite verte, et le
+    navigateur perdait le signal de reconnexion sur lequel repose le §8.
+    """
+    from app.runs.events import SUBSCRIBER_QUEUE_SIZE
+
+    project_id = f"retard-{uuid4()}"
+    frames = event_stream(project_id)
+    # On amorce l'abonnement : le générateur ne s'abonne qu'à la première
+    # itération, et publier avant ne toucherait personne.
+    first = asyncio.ensure_future(anext(frames))
+    await asyncio.sleep(0)
+    for index in range(SUBSCRIBER_QUEUE_SIZE + 50):
+        publish(project_id, RunEvent("token", {"text": str(index)}))
+
+    received = [await asyncio.wait_for(first, timeout=1)]
+    with contextlib.suppress(StopAsyncIteration, asyncio.TimeoutError):
+        while True:
+            received.append(await asyncio.wait_for(anext(frames), timeout=1))
+
+    assert received[-1].startswith("event: error"), (
+        "l'avis de retard n'est pas parvenu au client"
+    )
+    assert "flux_en_retard" in received[-1]
+
+
+async def test_the_response_carries_the_sse_contract(client, account):
+    """La route rend-elle ce qu'un `EventSource` accepte, et écoute-t-elle le
+    bon projet ?
+
+    Trois mutations survivaient : un `media_type` en `text/plain`, la perte
+    des en-têtes anti-tampon, et un abonnement à un autre projet — ce
+    dernier rendant un flux silencieux pour toujours. On appelle la fonction
+    de route directement : le transport de test ne sait pas conduire une
+    réponse en flux, mais l'objet qu'elle construit s'inspecte.
+    """
+    from uuid import UUID
+
+    from app.core.db import connection
+    from app.projects.routes import stream as stream_route
+
+    project_id = (await client.post(
+        "/projects", json=CREATION, headers=account)).json()["id"]
+    async with connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("select user_id from projects where id = %s",
+                              (UUID(project_id),))
+            user_id = (await cur.fetchone())[0]
+
+    response = await stream_route(UUID(project_id), {"id": user_id})
+    assert response.media_type == "text/event-stream"
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.headers["x-accel-buffering"] == "no"
+
+    body = response.body_iterator
+    pending = asyncio.ensure_future(anext(body))
+    await asyncio.sleep(0)
+    publish(project_id, RunEvent("progress", {"cursor": 7, "total": 9}))
+    frame = await asyncio.wait_for(pending, timeout=1)
+    assert frame.startswith("event: progress")
+    assert '"cursor": 7' in frame, (
+        "le flux n'écoute pas le projet demandé"
+    )
+    await body.aclose()
+
+
+async def test_the_stream_releases_its_subscription(client, account):
+    """Une tâche laissée par navigateur déconnecté est une fuite qui ne se
+    voit qu'en production. Remplacer le `finally` par `pass` laissait la
+    suite verte."""
+    from app.runs import events as ev
+
+    project_id = f"fuite-{uuid4()}"
+    frames = event_stream(project_id)
+    pending = asyncio.ensure_future(anext(frames))
+    await asyncio.sleep(0)
+    publish(project_id, RunEvent("token", {"text": "un"}))
+    await asyncio.wait_for(pending, timeout=1)
+
+    await frames.aclose()
+    await asyncio.sleep(0)
+    assert project_id not in ev._channels, "le canal n'a pas été libéré"
+    leaked = [t for t in asyncio.all_tasks()
+              if "asend" in repr(t) and not t.done()]
+    assert not leaked, f"tâche laissée derrière : {leaked}"
+```
+
+Et dans `test_another_users_stream_is_not_found`, une ligne qui change tout :
+
+```python
+        assert response.json() == {"detail": {"code": "projet_introuvable"}}, (
+            "un 404 de chemin inexistant se lit pareil qu'un 404 de "
+            "propriété : sans le corps, ce test passe même si la route a "
+            "disparu — vérifié"
+        )
+```
+
+- [ ] **Étape 5 ter : rejouer les huit mutations survivantes**
+
+| Mutation | Doit faire tomber |
+|---|---|
+| supprimer tout le bloc `@router.get(".../stream")` | `..._another_users_stream_is_not_found` |
+| revenir au `asyncio.wait_for` du brief dans `event_stream` | `..._stream_survives_its_own_heartbeats` |
+| `event_stream` avale `LAGGED` et sort au lieu de le rendre | `..._lag_notice_reaches_the_client` |
+| `media_type="text/plain"` | `..._response_carries_the_sse_contract` |
+| retirer `Cache-Control` et `X-Accel-Buffering` | le même |
+| `event_stream("un-autre-projet")` au lieu du projet demandé | le même |
+| remplacer le `finally` qui annule l'`anext` par `pass` | `..._stream_releases_its_subscription` |
+| `HEARTBEAT_SECONDS = 100000` | `..._heartbeat_is_frequent_enough_to_hold_a_connection` |
+
+Les huit laissaient les 425 tests au vert. J'ai vérifié la première
+moi-même : route entière supprimée, suite complète verte.
+
 - [ ] **Étape 6 : lancer la suite complète, puis commiter**
 
 ```bash
@@ -1981,7 +3307,7 @@ git commit -m "feat(projects): le flux SSE, battement compris"
 - Test : `backend/tests/test_resume.py`
 
 **Interfaces :**
-- Consomme : `reproject`, `mark_for_reopening` (`app/agent/projections.py`),
+- Consomme : `save_facts`, `mark_for_reopening` (`app/agent/projections.py`),
   `purge_checkpoints` (`app/agent/checkpointer.py`), `Catalogue.depend_de`
   (`app/agent/templates.py`), tout ce que les tâches 3 à 5 produisent.
 - Produit : `running_projects(conn) -> list[dict]`,
@@ -1998,11 +3324,37 @@ tourne — le registre des tâches est en mémoire, et la mémoire est partie.
 L'application doit détecter l'incohérence au démarrage, passer ces projets en
 `failed`, et proposer « Reprendre ».
 
+**Ce que la tâche 5 vous lègue, et qu'il faut trancher ici.** Sa relecture a
+mesuré la fenêtre de `RunAlreadyRunning` avec un nœud délibérément ralenti :
+dès qu'une reprise démarre, le point de reprise cesse d'exposer
+l'interruption, si bien qu'une requête tardive est refusée par la branche
+« périmé » et non par le registre. La conflation de `/answer` — « un run
+tourne déjà » répondu `{"rejoue": False, "run_status": "running"}` — est
+donc vraie aujourd'hui.
+
+Elle cesse de l'être ici. Un run planté laisse son interruption **en
+attente** : un `/answer` envoyé pendant qu'un `/resume` avance reconnaîtra
+donc l'identifiant comme courant, tombera sur le registre, et s'entendra
+répondre `rejoue: False` **pendant que sa charge utile est jetée** et que
+l'ancienne valeur est rejouée. L'utilisateur croit avoir répondu ; il n'a
+rien répondu.
+
+Deux issues défendables, à choisir en écrivant la tâche : répondre `409` sur
+cette branche-là seulement, ce qui rompt la promesse « toujours 200 » du
+§6.2 mais ne ment pas ; ou faire attendre la requête que la reprise ait
+atteint son interruption suivante, ce qui tient la promesse au prix d'une
+latence. **Décidez et écrivez pourquoi** — ne laissez pas le commentaire de
+`routes.py` affirmer « deux requêtes sont arrivées ensemble », qui sera faux
+dès que cette tâche existera.
+
 **Les trois appelants manquants du plan 3 se branchent ici.** La revue finale
 notait que `reproject`, `mark_for_reopening` et — pour sa seconde moitié —
-`purge_checkpoints` étaient écrits, testés, et jamais invoqués. `POST
-/resume` appelle `reproject`, `POST /reopen` appelle `mark_for_reopening`,
-et le démarrage appelle `purge_checkpoints` en filet (§9.3).
+`purge_checkpoints` étaient écrits, testés, et jamais invoqués. Deux sur
+trois trouvent le leur ici : `POST /reopen` appelle `mark_for_reopening`, et
+le démarrage appelle `purge_checkpoints` en filet (§9.3).
+
+`reproject` n'en trouvera pas, et c'est un constat et non un oubli : voir
+l'étape 5.
 
 - [ ] **Étape 1 : écrire les tests qui échouent**
 
@@ -2016,9 +3368,34 @@ from app.core.db import connection
 from tests.test_project_routes import CREATION, _active_account
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _fake_llm(monkeypatch):
+    """Bascule le graphe sur le modèle simulé.
+
+    Obligatoire dans TOUT fichier de test qui appelle `POST /projects` :
+    la route démarre un vrai run en tâche de fond, et sans cette bascule
+    `advance` appellerait la passerelle avec `ESQUISSE_FAKE_LLM=false` — la
+    valeur que `tests/conftest.py` fixe pour toute la suite — donc de vraies
+    requêtes réseau avec des clés factices. C'est exactement ce que la suite
+    `not network` interdit, et c'est passé inaperçu jusqu'à la tâche 3.
+
+    Le nettoyage des runs et des pools n'est PAS ici : `tests/conftest.py`
+    porte un démontage autouse qui annule les runs, ferme le point de
+    reprise et ferme le pool applicatif, dans cet ordre. Le dupliquer ferait
+    deux endroits à tenir d'accord, et c'est toujours le second qu'on
+    oublie.
+    """
+    monkeypatch.setenv("ESQUISSE_FAKE_LLM", "true")
+    from app.core import config
+
+    config.settings.cache_clear()
+    yield
+    config.settings.cache_clear()
+
+
 @pytest_asyncio.fixture
 async def account(client, migrated_db):
-    return await _active_account(client, "reprise@exemple.fr")
+    return await _active_account(client, "reprise")
 
 
 async def _force_status(project_id, statut):
@@ -2106,7 +3483,7 @@ async def test_reopening_a_section_marks_it_and_its_dependents(client, account):
 
 
 async def test_resuming_another_users_project_is_not_found(client, account):
-    owner = await _active_account(client, "reprise-proprio@exemple.fr")
+    owner = await _active_account(client, "reprise-proprio")
     project_id = (await client.post(
         "/projects", json=CREATION, headers=owner)).json()["id"]
     response = await client.post(f"/projects/{project_id}/resume",
@@ -2128,7 +3505,7 @@ async def running_projects(conn) -> list[dict]:
 
     L'exception à la règle « toujours filtrer sur le propriétaire » : cette
     requête sert la réconciliation du démarrage, qui n'agit au nom de
-    personne. Elle ne rend que l'project_id et le fil — de quoi réconcilier,
+    personne. Elle ne rend que l'identifiant et le fil — de quoi réconcilier,
     rien de plus — pour qu'un appel de trop ne devienne pas une fuite.
     """
     async with conn.cursor() as cur:
@@ -2193,10 +3570,61 @@ Et dans `lifespan`, après l'ouverture du pool :
 `purge_checkpoints(thread_id)` sur chacun. Écrivez-la à côté de
 `reconcile_orphan_runs`, avec son test.
 
-**Attention à l'arrêt :** `lifespan` doit aussi appeler
-`registry.cancel_all()` dans son `finally`, avant `close_checkpointer()`.
-Sans cela, une tâche de run encore vivante écrirait dans un point de reprise
-dont la connexion vient d'être fermée.
+**L'arrêt, et ce n'est pas une remarque en passant.** La relecture de la
+tâche 3 a constaté que `cancel_all` n'avait aucun appelant en production —
+exactement le travers que le préambule de ce plan reproche au plan 3, et
+qu'il prétend refermer. Le `finally` de `lifespan` devient donc :
+
+```python
+    finally:
+        # L'ordre compte : on annule d'abord les runs, ensuite seulement on
+        # ferme ce dont ils se servent. L'inverse laisserait une tâche
+        # vivante écrire dans un point de reprise dont la connexion vient
+        # d'être fermée, et l'erreur remonterait dans une tâche que
+        # personne n'attend, donc nulle part.
+        await registry.cancel_all()
+        try:
+            await close_checkpointer()
+        finally:
+            try:
+                await close_clients()
+            finally:
+                await connection_pool.close()
+```
+
+Et son test, dans `backend/tests/test_lifespan.py` :
+
+```python
+async def test_shutting_down_cancels_the_running_runs():
+    """Un run qui survit à l'arrêt écrit dans une connexion fermée, et
+    personne ne voit l'erreur : elle remonte dans une tâche que personne
+    n'attend."""
+    import asyncio
+
+    from app.main import create_app
+    from app.runs import registry
+
+    async def _long():
+        await asyncio.sleep(30)
+
+    transport = httpx.ASGITransport(app=create_app())
+    async with httpx.AsyncClient(transport=transport,
+                                 base_url="http://test") as client:
+        await client.get("/health")
+        task = asyncio.create_task(_long())
+        registry.register("projet-a-l-arret", task)
+        assert registry.is_running("projet-a-l-arret")
+
+    assert not registry.is_running("projet-a-l-arret"), (
+        "l'arrêt de l'application n'a pas annulé le run en cours"
+    )
+    assert task.cancelled()
+```
+
+Le client `httpx` en gestionnaire de contexte déclenche le cycle de vie de
+l'application à la sortie du bloc : c'est ce qui rend l'arrêt observable
+depuis un test. Vérifiez comment `tests/test_lifespan.py` procède déjà et
+alignez-vous dessus plutôt que d'introduire un second motif.
 
 - [ ] **Étape 5 : écrire les deux routes**
 
@@ -2205,10 +3633,11 @@ dont la connexion vient d'être fermée.
 async def resume(project_id: UUID, user=Depends(active_user)):
     """Relance un run interrompu, depuis son point de reprise (§8).
 
-    `reproject` tourne AVANT la relance, comme le §4.6 l'impose : en cas de
-    divergence entre le point de reprise et les projections, c'est le point
-    de reprise qui gagne. Un run mort en plein `save` a pu écrire une
-    projection que le graphe ne connaît pas.
+    Les faits sont réécrits AVANT la relance, dans l'esprit du §4.6 : en cas
+    de divergence, c'est le point de reprise qui gagne. Les sections, elles,
+    ne s'y trouvent pas — il ne porte que la section en cours — et elles se
+    réparent d'elles-mêmes, `save` écrivant la projection avant d'avancer le
+    curseur. Un run mort entre les deux refait simplement sa section.
     """
     row = await _owned(project_id, user)
     if registry.is_running(str(project_id)):
@@ -2219,12 +3648,11 @@ async def resume(project_id: UUID, user=Depends(active_user)):
     snapshot = await graph.aget_state(config)
     values = snapshot.values or {}
 
+    # `save_facts` et non `reproject` : le point de reprise porte les faits,
+    # jamais les sections déjà validées. Voir la note ci-dessous — ce n'est
+    # pas un raccourci, c'est la seule projection qu'il puisse reconstruire.
     async with connection() as conn:
-        await reproject(
-            conn, project_id,
-            values.get("facts", {}),
-            _sections_from(values),
-        )
+        await save_facts(conn, project_id, values.get("facts", {}))
 
     # `None` et non un état neuf : LangGraph repart du point de reprise. Lui
     # passer un état reconstruit écraserait ce qu'il a gardé.
@@ -2353,7 +3781,7 @@ Imports à ajouter en tête de `routes.py` :
 
 ```python
 from app.agent.checkpointer import purge_checkpoints
-from app.agent.projections import mark_for_reopening, reproject
+from app.agent.projections import mark_for_reopening, save_facts
 from app.agent.templates import load_catalogue
 from app.runs import registry
 ```
@@ -2364,15 +3792,36 @@ from app.runs import registry
 (`cdc.contexte_objectifs`), établi par son test du plan 3 — c'est bien ce que
 `sections_depending_on` rend.
 
-**Un seul point reste à établir en lisant le code :** la forme du quatrième
-argument de `reproject`, qui est
-`list[tuple[SectionRef, list[Block], str, int | None, int]]`. Le
-`_sections_from` écrit plus haut est un nom, pas du code : écrivez-le en
-lisant ce que l'état du graphe porte réellement, et **ne reconstruisez
-jamais** ce que le point de reprise ne contient pas. Si le point de reprise
-ne porte pas de quoi réécrire les sections déjà validées — il ne garde que la
-section courante — alors `reproject` ne peut pas être appelée ainsi, et
-c'est un constat à rapporter, pas à contourner par une valeur inventée.
+**Le point que j'avais laissé ouvert est tranché, et la réponse change cette
+tâche.** J'ai lu ce que l'état du graphe porte : `facts`, `plan`, `cursor`,
+`computations`, et `draft` — **la section en cours, et elle seule**. Les
+sections déjà validées ne sont nulle part dans le point de reprise ; elles
+n'existent que dans la table `sections`.
+
+Donc `reproject(conn, project_id, facts, sections)` **ne peut pas être
+alimentée depuis le point de reprise**. Son quatrième argument n'a pas de
+source. Lui passer une liste vide effacerait tout le document au lieu de le
+réparer — l'inverse exact de ce qu'elle prétend faire.
+
+Et en y regardant, elle n'a pas lieu d'être appelée. Le nœud `save` écrit la
+projection **puis** avance le curseur : les sections situées avant le curseur
+sont donc correctes par construction. Une mort entre l'écriture en base et
+celle du point de reprise laisse une projection en avance d'une section ; à
+la reprise, le graphe refait cette section et `save` réécrit la projection
+par-dessus. La divergence est bornée et se répare d'elle-même.
+
+**Ce que `/resume` fait donc à la place :** il réécrit les faits depuis le
+point de reprise, par `save_facts`, qui est la seule projection que le
+point de reprise puisse réellement reconstruire. C'est peu, et c'est
+honnête.
+
+**Et `reproject` reste sans appelant.** Le préambule de ce plan reproche
+précisément cela au plan 3 ; je ne peux pas le refermer ici sans inventer
+une source qui n'existe pas. Le constat est donc : cette fonction a été
+écrite sur une prémisse fausse — que le point de reprise porte le document —
+et c'est elle qu'il faut retirer ou repenser, dans le plan qui touchera à
+l'export. **Écrivez-le dans le compte rendu** plutôt que de la faire appeler
+pour la forme.
 
 - [ ] **Étape 6 : lancer les tests, puis la suite complète**
 
@@ -2398,3 +3847,140 @@ git commit -m "feat(projects): reprendre un run mort, rouvrir une section"
 ```
 
 ---
+
+- [ ] **Étape 9 : ce que la relecture de la tâche 7 a trouvé**
+
+Vingt-trois mutations, onze survivantes, et deux comportements faux.
+
+1. **Le démarrage ne doit jamais dépendre des tâches de ménage.**
+   `reconcile_orphan_runs` et `purge_finished_projects` tournent avant le
+   `yield` du cycle de vie. Une erreur de l'une ou l'autre, par exemple la base
+   qui répond mal au réveil, empêche l'application de démarrer : pas de
+   `/health`, et l'hébergeur peut la relancer en boucle. Chacune s'entoure
+   d'un `try/except` qui journalise et continue.
+2. **`/resume` ne reprend que ce qui est à reprendre.** Il n'agit que sur
+   `failed`, ou sur un `running` orphelin (plus aucune tâche vivante). Sur
+   `waiting`, `done` ou `idle`, il répond `{"reprise": false, "run_status": …}`
+   sans rien lancer. Sinon, sur un projet en attente, il rejouait
+   l'interruption et faisait refuser par un 409 la vraie réponse de
+   l'utilisateur, et sur un projet sans point de reprise il repartait d'un
+   plan vide vers un `failed` présenté comme reprenable.
+3. **Le commentaire de `/state` était faux.** L'état `waiting` avec
+   `interaction: null` existe déjà, sans que les lectures soient inversées.
+   Pendant un `/answer`, la ligne lue est encore `waiting` alors que le point
+   de reprise a déjà consommé la réponse. La relecture l'a reproduit en
+   élargissant la fenêtre. Le commentaire dit maintenant la vérité : c'est un
+   état de passage, et le front doit relire `/state` quand il le rencontre.
+   Le même texte copié dans `/answer`, qui ne lit aucune projection, est
+   corrigé aussi.
+4. **La réconciliation n'écrase pas un statut plus récent.** Elle ne passe à
+   `failed` que ce qui est encore `running`, via une mise à jour conditionnelle
+   (`where run_status = 'running'`).
+5. **Tests manquants :**
+   - la purge compte les points de reprise avant et après, et laisse intact un
+     projet qui n'est pas `done` ;
+   - le démarrage appelle bien la réconciliation et la purge ;
+   - l'arrêt annule les runs AVANT de fermer le point de reprise ;
+   - `/reopen` sur un projet `bp` et sur un projet `both` ;
+   - `/reopen` sur une section inconnue répond 404 ;
+   - le contenu exact de la réponse de `/reopen` ;
+   - `/resume` transmet à `save_facts` les faits du point de reprise, et non
+     un dictionnaire vide ;
+   - un cycle dans `depend_de` se termine (catalogue modifié en test) ;
+   - chaque correction ci-dessus a son test.
+
+**Reporté au plan suivant, avec la raison :**
+- la purge au démarrage refait tout le travail à chaque réveil, ce qui est un
+  coût, pas un défaut de correction ;
+- le statut `reopened` est écrit mais relu par personne, donc rouvrir une
+  section ne la fait pas réécrire : c'est au plan qui câblera la réécriture ;
+- deux `pool.open(wait=True)` concurrents dans `purge_checkpoints` lèvent, et
+  deux runs qui se terminent ensemble peuvent le déclencher : même défaut que
+  celui corrigé dans `saver()`, à traiter de la même façon.
+
+---
+
+### Tâche 8 : ce que la revue finale a trouvé entre les tâches
+
+**Fichiers :**
+- Créer : `backend/migrations/versions/0004_projects_idee.py`
+- Modifier : `backend/Dockerfile`, `backend/app/runs/runner.py`,
+  `backend/app/projects/routes.py`, `backend/app/projects/repository.py`
+- Test : `backend/tests/test_runner.py`, `backend/tests/test_resume.py`,
+  `backend/tests/test_migrations.py` si elle vérifie la liste des révisions
+
+La revue finale a regardé les sept tâches ensemble, ce qu'aucun relecteur de
+tâche ne pouvait faire. Elle déconseille la fusion en l'état. Les trois
+premiers constats ci-dessous ont été vérifiés par sondes. Le quatrième repose
+sur le code et sur la documentation de Render.
+
+**1. Un run qui échoue avant son premier point de reprise ne peut jamais être
+relancé, alors qu'on le présente comme reprenable.** Si `compiled_graph` lève
+au premier `advance` (par exemple sur un délai d'attente du pool du point de
+reprise), la ligne passe à `failed` sans aucun point de reprise. `/resume`
+appelle alors `advance(..., None)`, LangGraph répond « Received no input for
+__start__ », et la ligne repasse à `failed` avec `reprenable: true`. Cela se
+répète à chaque tentative. Il en va de même d'un processus tué entre
+l'insertion et le démarrage de la tâche : la ligne reste `idle` pour
+toujours.
+
+   Correctif : quand `snapshot.values` est vide, `/resume` reconstruit
+   `initial_state` depuis la ligne (`documents`, profils, idée) au lieu de
+   passer `None`. L'idée n'est pas stockée aujourd'hui. D'où :
+   - une migration `0004` qui ajoute `idee text` à `projects` (nullable, pour
+     les lignes existantes) ;
+   - `create_project` qui l'écrit ;
+   - `project_for_user` qui la lit.
+
+   `/resume` accepte alors `idle` s'il n'y a **pas** de point de reprise, car
+   c'est exactement le projet mort-né. Il continue de refuser `idle` s'il y en
+   a un. Sur une ligne ancienne dont `idee` est nulle, on refuse avec
+   `{"reprise": false, ...}` plutôt que de relancer sur une idée vide.
+
+**2. Ce qui échoue après le `try` d'`advance` perd l'événement final.** Si
+`purge_checkpoints` lève, la ligne est `done` mais aucun événement `done`
+n'est publié, et l'exception sort d'une tâche que personne n'attend. Le client
+SSE ne reçoit plus que des battements, ne se reconnecte jamais, et l'écran
+reste sur « rédaction en cours ». Si c'est `_status("waiting")` qui lève, la
+ligne reste `running` pour toujours.
+
+   Correctif : la purge passe dans un `try/except` qui journalise, et `done` est
+   publié dans tous les cas. Une purge ratée n'est qu'un coût de stockage, la
+   purge de filet du démarrage la rattrapera. Les écritures de statut situées
+   après le `try` passent par `_fail` en cas d'échec, comme celles qui sont
+   dedans.
+
+**3. Un double clic sur « Reprendre » rend un 500.** Deux `/resume`
+concurrents passent tous deux le garde `is_running`, puis attendent
+`aget_state` et `save_facts` avant d'appeler `start_run`. Le second lève
+`RunAlreadyRunning`, qui n'est pas rattrapé. Correctif : on le rattrape et on
+répond `{"reprise": false, "run_status": "running"}`. Ici c'est vrai : rien
+n'est perdu, puisqu'une reprise ne porte aucune charge utile.
+
+**4. Deux processus peuvent piloter le même fil.** `--workers` prend par
+défaut la valeur de `$WEB_CONCURRENCY`, que Render fixe d'après le nombre de
+processeurs. La commande de démarrage ne le fige pas, donc passer à un plan
+plus grand démarrerait deux workers sans que rien ne le dise. Correctif :
+`--workers 1` dans le `CMD` du `Dockerfile`, avec un commentaire qui renvoie
+au §9.2.
+
+   Le chevauchement des déploiements sans interruption relève du même défaut,
+   mais n'est **pas** corrigé ici. Render démarre la nouvelle instance à côté
+   de l'ancienne, et la réconciliation de la nouvelle passerait à `failed` les
+   runs vivants de l'ancienne. Un seuil d'âge ne suffirait pas : un run vivant
+   peut passer plusieurs minutes sans changer de statut. La décision est
+   laissée au propriétaire (voir le compte rendu).
+
+**Tests** (chacun doit échouer si on retire son correctif) :
+- un run dont le premier `advance` lève, puis `/resume` : la ligne atteint
+  `waiting` ;
+- un projet `idle` sans point de reprise : `/resume` le démarre ;
+- un projet ancien sans `idee` : `/resume` refuse ;
+- une purge qui lève en fin de run : l'événement `done` est quand même publié
+  et la ligne est `done` ;
+- `_status("waiting")` qui lève : la ligne n'est pas laissée à `running`, et un
+  événement `error` part ;
+- deux `/resume` concurrents : ni l'un ni l'autre ne rend 500 ;
+- la migration `0004` monte et descend proprement.
+
+Commit : `fix(runs): un run mort-né se relance, et la fin d'un run publie toujours son événement`.
