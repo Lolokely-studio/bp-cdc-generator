@@ -42,6 +42,11 @@ if os.environ.get("ESQUISSE_NETWORK_TESTS") != "1":
 # celle de l'intégration continue.
 os.environ["ESQUISSE_FAKE_LLM"] = "false"
 
+# Même affectation ferme pour Gotenberg : une URL vide vaut « aucun Gotenberg
+# configuré » et fait sauter tout de suite au repli HTML, sans qu'un test
+# n'atteigne jamais un vrai service.
+os.environ["GOTENBERG_URL"] = ""
+
 # Les imports de `app` viennent APRÈS les affectations ci-dessus. Aujourd'hui
 # `settings()` est paresseux et mémoïsé, donc l'ordre ne change rien — mais il
 # suffirait qu'un module appelle `settings()` à l'import pour que la configuration
