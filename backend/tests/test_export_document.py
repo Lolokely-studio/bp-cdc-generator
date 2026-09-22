@@ -140,7 +140,11 @@ def test_rows_of_the_other_document_never_leak_in():
     rows = _rows("cdc", "consultation")
     intruder = {"section_id": plan[0].section_id, "document": "bp",
                 "statut": "done", "blocks": [Paragraph(text="texte du BP")]}
-    doc = assemble("cdc", "CoachDom", "consultation", [intruder] + rows, CATALOGUE)
+    # L'intrus EN DERNIER : `by_id` est un dictionnaire, la dernière entrée
+    # d'une clé l'emporte. Placé en tête, il était écrasé par la vraie ligne
+    # du CDC, filtre ou pas, et le test passait pour rien — c'est ce que
+    # l'implémenteur a trouvé en rejouant la mutation.
+    doc = assemble("cdc", "CoachDom", "consultation", rows + [intruder], CATALOGUE)
     texts = [b.text for s in doc.sections for b in s.blocks
              if isinstance(b, Paragraph)]
     assert "texte du BP" not in texts
