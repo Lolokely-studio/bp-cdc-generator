@@ -316,7 +316,10 @@ async def test_a_business_plan_export_embeds_its_charts(client, account, stored,
         first_year_revenue=100_000, gross_margin_rate=0.6, fixed_costs=30_000,
         depreciation=5_000, annual_growth=0.1))
 
+    asked = []
+
     async def _computations(thread_id):
+        asked.append(thread_id)
         return {"compte_resultat_3ans": income}
 
     monkeypatch.setattr(service, "_computations", _computations)
@@ -325,6 +328,19 @@ async def test_a_business_plan_export_embeds_its_charts(client, account, stored,
     await client.post(f"/projects/{project_id}/exports", headers=account)
     await _wait_until_done(client, project_id, account)
     word = Document(io.BytesIO(stored[f"{project_id}/bp.docx"][0]))
+    # Le fil du projet, et pas son identifiant : un mauvais argument ici
+    # rendrait un point de reprise vide, donc aucun graphique dans aucun
+    # business plan — et en silence, puisqu'un calcul absent ne lève pas.
+    from uuid import UUID
+
+    from app.core.db import connection
+
+    async with connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("select thread_id from projects where id = %s",
+                              (UUID(project_id),))
+            thread_id = (await cur.fetchone())[0]
+    assert asked == [thread_id]
     assert len(word.inline_shapes) >= 1
 
 
@@ -421,3 +437,35 @@ async def test_computations_are_read_from_the_checkpoint(monkeypatch):
     assert await service._computations("fil-x") == {}
     graph.values = None
     assert await service._computations("fil-x") == {}
+
+
+
+async def test_a_re_export_after_completion_clears_the_draft_flag(client, account,
+                                                                  stored):
+    """Exporté en brouillon, puis réexporté une fois toutes les sections
+    `done` : les lignes doivent perdre `brouillon`. Retirer `brouillon` de la
+    clause `on conflict do update` laissait la suite verte, puisque les autres
+    tests réexportent un état identique."""
+    from uuid import UUID
+
+    from app.agent.projections import save_section
+    from app.agent.state import Paragraph
+    from app.agent.templates import load_catalogue
+    from app.core.db import connection
+
+    project_id = (await client.post("/projects", json=CREATION,
+                                    headers=account)).json()["id"]
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    first = await _wait_until_done(client, project_id, account)
+    assert all(f["brouillon"] for f in first["fichiers"])
+
+    async with connection() as conn:
+        for ref in load_catalogue().plan_for("cdc", "consultation", None):
+            await save_section(conn, UUID(project_id), ref,
+                               blocks=[Paragraph(text="x")], statut="done",
+                               note=9, revisions=0)
+    relaunched = await client.post(f"/projects/{project_id}/exports", headers=account)
+    assert relaunched.status_code == 202, relaunched.json()
+    second = await _wait_until_done(client, project_id, account)
+    assert second["dernier_export"] == "ok", second
+    assert second["fichiers"] and not any(f["brouillon"] for f in second["fichiers"]), second
