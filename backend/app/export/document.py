@@ -1,12 +1,28 @@
+import re
 from dataclasses import dataclass, field
 
-from app.agent.state import Block, Placeholder, Table
+from app.agent.state import Block, BulletList, Paragraph, Placeholder, Table
 
 # Le titre de chaque document, tel qu'il s'imprime en page de garde.
 _DOCUMENT_TITLES = {
     "cdc": "Cahier des charges",
     "bp": "Business plan",
 }
+
+# Le même marqueur que `app.agent.prompts._PLACEHOLDER`, mais NON ancré : on
+# le cherche au milieu d'une phrase, là où le parseur du plan 3 le laisse
+# quand le modèle ne l'isole pas sur sa ligne.
+_EMBEDDED_MARKER = re.compile(r"\[Donnée à compléter\s*:\s*(?P<label>[^\]]+?)\s*\]")
+
+
+def _texts(block) -> list[str]:
+    if isinstance(block, Paragraph):
+        return [block.text]
+    if isinstance(block, BulletList):
+        return list(block.items)
+    if isinstance(block, Table):
+        return [cell for row in block.rows for cell in row]
+    return []
 
 
 @dataclass
@@ -43,6 +59,11 @@ def assemble(document: str, project_name: str, profil: str,
     `done`, reste hors du corps et fait du document un brouillon. C'est le cas
     réel d'un export demandé avant la fin de la rédaction.
     """
+    if profil is None:
+        # Même garde que `Catalogue.plan_for` : sans profil, aucune section ne
+        # passe le filtre, et l'on rendrait un document vide, titré et non
+        # brouillon, que rien en aval ne saurait distinguer d'un vrai.
+        raise ValueError(f"aucun profil choisi pour le document {document}")
     template = catalogue.cdc if document == "cdc" else catalogue.bp
     planned = sorted((s for s in template.sections if profil in s.profils),
                      key=lambda s: s.ordre_lecture)
@@ -71,6 +92,12 @@ def assemble(document: str, project_name: str, profil: str,
             elif isinstance(block, Placeholder) and block.label not in seen_missing:
                 seen_missing.add(block.label)
                 result.missing.append(block.label)
+            for text in _texts(block):
+                for match in _EMBEDDED_MARKER.finditer(text):
+                    label = match.group("label").strip()
+                    if label not in seen_missing:
+                        seen_missing.add(label)
+                        result.missing.append(label)
             blocks.append(block)
         result.sections.append(ExportSection(title=section.titre, blocks=blocks))
     return result

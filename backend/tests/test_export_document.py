@@ -112,3 +112,35 @@ def test_placeholders_are_gathered_once_in_order():
 def test_the_title_names_the_project_and_the_document():
     doc = assemble("bp", "CoachDom", "banque", _rows("bp", "banque"), CATALOGUE)
     assert "CoachDom" in doc.title
+
+
+def test_a_document_without_a_profile_is_refused():
+    import pytest
+
+    with pytest.raises(ValueError, match="aucun profil"):
+        assemble("bp", "CoachDom", None, [], CATALOGUE)
+
+
+def test_a_marker_left_inside_a_sentence_still_reaches_the_appendix():
+    plan = CATALOGUE.plan_for("cdc", "consultation", None)
+    rows = _rows("cdc", "consultation", blocks_for={
+        plan[0].section_id: [Paragraph(
+            text="Le budget est de [Donnée à compléter : montant annuel] euros."),
+            BulletList(items=["délai : [Donnée à compléter : date butoir]"])],
+    })
+    doc = assemble("cdc", "CoachDom", "consultation", rows, CATALOGUE)
+    assert doc.missing == ["montant annuel", "date butoir"]
+
+
+def test_rows_of_the_other_document_never_leak_in():
+    """Un projet `both` rend les lignes des deux documents ensemble. Les
+    identifiants de section du CDC et du BP sont disjoints aujourd'hui : on
+    fabrique la collision pour que ce test tienne le filtre, pas la donnée."""
+    plan = CATALOGUE.plan_for("cdc", "consultation", None)
+    rows = _rows("cdc", "consultation")
+    intruder = {"section_id": plan[0].section_id, "document": "bp",
+                "statut": "done", "blocks": [Paragraph(text="texte du BP")]}
+    doc = assemble("cdc", "CoachDom", "consultation", [intruder] + rows, CATALOGUE)
+    texts = [b.text for s in doc.sections for b in s.blocks
+             if isinstance(b, Paragraph)]
+    assert "texte du BP" not in texts
