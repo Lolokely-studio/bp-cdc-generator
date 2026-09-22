@@ -172,22 +172,26 @@ async def fail_if_still_running(conn, project_id: UUID) -> bool:
         return cur.rowcount > 0
 
 
-async def record_export(conn, project_id: UUID, *, document: str, format: str,
-                        storage_path: str, draft: bool, faithful: bool) -> None:
-    """Remplace l'export précédent du même document et du même format.
+async def record_exports(conn, project_id: UUID, files: list[dict]) -> None:
+    """Enregistre tous les fichiers d'un export, ou aucun.
 
-    Le fichier est écrasé au même chemin : garder l'ancienne ligne ferait
-    pointer deux lignes vers un seul fichier.
+    Une seule transaction : un export se voit en entier ou pas du tout.
+    `on conflict` remplace la suppression préalable, que l'index unique de la
+    migration 0005 rend inutile.
     """
     async with conn.transaction():
         async with conn.cursor() as cur:
-            await cur.execute(
-                "delete from exports where project_id = %s and document = %s "
-                "and format = %s", (project_id, document, format))
-            await cur.execute(
-                "insert into exports (project_id, document, format, "
-                "storage_path, brouillon, fidele) values (%s, %s, %s, %s, %s, %s)",
-                (project_id, document, format, storage_path, draft, faithful))
+            for f in files:
+                await cur.execute(
+                    "insert into exports (project_id, document, format, "
+                    "storage_path, brouillon, fidele) "
+                    "values (%s, %s, %s, %s, %s, %s) "
+                    "on conflict (project_id, document, format) do update set "
+                    "storage_path = excluded.storage_path, "
+                    "brouillon = excluded.brouillon, "
+                    "fidele = excluded.fidele, created_at = now()",
+                    (project_id, f["document"], f["format"], f["storage_path"],
+                     f["draft"], f["faithful"]))
 
 
 async def exports_of_project(conn, project_id: UUID) -> list[dict]:

@@ -51,6 +51,24 @@ async def _wait_for_files(client, project_id, headers):
     raise AssertionError("l'export n'a jamais déposé de fichier")
 
 
+async def _wait_until_done(client, project_id, headers):
+    """Attend la fin réelle de l'export. `start_export` inscrit la tâche avant
+    de rendre la main, donc `en_cours` est vrai dès la réponse au POST."""
+    for _ in range(400):
+        body = (await client.get(f"/projects/{project_id}/exports",
+                                 headers=headers)).json()
+        if not body["en_cours"]:
+            return body
+        await asyncio.sleep(0.05)
+    raise AssertionError("l'export ne s'est jamais terminé")
+
+
+CREATION_BP = {**CREATION, "documents": "bp", "profil_cdc": None,
+              "profil_bp": "banque"}
+_WORD_TYPE = ("application/vnd.openxmlformats-officedocument."
+             "wordprocessingml.document")
+
+
 async def test_an_export_deposits_a_word_and_a_pdf(client, account, stored):
     project_id = (await client.post("/projects", json=CREATION,
                                     headers=account)).json()["id"]
@@ -117,29 +135,10 @@ async def test_another_users_exports_are_not_found(client, account, stored):
         assert response.json() == {"detail": {"code": "projet_introuvable"}}
 
 
-async def test_a_failed_rendering_records_nothing(client, account, stored,
-                                                  monkeypatch):
-    """Gotenberg et le repli échouent tous deux : `render_pdf` lève (tâche 4).
-    L'export s'arrête sans rien enregistrer ni déposer."""
-    from app.export import service
-
-    async def _no_pdf(*args, **kwargs):
-        raise RuntimeError("ni Gotenberg ni le repli")
-
-    monkeypatch.setattr(service, "render_pdf", _no_pdf)
-    project_id = (await client.post("/projects", json=CREATION,
-                                    headers=account)).json()["id"]
-    await client.post(f"/projects/{project_id}/exports", headers=account)
-    await asyncio.sleep(1)
-    body = (await client.get(f"/projects/{project_id}/exports",
-                             headers=account)).json()
-    assert body["fichiers"] == []
-    assert stored == {}
-
-
-async def test_a_failed_upload_records_nothing(client, account, monkeypatch):
-    """Rien n'est enregistré pour un fichier qui n'a pas été déposé : une
-    ligne `exports` ne doit jamais pointer vers le vide."""
+async def test_a_failed_upload_records_nothing(client, account, stored, monkeypatch):
+    """Le stockage signe pour de faux (`stored`) : si une ligne était écrite,
+    la liste la montrerait, et c'est l'assertion du test qui tomberait — pas
+    une erreur de connexion par accident."""
     from app.export import storage
 
     async def _refuse(path, data, content_type, *, client=None):
@@ -149,10 +148,184 @@ async def test_a_failed_upload_records_nothing(client, account, monkeypatch):
     project_id = (await client.post("/projects", json=CREATION,
                                     headers=account)).json()["id"]
     await client.post(f"/projects/{project_id}/exports", headers=account)
-    await asyncio.sleep(1)
-    body = (await client.get(f"/projects/{project_id}/exports",
-                             headers=account)).json()
+    body = await _wait_until_done(client, project_id, account)
     assert body["fichiers"] == []
+    assert body["dernier_export"] == "echec"
+
+
+async def test_a_failed_rendering_records_nothing(client, account, stored,
+                                                  monkeypatch):
+    from app.export import service
+
+    async def _no_pdf(*args, **kwargs):
+        raise RuntimeError("ni Gotenberg ni le repli")
+
+    monkeypatch.setattr(service, "render_pdf", _no_pdf)
+    project_id = (await client.post("/projects", json=CREATION,
+                                    headers=account)).json()["id"]
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    body = await _wait_until_done(client, project_id, account)
+    assert body["fichiers"] == []
+    assert stored == {}
+    assert body["dernier_export"] == "echec"
+
+
+async def test_a_successful_export_says_so(client, account, stored):
+    project_id = (await client.post("/projects", json=CREATION,
+                                    headers=account)).json()["id"]
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    body = await _wait_until_done(client, project_id, account)
+    assert body["dernier_export"] == "ok"
+
+
+async def test_a_failed_export_leaves_the_previous_one_untouched(
+        client, account, stored, monkeypatch):
+    """Tout rendre avant de rien déposer : un rendu raté ne touche ni au
+    stockage ni aux lignes de l'export précédent."""
+    from app.export import service
+
+    project_id = (await client.post("/projects", json=CREATION,
+                                    headers=account)).json()["id"]
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    before = await _wait_until_done(client, project_id, account)
+    stored_before = dict(stored)
+
+    async def _no_pdf(*args, **kwargs):
+        raise RuntimeError("panne")
+
+    monkeypatch.setattr(service, "render_pdf", _no_pdf)
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    after = await _wait_until_done(client, project_id, account)
+    assert after["fichiers"] == before["fichiers"]
+    assert stored == stored_before
+    assert after["dernier_export"] == "echec"
+
+
+async def test_a_failure_on_one_document_does_not_deposit_the_others(
+        client, account, stored, monkeypatch):
+    """Invention (tour 2) : « tout rendre puis tout déposer » vaut aussi
+    ENTRE les documents d'un export « both ». `test_a_failed_export_leaves_
+    the_previous_one_untouched` n'exerce qu'un seul document — un rendu
+    identique produit des octets identiques, donc comparer `stored` avant et
+    après ne distingue pas « rien déposé » de « déposé, mais pareil ». Le
+    compte d'appels à `storage.upload`, lui, ne ment pas."""
+    from app.export import service, storage
+    from app.export.pdf import render_pdf as real_render_pdf
+
+    creation = {**CREATION, "nom": "LesDeux", "documents": "both",
+               "profil_bp": "banque"}
+    project_id = (await client.post("/projects", json=creation,
+                                    headers=account)).json()["id"]
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    before = await _wait_until_done(client, project_id, account)
+
+    calls = []
+    real_upload = storage.upload
+
+    async def _spy_upload(path, data, content_type, *, client=None):
+        calls.append(path)
+        await real_upload(path, data, content_type, client=client)
+
+    async def _fail_on_bp(word, document, charts, **kwargs):
+        if document.document == "bp":
+            raise RuntimeError("panne sur le second document")
+        return await real_render_pdf(word, document, charts, **kwargs)
+
+    monkeypatch.setattr(storage, "upload", _spy_upload)
+    monkeypatch.setattr(service, "render_pdf", _fail_on_bp)
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    after = await _wait_until_done(client, project_id, account)
+
+    assert calls == [], (
+        "le premier document ne doit rien déposer tant que le second n'a "
+        "pas fini de se rendre"
+    )
+    assert after["fichiers"] == before["fichiers"]
+    assert after["dernier_export"] == "echec"
+
+
+async def test_exporting_twice_keeps_one_row_per_file(client, account, stored):
+    """`dernier_export` est vérifié à CHAQUE tour, pas seulement le compte de
+    fichiers à la fin : sans `on conflict`, le second export lève une
+    violation de l'index unique, la transaction est annulée dans son
+    intégralité, et les deux lignes du premier export survivent par
+    accident — un test qui ne regarderait que leur nombre resterait vert
+    alors que le second export a échoué."""
+    project_id = (await client.post("/projects", json=CREATION,
+                                    headers=account)).json()["id"]
+    for _ in range(2):
+        await client.post(f"/projects/{project_id}/exports", headers=account)
+        body = await _wait_until_done(client, project_id, account)
+        assert body["dernier_export"] == "ok"
+    assert len(body["fichiers"]) == 2
+
+
+async def test_files_are_stored_with_their_content_type(client, account, stored):
+    project_id = (await client.post("/projects", json=CREATION,
+                                    headers=account)).json()["id"]
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    await _wait_until_done(client, project_id, account)
+    assert stored[f"{project_id}/cdc.docx"][1] == _WORD_TYPE
+    assert stored[f"{project_id}/cdc.pdf"][1] == "application/pdf"
+
+
+async def test_each_link_signs_its_own_file(client, account, stored):
+    project_id = (await client.post("/projects", json=CREATION,
+                                    headers=account)).json()["id"]
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    body = await _wait_until_done(client, project_id, account)
+    for f in body["fichiers"]:
+        assert f"{project_id}/{f['document']}.{f['format']}" in f["lien"]
+
+
+async def test_a_finished_project_is_not_a_draft(client, account, stored):
+    """Toutes les sections `done` : le document n'est pas un brouillon. Sans
+    ce test, `brouillon` figé à vrai passait, puisque tous les autres
+    exportent un projet sans section."""
+    from uuid import UUID
+
+    from app.agent.projections import save_section
+    from app.agent.state import Paragraph
+    from app.agent.templates import load_catalogue
+    from app.core.db import connection
+
+    project_id = (await client.post("/projects", json=CREATION,
+                                    headers=account)).json()["id"]
+    async with connection() as conn:
+        for ref in load_catalogue().plan_for("cdc", "consultation", None):
+            await save_section(conn, UUID(project_id), ref,
+                               blocks=[Paragraph(text="x")], statut="done",
+                               note=9, revisions=0)
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    body = await _wait_until_done(client, project_id, account)
+    assert body["fichiers"] and not any(f["brouillon"] for f in body["fichiers"])
+
+
+async def test_a_business_plan_export_embeds_its_charts(client, account, stored,
+                                                        monkeypatch):
+    """Les calculs viennent du point de reprise ; un `_computations` vide
+    passait inaperçu."""
+    import io
+
+    from docx import Document
+
+    from app.agent.finance import IncomeAssumptions, income_statement_3y
+    from app.export import service
+
+    income = income_statement_3y(IncomeAssumptions(
+        first_year_revenue=100_000, gross_margin_rate=0.6, fixed_costs=30_000,
+        depreciation=5_000, annual_growth=0.1))
+
+    async def _computations(thread_id):
+        return {"compte_resultat_3ans": income}
+
+    monkeypatch.setattr(service, "_computations", _computations)
+    project_id = (await client.post("/projects", json=CREATION_BP,
+                                    headers=account)).json()["id"]
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    await _wait_until_done(client, project_id, account)
+    word = Document(io.BytesIO(stored[f"{project_id}/bp.docx"][0]))
+    assert len(word.inline_shapes) >= 1
 
 
 async def test_a_finished_export_never_unregisters_its_successor():

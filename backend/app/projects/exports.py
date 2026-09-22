@@ -5,7 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.auth.dependencies import active_user
 from app.core.db import connection
 from app.export import storage
-from app.export.service import ExportAlreadyRunning, is_exporting, start_export
+from app.export.service import (
+    ExportAlreadyRunning,
+    is_exporting,
+    last_outcome,
+    start_export,
+)
 from app.projects.repository import exports_of_project
 from app.projects.routes import _owned
 
@@ -40,5 +45,10 @@ async def listing(project_id: UUID, user=Depends(active_user)):
             "brouillon": row["brouillon"],
             "fidele": row["fidele"],
             "lien": await storage.signed_url(row["storage_path"]),
+            "cree_le": row["created_at"].isoformat(),
         })
-    return {"en_cours": is_exporting(str(project_id)), "fichiers": files}
+    return {
+        "en_cours": is_exporting(str(project_id)),
+        "fichiers": files,
+        "dernier_export": last_outcome(str(project_id)),
+    }

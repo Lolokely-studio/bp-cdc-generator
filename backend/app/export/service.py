@@ -11,7 +11,7 @@ from app.export.charts import charts_for
 from app.export.document import assemble
 from app.export.pdf import render_pdf
 from app.export.word import render_word
-from app.projects.repository import record_export
+from app.projects.repository import record_exports
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,13 @@ _WORD = "application/vnd.openxmlformats-officedocument.wordprocessingml.document
 # Un export en cours par projet. En mémoire du processus, comme le registre
 # des runs, et pour la même raison (§9.2, une seule instance).
 _exports: dict[str, asyncio.Task] = {}
+
+# L'issue du dernier export par projet, en mémoire comme le registre (§9.2).
+_outcomes: dict[str, str] = {}
+
+
+def last_outcome(project_id: str) -> str | None:
+    return _outcomes.get(project_id)
 
 
 class ExportAlreadyRunning(RuntimeError):
@@ -57,38 +64,48 @@ async def _computations(thread_id: str) -> dict:
 
 
 async def export_project(project: dict) -> None:
-    """Rend et dépose le Word et le PDF de chaque document du projet.
+    """Rend, dépose et enregistre les fichiers de chaque document du projet.
 
-    Une erreur est journalisée et n'emporte pas le processus : l'utilisateur
-    relance l'export. Rien n'est enregistré pour un fichier qui n'a pas été
-    déposé.
+    Trois temps, dans cet ordre, pour qu'un échec ne mélange jamais l'ancien
+    et le nouveau : tout rendre, puis tout déposer, puis tout enregistrer en
+    une transaction. L'issue est gardée en mémoire et rendue par `GET` : un
+    export raté se dit, il ne se devine pas.
     """
     project_id = project["id"]
+    key = str(project_id)
     documents = ["cdc", "bp"] if project["documents"] == "both" else [project["documents"]]
     catalogue = load_catalogue()
     try:
         async with connection() as conn:
             rows = await load_sections(conn, project_id)
         computations = await _computations(project["thread_id"])
+
+        files = []
         for document in documents:
             profil = project["profil_cdc"] if document == "cdc" else project["profil_bp"]
             exported = assemble(document, project["nom"], profil, rows, catalogue)
             charts = charts_for(computations) if document == "bp" else []
             word = render_word(exported, charts)
             pdf = await render_pdf(word, exported, charts)
+            files.append({"document": document, "format": "docx", "data": word,
+                          "content_type": _WORD, "draft": exported.draft,
+                          "faithful": True})
+            files.append({"document": document, "format": "pdf", "data": pdf.data,
+                          "content_type": "application/pdf",
+                          "draft": exported.draft, "faithful": pdf.faithful})
 
-            for format, data, content_type, faithful in (
-                ("docx", word, _WORD, True),
-                ("pdf", pdf.data, "application/pdf", pdf.faithful),
-            ):
-                path = f"{project_id}/{document}.{format}"
-                await storage.upload(path, data, content_type)
-                async with connection() as conn:
-                    await record_export(conn, project_id, document=document,
-                                        format=format, storage_path=path,
-                                        draft=exported.draft, faithful=faithful)
+        for f in files:
+            f["storage_path"] = f"{project_id}/{f['document']}.{f['format']}"
+            await storage.upload(f["storage_path"], f["data"], f["content_type"])
+
+        async with connection() as conn:
+            await record_exports(conn, project_id, files)
+        _outcomes[key] = "ok"
+    except asyncio.CancelledError:
+        raise
     except Exception:
         logger.exception("export du projet %s en échec", project_id)
+        _outcomes[key] = "echec"
 
 
 async def cancel_all() -> None:
