@@ -327,6 +327,8 @@ Le navigateur se connecte **directement au backend**, sans passer par les foncti
 
 **Deux états de passage à connaître.** Autour d'un `/answer`, la ligne `waiting` et le champ `interaction` de `/state` peuvent se désynchroniser, dans un sens ou dans l'autre. Pendant la reprise elle-même, `/state` peut renvoyer `run_status: waiting` avec `interaction: null` : le point de reprise a déjà consommé la réponse mais la ligne n'est pas encore mise à jour ; le front relit `/state` quand il rencontre cet état. Juste après, dans l'autre sens, `/state` peut encore rendre l'interaction à laquelle on vient de répondre alors que la ligne dit toujours `waiting`, le temps que le run reprenne effectivement ; le front retient l'identifiant auquel il a répondu et ne repose pas la question tant que c'est le même — sauf si le run passe en `failed`, qui doit se voir.
 
+**Deux refus de `POST /reopen` à ne pas confondre.** `reouverture_impossible` (`409`) dit que le projet n'est pas `done`, ou qu'un run tourne déjà dessus : rouvrir n'a pas de sens tant que la rédaction n'est pas terminée. `reecriture_deja_lancee` (`409`) dit tout autre chose : la réécriture demandée vient de démarrer, typiquement parce qu'un second clic sur « Rouvrir » a trouvé le premier déjà parti — les lignes sont marquées et le run en cours les réécrit, il suffit d'aller le suivre sur l'écran de rédaction. Confondre les deux ferait croire, dans ce second cas, que rien n'est parti alors que si.
+
 ---
 
 ## 7. Export

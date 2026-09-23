@@ -426,7 +426,11 @@ async def reopen(project_id: UUID, section_id: str,
                   {"rework": queue, "rework_notes": notes})
     except RunAlreadyRunning:
         # Deux clics sur « Rouvrir » : le second trouve le premier déjà
-        # parti. Les lignes sont marquées, le premier run les réécrit.
+        # parti. Les lignes sont marquées, le premier run les réécrit. Ce
+        # n'est pas la même situation que `reouverture_impossible` ci-dessus
+        # (projet pas terminé) : ici la réécriture a bel et bien démarré, et
+        # le dire faussement empêcherait l'utilisateur de simplement aller la
+        # suivre sur l'écran de rédaction.
         raise HTTPException(status.HTTP_409_CONFLICT,
-                            {"code": "reouverture_impossible"}) from None
+                            {"code": "reecriture_deja_lancee"}) from None
     return {"sections": queue, "touchees": touched, "run_status": "running"}

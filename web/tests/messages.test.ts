@@ -26,6 +26,12 @@ describe("reopenErrorMessage", () => {
       .toBe("Un export est en cours : attendez qu'il se termine.");
     expect(reopenErrorMessage(new ApiError(400, "section_ambigue", null)))
       .toBe("Cette section existe dans les deux documents : la rouvrir n'est pas encore possible.");
+    expect(reopenErrorMessage(new ApiError(409, "reecriture_deja_lancee", null)))
+      .toBe("La réécriture est déjà en route : suivez-la sur l'écran de rédaction.");
+    expect(reopenErrorMessage(new ApiError(404, "section_introuvable", null)))
+      .toBe("Cette section n'existe plus.");
+    expect(reopenErrorMessage(new ApiError(404, "projet_introuvable", null)))
+      .toBe("Ce projet n'existe pas.");
   });
 });
 

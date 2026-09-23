@@ -222,3 +222,33 @@ async def test_reopening_during_an_export_is_refused_and_marks_nothing(
     assert response.json() == {"detail": {"code": "export_deja_en_cours"}}
     assert not registry.is_running(project_id)
     assert all(statut == "done" for statut, _ in (await _statuses(project_id)).values())
+
+
+async def test_a_second_reopen_racing_the_first_says_the_rewrite_already_left(
+        client, account, monkeypatch):
+    """Deux clics sur « Rouvrir » : le second doit dire que la réécriture est
+    déjà partie, pas que la rédaction doit être terminée — ce qui serait faux
+    puisqu'elle vient de l'être. On force la course : juste avant l'appel à
+    `start_run`, un faux run est déjà enregistré dans le registre, comme si
+    une première requête l'avait fait entre le contrôle initial et cet appel.
+    """
+    project_id, state = await _finished_project(client, account)
+    original_set_run_status = routes.set_run_status
+
+    async def _racing_set_run_status(conn, pid, status):
+        await original_set_run_status(conn, pid, status)
+        # Simule le second clic : un run est déjà en registre quand
+        # `reopen` appelle `start_run` juste après.
+        registry.register(str(pid), asyncio.create_task(asyncio.sleep(10)))
+
+    monkeypatch.setattr(routes, "set_run_status", _racing_set_run_status)
+
+    try:
+        response = await client.post(
+            f"/projects/{project_id}/sections/{state['plan'][0]['section_id']}/reopen",
+            headers=account)
+
+        assert response.status_code == 409
+        assert response.json() == {"detail": {"code": "reecriture_deja_lancee"}}
+    finally:
+        await registry.cancel_all()
