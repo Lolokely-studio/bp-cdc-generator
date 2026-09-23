@@ -107,7 +107,18 @@ test("du compte aux documents, puis une section rouverte", async ({ page }) => {
   await page.getByLabel("Que faut-il changer ?").fill("Parler aussi des coachs vérifiés.");
   await page.getByRole("button", { name: "Rouvrir et réécrire" }).click();
   await expect(page).toHaveURL(projectUrl);
+  // Le backend écrit `running` en base avant de répondre (constat 4 de la
+  // revue finale) : l'écran ne doit jamais rester bloqué sur « Rédaction
+  // terminée » pendant que la réécriture tourne. Sans cette attente,
+  // `driveUntilDone` pouvait sortir dès sa première itération si l'écran
+  // n'avait pas encore quitté cette vue — et ne prouvait rien.
+  await expect(page.getByRole("heading", { name: "Rédaction terminée" })).toBeHidden();
+  // Et la preuve que la section rouverte a vraiment été reprise, pas
+  // seulement re-marquée « terminé » sans rien écrire : le plan la montre
+  // « à réécrire » tant qu'elle ne l'a pas été.
+  await expect(page.locator(".m-planlist li", { hasText: "à réécrire" }).first()).toBeVisible();
   await driveUntilDone(page, { skipOneReview: false });
+  await expect(page.locator(".m-planlist li", { hasText: "à réécrire" })).toHaveCount(0);
 
   // Le tableau de bord voit le projet terminé, avec toutes ses sections.
   await page.getByRole("link", { name: "Mes projets" }).click();

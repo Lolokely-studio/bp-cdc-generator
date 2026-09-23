@@ -109,7 +109,8 @@ export function ExportsView({ projectId, pollMs = 2000 }: { projectId: string; p
 
       {!exports.en_cours && exports.dernier_export === "echec" && (
         <p className="m-err" role="alert">
-          La dernière génération a échoué. Les documents précédents, s'il y en a, sont intacts : réessayez.
+          La dernière génération a échoué. Certains fichiers ont pu être remplacés et d'autres non : relancez pour
+          retrouver un jeu complet.
         </p>
       )}
       {error && <p className="m-err" role="alert">{error}</p>}

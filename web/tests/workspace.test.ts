@@ -97,6 +97,20 @@ describe("liveReducer", () => {
     expect(live.answered).toBeNull();
   });
 
+  it("garde la garde tant que /state rend `running` avec la même interaction", () => {
+    // `POST /answer` écrit `running` avant que le graphe ait consommé
+    // l'interruption (`app.runs.runner.advance`) : `/state` relu juste après
+    // peut donc rendre `running`, pas seulement `waiting`, AVEC la même
+    // interaction. La reposer ferait répondre deux fois (constat 2 de la
+    // revue finale).
+    const review = { id: "i-1", kind: "review" as const, section: "cdc.perimetre", score: 7, problems: [], blocks: [] };
+    let live = liveReducer(withState({ projet: summary({ run_status: "waiting" }), interaction: review }),
+      { type: "answered", interactionId: "i-1" });
+    live = liveReducer(live, { type: "state", state: projectState({ projet: summary({ run_status: "running" }), interaction: review }) });
+    expect(live.state?.interaction).toBeNull();
+    expect(live.state?.projet.run_status).toBe("running");
+  });
+
   it("montre l'échec d'un run même s'il porte encore l'interaction répondue", () => {
     const review = { id: "i-1", kind: "review" as const, section: "cdc.perimetre", score: 7, problems: [], blocks: [] };
     let live = liveReducer(withState({ projet: summary({ run_status: "waiting" }), interaction: review }),

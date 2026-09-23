@@ -331,13 +331,13 @@ Le navigateur se connecte **directement au backend**, sans passer par les foncti
 
 ## 7. Export
 
-1. Les sections validées, sous forme de blocs, alimentent un modèle Word par `docxtpl`. Jamais le texte affiché à l'écran.
+1. Toute section qui a du contenu — quel que soit son statut — alimente un modèle Word par `docxtpl`, sous forme de blocs. Jamais le texte affiché à l'écran.
 2. Les graphiques du prévisionnel sont produits par `matplotlib` et insérés en images.
 3. Les données manquantes sont rassemblées en annexe « Données à compléter ».
 4. Les `.docx` sont convertis en PDF par Gotenberg, sur un service séparé tiré d'une image officielle épinglée : la conversion ne tient pas dans les 512 Mo du service principal. Ce service dort pendant toute la rédaction et n'est réveillé qu'ici (§9.4).
 5. Les quatre fichiers vont dans Supabase Storage, servis par lien signé à expiration courte.
 
-Si une section a été passée sans validation, un filigrane « Brouillon » est appliqué aux deux formats.
+Le corps garde toute section rédigée, y compris une section passée sans validation (`skipped`) ou à reprendre (`reopened`) : leur texte existe, il n'y a pas de raison de le taire. Seule une section absente ou dont le contenu est vide reste hors du corps. Dans tous les cas où une section n'est pas `done` — retirée faute de contenu, ou gardée mais non validée — un filigrane « Brouillon » est appliqué aux deux formats : c'est lui qui porte la réserve, jamais une omission silencieuse.
 
 En cas d'échec de Gotenberg, repli documenté : un PDF produit depuis du HTML. Le PDF cesse alors d'être identique au Word, ce qui doit être dit à l'utilisateur plutôt que masqué.
 

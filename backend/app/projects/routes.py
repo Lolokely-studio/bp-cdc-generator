@@ -14,6 +14,7 @@ from app.projects.repository import (
     create_project,
     project_for_user,
     projects_of_user,
+    set_run_status,
 )
 from app.projects.schemas import (
     AnswerRequest,
@@ -411,6 +412,15 @@ async def reopen(project_id: UUID, section_id: str,
 
     async with connection() as conn:
         touched = await mark_for_reopening(conn, project_id, set(queue))
+        # CONSTAT 4 DE LA REVUE FINALE : sans cette écriture, la ligne garde
+        # `done` jusqu'à ce que la tâche de fond (`app.runs.runner.advance`)
+        # écrive `running` à son premier `await` — une fenêtre bien réelle,
+        # pas seulement théorique. Un `GET /projects/{id}` lu par le front
+        # dans cette fenêtre revoit `done`, se rabat sur l'écran de fin, et
+        # cet écran n'ouvre aucun flux et ne se rafraîchit jamais : rien ne
+        # le fait jamais sortir de là. `advance` réécrira `running` juste
+        # après, sans dommage — la même valeur, une seconde fois.
+        await set_run_status(conn, project_id, "running")
     try:
         start_run(str(project_id), row["thread_id"],
                   {"rework": queue, "rework_notes": notes})

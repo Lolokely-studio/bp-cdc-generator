@@ -38,6 +38,23 @@ function FailedPanel({ error, onResume }: { error: LiveError | null; onResume: (
   );
 }
 
+function StalledPanel({ onResume }: { onResume: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="m-done">
+      <h1 className="m-h">La rédaction n'a pas démarré</h1>
+      <p>
+        Le lancement n'a pas pris la main depuis l'enregistrement du projet. Rien n'est perdu : vous pouvez le
+        relancer.
+      </p>
+      <button className="m-btn" type="button" disabled={busy}
+        onClick={async () => { setBusy(true); try { await onResume(); } finally { setBusy(false); } }}>
+        Lancer la rédaction
+      </button>
+    </div>
+  );
+}
+
 function DonePanel({ projectId, state }: { projectId: string; state: ProjectState }) {
   const skipped = state.sections.filter((section) => section.statut === "skipped").length;
   return (
@@ -98,12 +115,17 @@ function Drafting({ state, live, catalogue }: { state: ProjectState; live: Live;
 
 /** Le centre de l'écran de rédaction : ce que le projet attend de vous, ou
  * ce qu'il est en train d'écrire. */
-export function WorkspaceCenter({ projectId, live, catalogue, onAnswer, onResume }: {
+export function WorkspaceCenter({ projectId, live, catalogue, onAnswer, onResume, idleStuck = false }: {
   projectId: string;
   live: Live;
   catalogue: Catalogue;
   onAnswer: (reponse: unknown) => Promise<void>;
   onResume: () => Promise<void>;
+  // Constat 5 de la revue finale : vrai quand le projet est resté `idle` au
+  // delà du délai raisonnable défini par la page — le processus est mort
+  // entre l'insertion de la ligne et le démarrage de la tâche, et rien ne le
+  // rattrapera jamais tout seul.
+  idleStuck?: boolean;
 }) {
   const state = live.state;
   if (!state) return null;
@@ -112,6 +134,7 @@ export function WorkspaceCenter({ projectId, live, catalogue, onAnswer, onResume
 
   if (status === "failed") return <FailedPanel error={live.error} onResume={onResume} />;
   if (status === "done") return <DonePanel projectId={projectId} state={state} />;
+  if (idleStuck) return <StalledPanel onResume={onResume} />;
   if (interaction?.kind === "questions") {
     return (
       <>

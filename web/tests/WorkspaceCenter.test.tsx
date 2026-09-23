@@ -57,6 +57,22 @@ describe("WorkspaceCenter", () => {
     expect(screen.getByRole("heading", { name: "Contrôle de cohérence" })).toBeInTheDocument();
   });
 
+  it("n'affiche pas le panneau de reprise sur un idle ordinaire, sans idleStuck", () => {
+    show(live({ projet: summary({ run_status: "idle" }) }));
+    expect(screen.queryByText("La rédaction n'a pas démarré")).toBeNull();
+    expect(screen.getByText("L'agent lit votre idée et prépare ses questions.")).toBeInTheDocument();
+  });
+
+  it("affiche le panneau de reprise quand idleStuck est vrai, et lance la reprise", async () => {
+    const value = live({ projet: summary({ run_status: "idle" }) });
+    const onResume = vi.fn(async () => {});
+    render(<WorkspaceCenter projectId="p-1" live={value} catalogue={catalogue}
+      onAnswer={vi.fn(async () => {})} onResume={onResume} idleStuck />);
+    expect(screen.getByText("La rédaction n'a pas démarré")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Lancer la rédaction" }));
+    expect(onResume).toHaveBeenCalled();
+  });
+
   it("affiche le lot de questions en attente", () => {
     show(live({
       projet: summary({ run_status: "waiting" }),

@@ -116,6 +116,42 @@ async def test_reopening_a_finished_project_rewrites_the_section_and_its_depende
     assert header["sections_faites"] == header["sections_total"] == len(state["plan"])
 
 
+async def test_reopening_writes_running_immediately_so_the_screen_does_not_stall(
+        client, account, monkeypatch):
+    """`POST /reopen` rend `run_status: running` dans sa réponse, mais c'est
+    la tâche de fond, `advance`, qui l'écrit en base — et seulement après son
+    premier `await`. Si `GET /projects/{id}` relu tout de suite après rend
+    encore `done`, l'écran de rédaction s'y arrête : il n'ouvre aucun flux et
+    ne se rafraîchit jamais (constat 4 de la revue finale).
+
+    Sans le retard posé ci-dessous, ce test passerait même sans le correctif
+    : l'ordonnanceur donne presque toujours la main à la tâche de fond avant
+    que la réponse HTTP ne soit sérialisée. Le retard force la fenêtre que le
+    constat décrit — le graphe qui n'a pas encore consommé l'interruption —
+    et rend le test probant plutôt que chanceux."""
+    from app.runs import runner
+
+    project_id, state = await _finished_project(client, account)
+
+    original_advance = runner.advance
+
+    async def slow_advance(*args, **kwargs):
+        await asyncio.sleep(0.2)
+        return await original_advance(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "advance", slow_advance)
+
+    response = await client.post(
+        f"/projects/{project_id}/sections/{state['plan'][0]['section_id']}/reopen",
+        headers=account)
+    assert response.status_code == 200
+
+    header = (await client.get(f"/projects/{project_id}", headers=account)).json()
+    assert header["run_status"] == "running"
+
+    await _run_to_the_end(client, project_id, account)
+
+
 async def test_reopening_without_a_body_gives_the_writer_a_reason(client, account, monkeypatch):
     project_id, state = await _finished_project(client, account)
     written = _spy_on_writing(monkeypatch)

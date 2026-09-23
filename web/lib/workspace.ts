@@ -12,8 +12,11 @@ export type Live = {
   rework: number | null;
   error: LiveError | null;
   // L'interaction à laquelle on vient de répondre. Tant que la ligne dit
-  // encore `waiting`, `/state` peut la montrer : la réponse est partie, mais
-  // le run ne l'a pas encore consommée. La reposer ferait répondre deux fois.
+  // encore `waiting` OU `running`, `/state` peut la montrer : `POST /answer`
+  // écrit `running` avant que le graphe ait consommé l'interruption
+  // (`app.runs.runner.advance`), et `/state` relu juste après peut donc
+  // rendre l'une ou l'autre AVEC la même interaction. La reposer ferait
+  // répondre deux fois.
   answered: string | null;
 };
 
@@ -37,10 +40,12 @@ export function liveReducer(live: Live, action: LiveAction): Live {
   switch (action.type) {
     case "state": {
       const status = action.state.projet.run_status;
-      if (live.answered && status === "waiting" && action.state.interaction?.id === live.answered) {
+      if (live.answered && (status === "waiting" || status === "running")
+          && action.state.interaction?.id === live.answered) {
         // La réponse n'est pas encore consommée : on garde l'écran de
-        // rédaction. Seul `waiting` est traité ainsi — un `failed` doit se
-        // voir, même s'il porte encore la même interaction.
+        // rédaction. Seuls `waiting` et `running` sont traités ainsi — un
+        // `failed` (ou un `done`) doit se voir, même s'il porte encore la
+        // même interaction.
         return {
           ...live,
           state: { ...action.state, interaction: null, projet: { ...action.state.projet, run_status: "running" } },
