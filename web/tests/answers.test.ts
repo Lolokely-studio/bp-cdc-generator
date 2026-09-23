@@ -37,6 +37,24 @@ describe("parseAnswer", () => {
     }
   });
 
+  it("distingue un champ numérique jamais renseigné d'un champ numérique illisible", () => {
+    const jamaisRenseigne = parseAnswer(def("montant"), typed(""));
+    const illisible = parseAnswer(def("montant"), typed("beaucoup"));
+    // Chacun dit quoi faire : répondre, ou cocher « Je ne sais pas ».
+    expect(jamaisRenseigne).toEqual({ ok: false, error: "Répondez, ou cochez « Je ne sais pas »." });
+    expect(illisible).toEqual({ ok: false, error: "Entrez un nombre, ou cochez « Je ne sais pas »." });
+    // La raison d'être de la distinction : les deux messages ne se
+    // confondent pas, sans quoi deux champs vides afficheraient le mot à
+    // mot d'une saisie fautive qu'aucun des deux n'a commise.
+    expect(jamaisRenseigne.ok ? undefined : jamaisRenseigne.error)
+      .not.toBe(illisible.ok ? undefined : illisible.error);
+  });
+
+  it("dit aussi quoi faire pour un champ de texte jamais renseigné", () => {
+    expect(parseAnswer(def("texte_court"), typed("")))
+      .toEqual({ ok: false, error: "Répondez, ou cochez « Je ne sais pas »." });
+  });
+
   it("coupe une liste ligne par ligne", () => {
     expect(parseAnswer(def("liste"), typed("Annonces\n\n  Salles de sport \n")))
       .toEqual({ ok: true, value: ["Annonces", "Salles de sport"] });
