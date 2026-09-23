@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timezone
 from uuid import UUID
 
 from app.agent.graph import compiled_graph
@@ -11,7 +12,7 @@ from app.export.charts import charts_for
 from app.export.document import assemble
 from app.export.pdf import render_pdf
 from app.export.word import render_word
-from app.projects.repository import record_exports
+from app.projects.repository import exports_of_project, record_exports
 
 logger = logging.getLogger(__name__)
 
@@ -63,13 +64,28 @@ async def _computations(thread_id: str) -> dict:
     return dict((snapshot.values or {}).get("computations") or {})
 
 
+def _export_stamp() -> str:
+    """Un horodatage tiré une seule fois par export, UTC, à la microseconde.
+
+    `YYYYMMDDTHHMMSSffffffZ` : trié comme une chaîne, il se trie dans l'ordre
+    chronologique — ce qui compte n'est pas le format mais que ce soit unique
+    par export et lisible tel quel dans un chemin de stockage.
+    """
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+
+
 async def export_project(project: dict) -> None:
     """Rend, dépose et enregistre les fichiers de chaque document du projet.
 
-    Trois temps, dans cet ordre, pour qu'un échec ne mélange jamais l'ancien
-    et le nouveau : tout rendre, puis tout déposer, puis tout enregistrer en
-    une transaction. L'issue est gardée en mémoire et rendue par `GET` : un
-    export raté se dit, il ne se devine pas.
+    Quatre temps, dans cet ordre, pour qu'un dépôt interrompu ne soit jamais
+    visible : tout rendre, puis tout déposer SOUS UN NOUVEAU PRÉFIXE
+    horodaté, puis tout enregistrer en une transaction, puis seulement
+    ensuite supprimer l'ancien préfixe. Comme `GET /exports` ne sert que les
+    chemins que la base nomme, un dépôt qui échoue en cours de route laisse
+    les lignes — donc les liens et les drapeaux affichés — pointer sur
+    l'export précédent, entier et déjà validé : l'écran ne montre jamais un
+    mélange d'ancien et de nouveau. L'issue est gardée en mémoire et rendue
+    par `GET` : un export raté se dit, il ne se devine pas.
     """
     project_id = project["id"]
     key = str(project_id)
@@ -78,6 +94,10 @@ async def export_project(project: dict) -> None:
     try:
         async with connection() as conn:
             rows = await load_sections(conn, project_id)
+            # Lues AVANT le nouveau dépôt : ce sont les seuls chemins dont on
+            # sache, une fois la transaction ci-dessous passée, qu'ils ne
+            # sont plus référencés par aucune ligne.
+            previous = await exports_of_project(conn, project_id)
         computations = await _computations(project["thread_id"])
 
         files = []
@@ -94,13 +114,27 @@ async def export_project(project: dict) -> None:
                           "content_type": "application/pdf",
                           "draft": exported.draft, "faithful": pdf.faithful})
 
+        prefix = f"{project_id}/{_export_stamp()}"
         for f in files:
-            f["storage_path"] = f"{project_id}/{f['document']}.{f['format']}"
+            f["storage_path"] = f"{prefix}/{f['document']}.{f['format']}"
             await storage.upload(f["storage_path"], f["data"], f["content_type"])
 
         async with connection() as conn:
             await record_exports(conn, project_id, files)
         _outcomes[key] = "ok"
+
+        # Le ménage vient après coup, et ne doit jamais faire échouer un
+        # export déjà enregistré : un fichier orphelin coûte quelques
+        # centaines de kilo-octets, pas une erreur.
+        old_prefixes = {row["storage_path"].rsplit("/", 1)[0] for row in previous}
+        old_prefixes.discard(prefix)
+        for old_prefix in old_prefixes:
+            try:
+                await storage.delete_prefix(old_prefix)
+            except Exception:
+                logger.exception(
+                    "suppression de l'ancien préfixe %s en échec (projet %s)",
+                    old_prefix, project_id)
     except asyncio.CancelledError:
         raise
     except Exception:

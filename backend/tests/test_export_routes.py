@@ -36,8 +36,16 @@ def stored(monkeypatch):
     async def _signed_url(path, *, client=None):
         return f"https://signe.test/{path}?token=x"
 
+    async def _delete_prefix(prefix, *, client=None):
+        # Repli par défaut, pour que les tests qui réexportent sans se
+        # soucier du nettoyage de l'ancien préfixe restent verts : les
+        # tests qui exercent la suppression elle-même la remplacent.
+        for path in [p for p in files if p.startswith(f"{prefix}/")]:
+            del files[path]
+
     monkeypatch.setattr(storage, "upload", _upload)
     monkeypatch.setattr(storage, "signed_url", _signed_url)
+    monkeypatch.setattr(storage, "delete_prefix", _delete_prefix)
     return files
 
 
@@ -78,8 +86,13 @@ async def test_an_export_deposits_a_word_and_a_pdf(client, account, stored):
     body = await _wait_for_files(client, project_id, account)
     formats = {(f["document"], f["format"]) for f in body["fichiers"]}
     assert formats == {("cdc", "docx"), ("cdc", "pdf")}
-    assert set(stored) == {f"{project_id}/cdc.docx", f"{project_id}/cdc.pdf"}
-    assert stored[f"{project_id}/cdc.pdf"][0].startswith(b"%PDF")
+    # Les chemins portent un préfixe horodaté (commit « export atomique ») :
+    # on vérifie la forme, pas un chemin fixe.
+    assert len(stored) == 2
+    assert all(p.startswith(f"{project_id}/") for p in stored)
+    assert {p.rsplit("/", 1)[-1] for p in stored} == {"cdc.docx", "cdc.pdf"}
+    pdf_path = next(p for p in stored if p.endswith("cdc.pdf"))
+    assert stored[pdf_path][0].startswith(b"%PDF")
 
 
 async def test_an_unfinished_project_is_exported_as_a_draft(client, account, stored):
@@ -244,6 +257,99 @@ async def test_a_failure_on_one_document_does_not_deposit_the_others(
     assert after["dernier_export"] == "echec"
 
 
+async def test_a_failure_on_the_third_upload_leaves_the_previous_export_intact(
+        client, account, stored, monkeypatch):
+    """Le dépôt atomique (tâche du jour) : un troisième fichier qui échoue à
+    se déposer ne doit ni toucher aux lignes en base ni abîmer les fichiers
+    du précédent export. Les liens et drapeaux rendus après la tentative
+    doivent être identiques à ceux d'avant."""
+    from app.export import storage
+
+    creation = {**CREATION, "nom": "TroisiemeDepot", "documents": "both",
+               "profil_bp": "banque"}
+    project_id = (await client.post("/projects", json=creation,
+                                    headers=account)).json()["id"]
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    before = await _wait_until_done(client, project_id, account)
+    stored_before = dict(stored)
+
+    real_upload = storage.upload
+    calls = []
+
+    async def _fail_on_third(path, data, content_type, *, client=None):
+        calls.append(path)
+        if len(calls) == 3:
+            raise RuntimeError("panne au troisième dépôt")
+        await real_upload(path, data, content_type, client=client)
+
+    monkeypatch.setattr(storage, "upload", _fail_on_third)
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    after = await _wait_until_done(client, project_id, account)
+
+    assert after["fichiers"] == before["fichiers"]
+    assert after["dernier_export"] == "echec"
+    # Les fichiers du premier export sont toujours là, inchangés : rien n'a
+    # été détruit ni écrasé par la tentative interrompue.
+    for path, value in stored_before.items():
+        assert stored[path] == value
+
+
+async def test_a_successful_export_writes_under_a_new_prefix_and_drops_the_old_one(
+        client, account, stored, monkeypatch):
+    """Un export réussi écrit sous un nouveau préfixe horodaté ; une fois les
+    lignes enregistrées, l'ancien préfixe disparaît du stockage."""
+    from app.export import storage
+
+    project_id = (await client.post("/projects", json=CREATION,
+                                    headers=account)).json()["id"]
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    await _wait_until_done(client, project_id, account)
+    old_paths = set(stored)
+    old_prefix = next(iter(old_paths)).rsplit("/", 1)[0]
+
+    deleted = []
+    real_delete_prefix = storage.delete_prefix
+
+    async def _spy_delete_prefix(prefix, *, client=None):
+        deleted.append(prefix)
+        await real_delete_prefix(prefix, client=client)
+
+    monkeypatch.setattr(storage, "delete_prefix", _spy_delete_prefix)
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    after = await _wait_until_done(client, project_id, account)
+
+    assert after["dernier_export"] == "ok"
+    new_paths = set(stored)
+    assert new_paths.isdisjoint(old_paths)
+    assert len(new_paths) == 2
+    new_prefix = next(iter(new_paths)).rsplit("/", 1)[0]
+    assert new_prefix != old_prefix
+    assert deleted == [old_prefix]
+    assert not any(p.startswith(old_prefix + "/") for p in stored)
+
+
+async def test_a_failed_deletion_of_the_old_prefix_does_not_fail_the_export(
+        client, account, stored, monkeypatch):
+    """Une suppression d'ancien préfixe qui lève ne doit empêcher ni la
+    réussite de l'export ni l'enregistrement des nouvelles lignes."""
+    from app.export import storage
+
+    project_id = (await client.post("/projects", json=CREATION,
+                                    headers=account)).json()["id"]
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    await _wait_until_done(client, project_id, account)
+
+    async def _raise(prefix, *, client=None):
+        raise RuntimeError("stockage injoignable pour la suppression")
+
+    monkeypatch.setattr(storage, "delete_prefix", _raise)
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    after = await _wait_until_done(client, project_id, account)
+
+    assert after["dernier_export"] == "ok"
+    assert len(after["fichiers"]) == 2
+
+
 async def test_exporting_twice_keeps_one_row_per_file(client, account, stored):
     """`dernier_export` est vérifié à CHAQUE tour, pas seulement le compte de
     fichiers à la fin : sans `on conflict`, le second export lève une
@@ -265,8 +371,10 @@ async def test_files_are_stored_with_their_content_type(client, account, stored)
                                     headers=account)).json()["id"]
     await client.post(f"/projects/{project_id}/exports", headers=account)
     await _wait_until_done(client, project_id, account)
-    assert stored[f"{project_id}/cdc.docx"][1] == _WORD_TYPE
-    assert stored[f"{project_id}/cdc.pdf"][1] == "application/pdf"
+    docx_path = next(p for p in stored if p.endswith("cdc.docx"))
+    pdf_path = next(p for p in stored if p.endswith("cdc.pdf"))
+    assert stored[docx_path][1] == _WORD_TYPE
+    assert stored[pdf_path][1] == "application/pdf"
 
 
 async def test_each_link_signs_its_own_file(client, account, stored):
@@ -275,7 +383,8 @@ async def test_each_link_signs_its_own_file(client, account, stored):
     await client.post(f"/projects/{project_id}/exports", headers=account)
     body = await _wait_until_done(client, project_id, account)
     for f in body["fichiers"]:
-        assert f"{project_id}/{f['document']}.{f['format']}" in f["lien"]
+        assert f["lien"].startswith(f"https://signe.test/{project_id}/")
+        assert f["lien"].endswith(f"/{f['document']}.{f['format']}?token=x")
 
 
 async def test_a_finished_project_is_not_a_draft(client, account, stored):
@@ -327,7 +436,8 @@ async def test_a_business_plan_export_embeds_its_charts(client, account, stored,
                                     headers=account)).json()["id"]
     await client.post(f"/projects/{project_id}/exports", headers=account)
     await _wait_until_done(client, project_id, account)
-    word = Document(io.BytesIO(stored[f"{project_id}/bp.docx"][0]))
+    bp_path = next(p for p in stored if p.endswith("bp.docx"))
+    word = Document(io.BytesIO(stored[bp_path][0]))
     # Le fil du projet, et pas son identifiant : un mauvais argument ici
     # rendrait un point de reprise vide, donc aucun graphique dans aucun
     # business plan — et en silence, puisqu'un calcul absent ne lève pas.
