@@ -58,4 +58,28 @@ describe("readStream", () => {
       .rejects.toMatchObject({ status: 404, code: "projet_introuvable" });
     expect(onOpen).not.toHaveBeenCalled();
   });
+
+  it("recompose un caractère accentué coupé au milieu de son encodage UTF-8", async () => {
+    const frame = 'event: token\ndata: {"text": "café"}\n\n';
+    const bytes = new TextEncoder().encode(frame);
+    // « é » s'encode sur deux octets (0xC3 0xA9) ; tout ce qui précède est
+    // ASCII, donc son index dans la chaîne vaut son décalage en octets. On
+    // coupe entre les deux octets : le premier paquet finit à l'intérieur
+    // du caractère, le second commence par son octet de fin.
+    const cut = frame.indexOf("é") + 1;
+    const first = bytes.slice(0, cut);
+    const second = bytes.slice(cut);
+    expect(first.length).toBeGreaterThan(0);
+    expect(second.length).toBeGreaterThan(0);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(first);
+        controller.enqueue(second);
+        controller.close();
+      },
+    }))));
+    const events: unknown[] = [];
+    await readStream("p-1", (e) => events.push(e), () => {}, new AbortController().signal);
+    expect(events).toEqual([{ name: "token", data: { text: "café" } }]);
+  });
 });

@@ -14,8 +14,12 @@ describe("liveReducer", () => {
     live = liveReducer(live, event("token", { text: "Bon" }));
     live = liveReducer(live, event("token", { text: "jour" }));
     expect(live.draft).toBe("Bonjour");
+    live = liveReducer(live, event("score", { score: 4, problems: ["trop vague"] }));
     live = liveReducer(live, event("section_restart", { document: "cdc", section_id: "perimetre" }));
     expect(live.draft).toBe("");
+    // La note portait sur l'essai abandonné : elle ne doit pas juger le
+    // texte qui repart de zéro.
+    expect(live.score).toBeNull();
   });
 
   it("garde la note de l'auto-critique jusqu'à l'enregistrement", () => {
@@ -81,6 +85,15 @@ describe("liveReducer", () => {
     // Une interaction NOUVELLE s'affiche, et la garde tombe.
     live = liveReducer(live, { type: "state", state: projectState({ ...waiting, interaction: { ...review, id: "i-2" } }) });
     expect(live.state?.interaction?.id).toBe("i-2");
+    expect(live.answered).toBeNull();
+
+    // Réponse à cette deuxième interaction, puis une interaction ENCORE plus
+    // récente arrive directement par le flux (pas par /state) : la garde
+    // tombe aussi par ce chemin-là.
+    live = liveReducer(live, { type: "answered", interactionId: "i-2" });
+    expect(live.answered).toBe("i-2");
+    live = liveReducer(live, event("interaction", { ...review, id: "i-3" }));
+    expect(live.state?.interaction?.id).toBe("i-3");
     expect(live.answered).toBeNull();
   });
 

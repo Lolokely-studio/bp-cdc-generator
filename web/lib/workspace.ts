@@ -77,8 +77,10 @@ function onEvent(live: Live, name: string, data: Record<string, unknown>): Live 
       return typeof data.text === "string" ? { ...live, draft: live.draft + data.text } : live;
     case "section_restart":
       // Le flux repart entier sur un autre fournisseur (§5.2) : ce qui
-      // s'affichait était un faux départ.
-      return { ...live, draft: "" };
+      // s'affichait était un faux départ — texte ET verdict de l'essai
+      // abandonné, sinon la note affichée jugerait un texte qui n'existe
+      // plus.
+      return { ...live, draft: "", score: null };
     case "score":
       return {
         ...live,
@@ -96,6 +98,9 @@ function onEvent(live: Live, name: string, data: Record<string, unknown>): Live 
       if (!parsed.success || !live.state || parsed.data.id === live.answered) return live;
       return {
         ...live,
+        // Une interaction NEUVE : la garde posée par la dernière réponse
+        // n'a plus rien à protéger.
+        answered: null,
         draft: "",
         state: { ...live.state, interaction: parsed.data, projet: { ...live.state.projet, run_status: "waiting" } },
       };
