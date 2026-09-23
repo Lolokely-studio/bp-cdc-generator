@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { useSetCrumbs } from "@/components/Crumbs";
 import { Stepper } from "@/components/Stepper";
 import { api } from "@/lib/api";
 import { useCatalogue } from "@/lib/catalogue";
@@ -24,6 +25,7 @@ const MAX_IDEA = 5000;
 type Errors = { nom?: string; idee?: string; form?: string };
 
 export default function NewProjectPage() {
+  useSetCrumbs([{ label: "Mes projets", href: "/projets" }, { label: "Nouveau projet" }]);
   const catalogue = useCatalogue();
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);

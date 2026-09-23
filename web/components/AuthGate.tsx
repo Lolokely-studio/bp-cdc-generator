@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
+import { CrumbsProvider } from "@/components/Crumbs";
 import { TopBar } from "@/components/TopBar";
 import { ApiError, api, getToken, setInactiveHandler, setUnauthorizedHandler } from "@/lib/api";
 
@@ -47,18 +48,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (failed) {
     return (
-      <main className="m-body">
-        <p className="m-err" role="alert">Le serveur n'a pas répondu. Rechargez la page.</p>
+      <main className="page">
+        <p className="callout callout--stop" role="alert">Le serveur n'a pas répondu. Rechargez la page.</p>
       </main>
     );
   }
   if (!email) {
-    return <main className="m-body"><p className="m-muted">Chargement…</p></main>;
+    return <main className="page"><p className="t-note">Chargement…</p></main>;
   }
   return (
-    <>
+    <CrumbsProvider>
       <TopBar email={email} />
       {children}
-    </>
+    </CrumbsProvider>
   );
 }

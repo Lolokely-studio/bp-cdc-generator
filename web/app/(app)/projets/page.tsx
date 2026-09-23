@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useSetCrumbs } from "@/components/Crumbs";
 import { ProjectCard } from "@/components/ProjectCard";
 import { api } from "@/lib/api";
 import type { ProjectSummary } from "@/lib/contracts";
 import { projectsHeadline } from "@/lib/labels";
 
 export default function ProjectsPage() {
+  useSetCrumbs([{ label: "Mes projets" }]);
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
 

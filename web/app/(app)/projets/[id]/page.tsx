@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useReducer, useState } from "react";
 import { CoherencePanel } from "@/components/CoherencePanel";
+import { useSetCrumbs } from "@/components/Crumbs";
 import { FactsColumn } from "@/components/FactsColumn";
 import { PlanColumn } from "@/components/PlanColumn";
 import { WorkspaceCenter } from "@/components/WorkspaceCenter";
@@ -49,6 +50,11 @@ export default function WorkspacePage() {
 
   const state = live.state;
   const status = state?.projet.run_status;
+
+  useSetCrumbs([
+    { label: "Mes projets", href: "/projets" },
+    { label: state?.projet.nom ?? "Projet" },
+  ]);
 
   // Constat 5 de la revue finale : un projet mort-né reste `idle` pour
   // toujours. Passé `IDLE_STUCK_MS` sans en sortir, on cesse d'y croire —
