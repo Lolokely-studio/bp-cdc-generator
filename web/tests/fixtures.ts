@@ -36,6 +36,11 @@ export const catalogue: Catalogue = {
     nom_projet: { libelle: "Nom du projet", type: "texte_court", unite: null, options: [], exemple: "CoachDom." },
     deja_lance: { libelle: "Déjà lancé", type: "booleen", unite: null, options: [], exemple: null },
     date_lancement_visee: { libelle: "Date de lancement visée", type: "date", unite: null, options: [], exemple: null },
+    // Les deux types qui manquaient à l'appel : ajoutés après une relecture,
+    // avec des identifiants qui existent vraiment au catalogue.
+    probleme_resolu: { libelle: "Le problème résolu", type: "texte_long", unite: null, options: [], exemple: null },
+    volume_ventes_an1: { libelle: "Volume de ventes la première année", type: "nombre", unite: "séances",
+      options: [], exemple: null },
   },
 };
 
