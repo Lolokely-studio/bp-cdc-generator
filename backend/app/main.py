@@ -112,6 +112,20 @@ def create_app() -> FastAPI:
     les tests en créent une par cas, sans état partagé."""
     app = FastAPI(title="Esquisse", version="0.1.0", lifespan=lifespan)
 
+    # Le jeton voyage dans l'en-tête `Authorization`, jamais dans un cookie :
+    # `allow_credentials` reste donc faux, et une origine absente de la liste
+    # ne reçoit aucun en-tête CORS.
+    from fastapi.middleware.cors import CORSMiddleware
+
+    from app.core.config import settings
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings().cors_origin_list,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
+
     @app.get("/health")
     async def health() -> dict[str, str]:
         """Sonde de réveil. L'hébergement gratuit s'endort après quinze
@@ -130,6 +144,9 @@ def create_app() -> FastAPI:
 
     from app.projects.exports import router as exports_router
     app.include_router(exports_router)
+
+    from app.projects.catalogue import router as catalogue_router
+    app.include_router(catalogue_router)
 
     return app
 

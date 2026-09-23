@@ -135,3 +135,16 @@ class EsquisseState(TypedDict):
     pending_questions: Any | None
 
     inconsistencies: list[Inconsistency]
+
+    # La réécriture après coup (plan 6). `rework` est la file des sections à
+    # reprendre, en identifiants qualifiés et dans l'ordre du plan ;
+    # `rework_notes` dit, section par section, ce que le rédacteur doit
+    # corriger ; `reworking` dit que la section courante vient de cette file
+    # et non du parcours ordinaire. Un point de reprise écrit avant ce plan
+    # n'a aucune de ces clés : on les lit toujours par `.get`.
+    rework: list[str]
+    rework_notes: dict[str, list[str]]
+    reworking: bool
+    # La relecture a choisi « Passer la section » : `save` l'écrit `skipped`,
+    # et l'export portera le filigrane Brouillon (§7).
+    skip_current: bool

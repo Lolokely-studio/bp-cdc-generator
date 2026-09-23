@@ -39,6 +39,11 @@ class ProjectSummary(BaseModel):
     run_status: str
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    # Sections faites (`done` ou `skipped`) et taille du plan, pour la barre
+    # de progression du tableau de bord. `reopened` ne compte pas : une
+    # section rouverte est à refaire.
+    sections_faites: int = 0
+    sections_total: int = 0
 
 
 class ProjectState(BaseModel):
@@ -54,6 +59,13 @@ class ProjectState(BaseModel):
     faits: dict[str, dict]
     sections: list[dict]
     interaction: dict | None
+
+
+class ReopenRequest(BaseModel):
+    """Ce qu'il faut changer, en une phrase. Facultatif : sans consigne, le
+    rédacteur reprend la section en tenant compte des faits actuels."""
+
+    consigne: str | None = Field(default=None, max_length=2000)
 
 
 class AnswerRequest(BaseModel):

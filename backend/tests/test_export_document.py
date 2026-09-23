@@ -77,12 +77,47 @@ def test_a_missing_section_makes_the_document_a_draft():
     assert len(doc.sections) == len(plan) - 1
 
 
-def test_a_section_not_done_makes_the_document_a_draft_and_stays_out():
+def _reading_order_titles(document, profil):
+    """Les titres du plan d'un document/profil, dans l'ordre de LECTURE —
+    celui que `assemble` doit produire, quel que soit le statut des lignes."""
+    template = CATALOGUE.cdc if document == "cdc" else CATALOGUE.bp
+    sections = sorted((s for s in template.sections if profil in s.profils),
+                      key=lambda s: s.ordre_lecture)
+    return [CATALOGUE.section(f"{document}.{s.id}").titre for s in sections]
+
+
+def test_a_skipped_section_with_content_stays_in_the_body_and_marks_a_draft():
+    """`skipped` veut dire « rédigée, mais pas validée par l'utilisateur » :
+    le texte existe et doit rester dans le corps. C'est le drapeau brouillon,
+    pas une exclusion, qui porte la réserve (constat 1 de la revue finale)."""
+    plan = CATALOGUE.plan_for("cdc", "consultation", None)
+    rows = _rows("cdc", "consultation")
+    rows[0]["statut"] = "skipped"
+    doc = assemble("cdc", "CoachDom", "consultation", rows, CATALOGUE)
+    assert doc.draft is True
+    assert [s.title for s in doc.sections] == _reading_order_titles("cdc", "consultation")
+
+
+def test_a_reopened_section_with_content_stays_in_the_body_and_marks_a_draft():
+    """`reopened` veut dire « rédigée, à reprendre » : même texte existant,
+    même traitement que `skipped` — présente, à sa place, document brouillon."""
     plan = CATALOGUE.plan_for("cdc", "consultation", None)
     rows = _rows("cdc", "consultation")
     rows[0]["statut"] = "reopened"
     doc = assemble("cdc", "CoachDom", "consultation", rows, CATALOGUE)
     assert doc.draft is True
+    assert [s.title for s in doc.sections] == _reading_order_titles("cdc", "consultation")
+
+
+def test_a_section_present_but_empty_stays_out_and_marks_a_draft():
+    """Une ligne existe mais ne porte aucun bloc : rien à montrer, elle reste
+    hors du corps — à la différence d'une section `skipped`/`reopened` qui a
+    du contenu, elle."""
+    plan = CATALOGUE.plan_for("cdc", "consultation", None)
+    rows = _rows("cdc", "consultation", blocks_for={plan[0].section_id: []})
+    doc = assemble("cdc", "CoachDom", "consultation", rows, CATALOGUE)
+    assert doc.draft is True
+    assert len(doc.sections) == len(plan) - 1
     assert CATALOGUE.section(f"cdc.{plan[0].section_id}").titre not in [
         s.title for s in doc.sections]
 

@@ -61,6 +61,20 @@ class Settings(BaseSettings):
     supabase_service_role_key: str = ""
     supabase_bucket_name: str = "exports"
 
+    # Les origines qui peuvent appeler l'API depuis un navigateur, séparées
+    # par des virgules. Le front vit sur un autre domaine et parle directement
+    # au backend (§6.1) : sans CORS, le navigateur bloque tout. 3001 en local,
+    # parce que Gotenberg occupe déjà 3000.
+    cors_origins: str = "http://localhost:3001"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """Sans barre finale : le navigateur envoie `https://x.app`, et
+        `https://x.app/` recopié depuis la barre d'adresse ne correspondrait
+        jamais."""
+        return [origin.strip().rstrip("/")
+                for origin in self.cors_origins.split(",") if origin.strip()]
+
     @property
     def dsn(self) -> str:
         """DSN PostgreSQL construit à partir des variables SUPABASE_DB_*."""

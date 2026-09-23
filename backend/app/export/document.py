@@ -55,9 +55,14 @@ def assemble(document: str, project_name: str, profil: str,
     rédigé en dernier et se lit en premier. Trier sur l'ordre de rédaction le
     mettrait à la fin du document.
 
-    Une section du plan absente des lignes, ou dont le statut n'est pas
-    `done`, reste hors du corps et fait du document un brouillon. C'est le cas
-    réel d'un export demandé avant la fin de la rédaction.
+    Une section du plan absente des lignes, ou dont le contenu est vide,
+    reste hors du corps et fait du document un brouillon. Une section
+    présente et non vide reste dans le corps quel que soit son statut :
+    `skipped` (passée sans validation) et `reopened` (à reprendre) désignent
+    toutes deux un texte qui EXISTE, pas une section à taire. Seul le statut
+    ≠ `done` fait du document un brouillon — c'est le filigrane, jamais une
+    omission silencieuse, qui porte la réserve (constat 1 de la revue
+    finale : ce code datait du plan 5, avant que `skipped` change de sens).
     """
     if profil is None:
         # Même garde que `Catalogue.plan_for` : sans profil, aucune section ne
@@ -78,9 +83,11 @@ def assemble(document: str, project_name: str, profil: str,
     seen_missing: set[str] = set()
     for section in planned:
         row = by_id.get(section.id)
-        if row is None or row["statut"] != "done":
+        if row is None or not row["blocks"]:
             result.draft = True
             continue
+        if row["statut"] != "done":
+            result.draft = True
         blocks: list[Block] = []
         for block in row["blocks"]:
             if isinstance(block, Table):

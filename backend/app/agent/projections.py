@@ -5,7 +5,7 @@ from app.agent.state import Block, Fact, SectionRef, dump_blocks, parse_blocks
 
 # Le cycle de vie d'une section. Écrits tels quels dans `sections.statut`,
 # dont la migration 0002 fixe la valeur par défaut à `pending`.
-SECTION_STATUSES = ("pending", "writing", "done", "reopened")
+SECTION_STATUSES = ("pending", "writing", "done", "reopened", "skipped")
 
 
 async def save_facts(conn, project_id: UUID, facts: dict[str, Fact]) -> None:

@@ -52,6 +52,11 @@ services:
       # déduit du code.
       - key: SUPABASE_BUCKET_NAME
         value: exports
+      # Les origines autorisées à appeler l'API depuis un navigateur. Le
+      # domaine Vercel du front s'y saisit à la main : il n'est connu qu'une
+      # fois le front déployé, et il change si le projet est renommé.
+      - key: CORS_ORIGINS
+        sync: false
 
   # Image officielle épinglée. Un service déployé depuis une image
   # pré-construite ne se redéploie pas tout seul : c'est voulu ici.

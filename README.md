@@ -19,6 +19,7 @@ quatre fichiers : le cahier des charges et le business plan, en Word et en PDF.
 | [backend/app/templates/](backend/app/templates/) | 30 sections et 75 faits, en YAML. Le cœur de valeur du produit. |
 | [docs/spec-implementation.md](docs/spec-implementation.md) | Spécification technique. |
 | [docs/plans/](docs/plans/) | Feuille de route et plans d'implémentation. |
+| [web/](web/) | L'application Next.js, l'interface — voir « Le front » plus bas. |
 
 ### Démarrer
 
@@ -64,10 +65,10 @@ base locale, et nomme l'hôte qu'elle a refusé.
 cd backend && uv run pytest -q
 ```
 
-Environ 480 tests, en moins d'une minute. Ils utilisent la base jetable de
-`docker-compose.yml`, jamais la base distante, et aucun ne joint un
-fournisseur de modèle ni le stockage : les tests marqués `network` sont exclus
-par défaut (voir « La couche modèles »).
+563 tests (6 désélectionnés), en moins d'une minute. Ils utilisent la base
+jetable de `docker-compose.yml`, jamais la base distante, et aucun ne joint
+un fournisseur de modèle ni le stockage : les tests marqués `network` sont
+exclus par défaut (voir « La couche modèles »).
 
 ### Configuration
 
@@ -148,7 +149,7 @@ Trois comportements que le front doit connaître :
 processus : la commande de démarrage fixe `--workers 1`. Voir aussi le risque
 de déploiement plus bas.
 
-## L'export *(plan 5, en cours)*
+## L'export
 
 Chaque document sort en Word et en PDF, depuis les blocs structurés et jamais
 depuis le texte affiché. Le Word part d'un modèle, `app/export/templates/model.docx`,
@@ -208,3 +209,68 @@ déploiement, l'ancienne et la nouvelle instance tournent ensemble environ
 90 secondes, et la nouvelle passerait à `failed` les runs vivants de
 l'ancienne. Sans utilisateur réel, le risque est nul ; il doit être traité
 avant la mise en service (spec §9.2).
+
+## Le front
+
+`web/` est une application Next.js 16, hébergée sur Vercel, qui parle
+directement au backend : le jeton de session voyage dans l'en-tête
+`Authorization`, et la rédaction se suit par un flux SSE lu avec `fetch`
+(`EventSource` ne sait pas envoyer d'en-tête).
+
+```bash
+cd web
+npm ci
+cp .env.example .env.local     # NEXT_PUBLIC_API_URL, lue à la construction
+npm run dev                    # http://localhost:3001
+npm run typecheck && npm test  # typage et tests unitaires
+npm run e2e                    # parcours complet, backend et front démarrés par Playwright
+```
+
+Le port 3001 n'est pas un caprice : Gotenberg occupe le 3000 en local.
+
+**Ce que la pile ne contient pas.** L'onglet Stack de la maquette annonçait
+Tailwind, shadcn/ui et React Hook Form. Le style retenu est celui de la
+maquette elle-même, écrit en classes `.m-*` sur des variables CSS : les
+reprendre telles quelles est plus fidèle et plus court que les traduire, et
+des formulaires de trois champs n'ont pas besoin d'une bibliothèque. Zod
+reste, pour valider chaque réponse de l'API contre son contrat.
+
+**Un compte pour développer.** L'activation d'un compte se fait à la main
+dans la base (§3.2). Sur la base jetable, le script s'en charge :
+
+```bash
+cd backend
+SUPABASE_DB_HOST=localhost SUPABASE_DB_PORT=5433 SUPABASE_DB_USER=esquisse \
+SUPABASE_DB_PASSWORD=esquisse SUPABASE_DB_NAME=esquisse_test \
+uv run python -m app.auth.seed moi@exemple.fr "un mot de passe"
+```
+
+Il refuse toute base qui n'est pas locale.
+
+**Déploiement sur Vercel.** Racine du projet : `web/`. Une seule variable,
+`NEXT_PUBLIC_API_URL`, qui porte l'adresse du service Render. Elle est
+inscrite dans le code envoyé au navigateur au moment de la construction :
+la changer demande un redéploiement. En face, le service Render doit porter
+`CORS_ORIGINS` avec le domaine Vercel, sans quoi le navigateur bloque chaque
+appel.
+
+**Ce que le front ne fait jamais :** appeler `/health` en boucle pour tenir
+le backend éveillé. Les 750 heures d'instance mensuelles sont partagées
+entre les services (§9.4) ; le réveil se traite par un écran d'attente, et
+le flux SSE se ferme dès que le run cesse d'avancer.
+
+### Tests de bout en bout
+
+```bash
+cd web && npm run e2e
+```
+
+Playwright démarre lui-même le backend (port 8100) et le front (port 3101,
+construit à neuf) : jamais le serveur de développement du poste, qui lirait
+`backend/.env` et donc les vrais identifiants. Trois parcours, un modèle
+simulé, jamais la vraie base ni le vrai stockage. Le premier mène quatorze
+sections jusqu'au bout, avec une relecture passée, un arbitrage, un export
+qui échoue faute de stockage configuré (voulu — l'écran doit le dire), puis
+une réouverture qui réécrit une section : sous la minute ici avec le modèle
+simulé, d'où le délai de dix minutes prévu dans `playwright.config.ts` pour
+une machine plus lente.

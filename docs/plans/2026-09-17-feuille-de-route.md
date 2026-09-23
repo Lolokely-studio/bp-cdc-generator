@@ -107,7 +107,7 @@ Relecture des consignes et des grilles des 30 sections, plafond par compte, réi
       prémisse fausse ; le statut `reopened`, que rien ne relit ; le coût de la
       purge à chaque réveil. Risque accepté : pas de déploiement pendant un run
       actif (spec §9.2).
-- [x] Plan 5 — **livré** : [2026-09-22-06-export.md](2026-09-22-06-export.md) — 547 tests
+- [x] Plan 5 — **livré** : [2026-09-22-06-export.md](2026-09-22-06-export.md) — 546 tests
       Word depuis un modèle remplaçable, PDF par Gotenberg ou par un repli HTML
       qui le dit, stockage Supabase privé et liens signés, export en tâche de
       fond qui rend tout, dépose tout puis enregistre tout d'un coup, et dit
@@ -118,4 +118,11 @@ Relecture des consignes et des grilles des 30 sections, plafond par compte, réi
       planter tout Word ; un 200 sans PDF passait pour fidèle ; un export raté
       était invisible et un échec mélangeait ancien et nouveau. Reporté : voir
       la section « Revue finale » du plan.
-- [ ] Plan 6
+- [x] Plan 6 — **livré** : [2026-09-22-07-interface.md](2026-09-22-07-interface.md)
+      — 563 tests backend, 127 tests front, 3 parcours Playwright
+      Le parcours de la maquette, en vrai : comptes, tableau de bord, création,
+      questions typées, rédaction en flux, relecture, arbitrage des
+      incohérences, documents et réouverture. Deux gestes que la maquette
+      promettait sans que rien ne les porte ont été câblés d'abord : un
+      arbitrage « corriger » et une réouverture font désormais réécrire les
+      sections concernées.

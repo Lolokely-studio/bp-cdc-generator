@@ -307,7 +307,7 @@ async def test_a_rewrite_without_a_reason_still_sends_the_section_back():
 
     state = {"plan": [SectionRef(document="cdc", section_id="contexte_objectifs",
                                  order=1)],
-             "cursor": 0, "score": 5, "problems": []}
+             "cursor": 0, "score": 5, "problems": [], "draft": None}
     for demande in ({"action": "rewrite"},
                     {"action": "rewrite", "problems": []}):
         with patch.object(graph_module, "interrupt", lambda _, d=demande: d):

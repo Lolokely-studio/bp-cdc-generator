@@ -55,10 +55,13 @@ async def project_for_user(conn, project_id: UUID, user_id: UUID) -> dict:
     async with conn.cursor() as cur:
         await cur.execute(
             """
-            select id, user_id, nom, documents, profil_cdc, profil_bp,
-                   thread_id, run_status, templates_version, idee,
-                   created_at, updated_at
-            from projects where id = %s and user_id = %s
+            select p.id, p.user_id, p.nom, p.documents, p.profil_cdc, p.profil_bp,
+                   p.thread_id, p.run_status, p.templates_version, p.idee,
+                   p.created_at, p.updated_at,
+                   (select count(*) from sections s
+                    where s.project_id = p.id
+                      and s.statut in ('done', 'skipped'))::int as sections_faites
+            from projects p where p.id = %s and p.user_id = %s
             """,
             (project_id, user_id),
         )
@@ -83,9 +86,12 @@ async def projects_of_user(conn, user_id: UUID) -> list[dict]:
     async with conn.cursor() as cur:
         await cur.execute(
             """
-            select id, nom, documents, profil_cdc, profil_bp,
-                   run_status, created_at, updated_at
-            from projects where user_id = %s order by updated_at desc
+            select p.id, p.nom, p.documents, p.profil_cdc, p.profil_bp,
+                   p.run_status, p.created_at, p.updated_at,
+                   (select count(*) from sections s
+                    where s.project_id = p.id
+                      and s.statut in ('done', 'skipped'))::int as sections_faites
+            from projects p where p.user_id = %s order by p.updated_at desc
             """,
             (user_id,),
         )

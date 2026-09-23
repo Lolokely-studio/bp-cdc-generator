@@ -206,3 +206,20 @@ async def test_the_stream_rebuilds_the_same_text():
     rebuilt = "".join(chunks)
     again = [chunk async for chunk in transport.stream_chat(PROVIDER, MODEL, _messages())]
     assert "".join(again) == rebuilt
+
+
+async def test_inconsistencies_name_sections_the_coherence_prompt_offers():
+    """Le simulé nommait des phrases en guise de sections : aucune
+    incohérence ne désignait une section réelle, et la réécriture qu'un
+    arbitrage déclenche restait sans test de bout en bout."""
+    from app.agent.prompts import FoundInconsistencies, coherence_prompt
+    from app.agent.state import Paragraph
+
+    offered = {"cdc.perimetre", "bp.etude_marche"}
+    messages = coherence_prompt(
+        [(q, [Paragraph(text="Un texte.")]) for q in sorted(offered)])
+    completion = await FakeTransport().chat(
+        PROVIDER, MODEL, messages, schema=FoundInconsistencies)
+
+    named = [s for i in completion.parsed.inconsistencies for s in i.sections]
+    assert named and set(named) <= offered
