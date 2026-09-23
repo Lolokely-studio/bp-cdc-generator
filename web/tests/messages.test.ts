@@ -34,5 +34,6 @@ describe("initials", () => {
     expect(initials("lucie.renard@exemple.fr")).toBe("LR");
     expect(initials("brice@exemple.fr")).toBe("B");
     expect(initials("@exemple.fr")).toBe("?");
+    expect(initials("marie.claire.dupont@exemple.fr")).toBe("MC");
   });
 });

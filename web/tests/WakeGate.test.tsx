@@ -12,6 +12,7 @@ describe("WakeGate", () => {
   it("rend l'application tout de suite quand le serveur répond", async () => {
     const probe = vi.fn(async () => true);
     render(<WakeGate probe={probe} timings={timings}><p>appli</p></WakeGate>);
+    expect(screen.queryByText("Le serveur se réveille")).toBeNull();
     expect(await screen.findByText("appli")).toBeInTheDocument();
     expect(screen.queryByText("Le serveur se réveille")).toBeNull();
     expect(probe).toHaveBeenCalledTimes(1);
