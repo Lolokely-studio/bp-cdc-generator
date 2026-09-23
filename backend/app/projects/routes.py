@@ -20,10 +20,13 @@ from app.projects.schemas import (
     ProjectCreate,
     ProjectState,
     ProjectSummary,
+    ReopenRequest,
 )
 from app.projects.stream import event_stream
 from app.runs import registry
 from app.runs.runner import RunAlreadyRunning, start_run
+from app.agent.nodes import rework_queue
+from app.export.service import is_exporting
 
 router = APIRouter(prefix="/projects", tags=["projets"])
 
@@ -31,6 +34,22 @@ router = APIRouter(prefix="/projects", tags=["projets"])
 # `ask_questions` veut une correspondance fait → valeur, `review` un
 # dictionnaire d'action, `arbitrate` une liste d'arbitrages.
 _EXPECTED_ANSWER = {"questions": dict, "review": dict, "inconsistencies": list}
+
+
+def summary(row: dict) -> ProjectSummary:
+    """L'en-tête d'un projet, avec la taille de son plan.
+
+    La taille se recalcule depuis le catalogue plutôt que depuis le point de
+    reprise : la liste des projets l'affiche pour chacun, et réhydrater un
+    graphe par carte du tableau de bord coûterait une requête lourde chacune.
+    `plan_for` est déterministe pour des documents et des profils donnés.
+    """
+    try:
+        total = len(load_catalogue().plan_for(
+            row["documents"], row["profil_cdc"], row["profil_bp"]))
+    except ValueError:
+        total = 0
+    return ProjectSummary(**row, sections_total=total)
 
 
 async def _owned(project_id: UUID, user) -> dict:
@@ -91,19 +110,19 @@ async def create(body: ProjectCreate, user=Depends(active_user)):
     # dépendant de l'ordonnanceur.
     async with connection() as conn:
         row = await project_for_user(conn, project_id, user["id"])
-    return ProjectSummary(**row)
+    return summary(row)
 
 
 @router.get("", response_model=list[ProjectSummary])
 async def listing(user=Depends(active_user)):
     async with connection() as conn:
-        return [ProjectSummary(**row)
+        return [summary(row)
                 for row in await projects_of_user(conn, user["id"])]
 
 
 @router.get("/{project_id}", response_model=ProjectSummary)
 async def header(project_id: UUID, user=Depends(active_user)):
-    return ProjectSummary(**await _owned(project_id, user))
+    return summary(await _owned(project_id, user))
 
 
 @router.get("/{project_id}/state", response_model=ProjectState)
@@ -140,7 +159,7 @@ async def state(project_id: UUID, user=Depends(active_user)):
         sections = await load_sections(conn, project_id)
 
     return ProjectState(
-        projet=ProjectSummary(**row),
+        projet=summary(row),
         plan=[ref.model_dump() for ref in values.get("plan", [])],
         curseur=values.get("cursor", 0),
         faits={key: fact.model_dump() for key, fact in facts.items()},
@@ -336,14 +355,28 @@ async def resume(project_id: UUID, user=Depends(active_user)):
     return {"reprise": True, "run_status": "running"}
 
 
+# Ce que reçoit une section rouverte parce qu'une autre, dont elle dépend, va
+# changer : sans cette raison, le rédacteur n'a rien à corriger et recopie.
+REOPEN_DEPENDENT_NOTE = (
+    "la section {target}, dont celle-ci dépend, vient d'être réécrite : "
+    "aligne celle-ci sur son nouveau contenu"
+)
+
+
 @router.post("/{project_id}/sections/{section_id}/reopen")
 async def reopen(project_id: UUID, section_id: str,
+                 body: ReopenRequest | None = None,
                  user=Depends(active_user)):
-    """Rouvre une section et celles qui en dépendent.
+    """Rouvre une section et celles qui en dépendent, puis les fait réécrire.
 
     Rouvrir la seule section demandée laisserait le document incohérent :
     celles qui la citent dans leur `depend_de` ont été écrites en s'appuyant
     sur ce qu'elle disait.
+
+    SEULEMENT SUR UN PROJET `done`. Pendant un run, la file de réécriture
+    concurrencerait le point de reprise ; en `failed`, c'est `/resume` qu'il
+    faut d'abord. Et jamais pendant un export, qui lirait des sections à
+    moitié réécrites et les mélangerait aux autres. Un refus ne marque rien.
     """
     row = await _owned(project_id, user)
     graph = await compiled_graph()
@@ -358,13 +391,32 @@ async def reopen(project_id: UUID, section_id: str,
     if len(matching) > 1:
         # Possible depuis la migration 0003 : les deux documents peuvent
         # porter le même identifiant de section. On refuse plutôt que d'en
-        # choisir un au hasard — le front, lui, sait de quel document il
-        # parle, et pourra le préciser le jour où le cas se présente.
+        # choisir un au hasard.
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             {"code": "section_ambigue"})
 
-    qualified = load_catalogue().sections_depending_on(
-        f"{matching[0].document}.{section_id}")
+    if row["run_status"] != "done" or registry.is_running(str(project_id)):
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            {"code": "reouverture_impossible"})
+    if is_exporting(str(project_id)):
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            {"code": "export_deja_en_cours"})
+
+    target = f"{matching[0].document}.{section_id}"
+    queue = rework_queue(plan, load_catalogue().sections_depending_on(target))
+    notes = {q: [REOPEN_DEPENDENT_NOTE.format(target=target)]
+             for q in queue if q != target}
+    if body is not None and body.consigne and body.consigne.strip():
+        notes[target] = [body.consigne.strip()]
+
     async with connection() as conn:
-        touched = await mark_for_reopening(conn, project_id, qualified)
-    return {"sections": sorted(qualified), "touchees": touched}
+        touched = await mark_for_reopening(conn, project_id, set(queue))
+    try:
+        start_run(str(project_id), row["thread_id"],
+                  {"rework": queue, "rework_notes": notes})
+    except RunAlreadyRunning:
+        # Deux clics sur « Rouvrir » : le second trouve le premier déjà
+        # parti. Les lignes sont marquées, le premier run les réécrit.
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            {"code": "reouverture_impossible"}) from None
+    return {"sections": queue, "touchees": touched, "run_status": "running"}

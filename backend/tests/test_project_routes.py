@@ -97,7 +97,8 @@ async def test_creating_a_project_returns_its_header(client, account):
     # pydantic ignore les clés en trop — mais deux coïncidences ne font pas
     # un contrat.
     assert set(body) == {"id", "nom", "documents", "profil_cdc", "profil_bp",
-                         "run_status", "created_at", "updated_at"}
+                         "run_status", "created_at", "updated_at",
+                         "sections_faites", "sections_total"}
 
 
 async def test_a_project_without_its_profile_is_refused(client, account):
@@ -219,7 +220,8 @@ async def test_the_header_status_agrees_with_the_state(client, account):
     # ligne, retirer `response_model` de `header` rendrait la ligne brute,
     # `thread_id` et `user_id` compris, sans que rien ne bronche.
     assert set(header) == {"id", "nom", "documents", "profil_cdc", "profil_bp",
-                           "run_status", "created_at", "updated_at"}
+                           "run_status", "created_at", "updated_at",
+                           "sections_faites", "sections_total"}
 
 
 async def test_the_state_interaction_id_is_the_one_langgraph_gave(client, account):
@@ -330,3 +332,46 @@ async def test_the_list_is_ordered_most_recently_modified_first(client, account)
     assert names.index("Recent") < names.index("Ancien"), (
         "la liste n'est pas triée par date de modification décroissante"
     )
+
+
+async def test_the_header_counts_the_sections_of_the_plan(client, account):
+    from uuid import UUID
+
+    from app.agent.projections import mark_for_reopening, save_section
+    from app.agent.state import Paragraph
+    from app.agent.templates import load_catalogue
+    from app.core.db import connection
+
+    body = (await client.post("/projects", json=CREATION, headers=account)).json()
+    plan = load_catalogue().plan_for("cdc", "consultation", None)
+    assert body["sections_total"] == len(plan)
+    assert body["sections_faites"] == 0
+
+    # Attendre la première interruption : le run de fond n'écrit plus rien
+    # ensuite, et les lignes posées ci-dessous ne se mêlent à aucune autre.
+    import asyncio
+    for _ in range(200):
+        if (await client.get(f"/projects/{body['id']}", headers=account)
+                ).json()["run_status"] == "waiting":
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError("le run n'a jamais atteint sa première interruption")
+
+    # Une section faite, une passée, une rouverte : les deux premières
+    # comptent, la troisième non — elle est à refaire.
+    project_id = UUID(body["id"])
+    async with connection() as conn:
+        for ref, statut in zip(plan[:3], ("done", "skipped", "done")):
+            await save_section(conn, project_id, ref, blocks=[Paragraph(text="x")],
+                               statut=statut, note=8, revisions=1)
+        await mark_for_reopening(conn, project_id,
+                                 {f"{plan[2].document}.{plan[2].section_id}"})
+
+    header = (await client.get(f"/projects/{body['id']}", headers=account)).json()
+    listed = next(p for p in (await client.get("/projects", headers=account)).json()
+                  if p["id"] == body["id"])
+    state = (await client.get(f"/projects/{body['id']}/state", headers=account)).json()
+    for summary in (header, listed, state["projet"]):
+        assert summary["sections_faites"] == 2
+        assert summary["sections_total"] == len(plan)

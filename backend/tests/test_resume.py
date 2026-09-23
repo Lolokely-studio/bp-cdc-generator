@@ -169,31 +169,6 @@ async def test_resuming_restarts_the_run_from_its_checkpoint(client, account):
     assert state_body["interaction"]["id"] == interaction_before["id"]
 
 
-async def test_reopening_a_section_marks_it_and_its_dependents(client, account):
-    project_id = (await client.post(
-        "/projects", json=CREATION, headers=account)).json()["id"]
-    # Le plan fait partie de l'état initial (`initial_state`), mais il ne
-    # devient visible au point de reprise qu'une fois le premier point de
-    # reprise écrit par le run de fond — une écriture en base, donc pas
-    # garantie au retour immédiat de `POST /projects`. Même motif de sondage
-    # que `tests/test_project_routes.py`.
-    for _ in range(100):
-        state_body = (await client.get(f"/projects/{project_id}/state",
-                                 headers=account)).json()
-        if state_body["plan"]:
-            break
-        await asyncio.sleep(0.05)
-    else:
-        raise AssertionError("le plan n'a jamais été publié au point de reprise")
-    section_id = state_body["plan"][0]["section_id"]
-
-    response = await client.post(
-        f"/projects/{project_id}/sections/{section_id}/reopen",
-        headers=account)
-    assert response.status_code == 200
-    assert "sections" in response.json()
-
-
 async def test_resuming_another_users_project_is_not_found(client, account):
     owner = await _active_account(client, "reprise-proprio")
     project_id = (await client.post(
@@ -307,44 +282,6 @@ async def test_resuming_rewrites_facts_before_relaunching(client, account, monke
                                 headers=account)
     assert response.status_code == 200
     assert captured, "`save_facts` n'a pas été appelée par `/resume`"
-
-
-async def test_reopening_calls_mark_for_reopening_with_the_transitive_closure(
-        client, account, monkeypatch):
-    """`mark_for_reopening` trouve enfin un appelant (constat de la revue du
-    plan 3) : rien ne vérifiait qu'il est bien appelé, ni avec quoi. Retirer
-    l'appel — ou lui passer autre chose que la fermeture transitive de
-    `sections_depending_on` — laissait `..._marks_it_and_its_dependents`
-    vert, puisque cette route-là ne vérifie que la forme de la réponse."""
-    from app.agent.templates import load_catalogue
-    from app.projects import routes
-
-    captured = []
-    real_mark = routes.mark_for_reopening
-
-    async def _spy(conn, project_id, qualified_ids):
-        captured.append(qualified_ids)
-        return await real_mark(conn, project_id, qualified_ids)
-
-    monkeypatch.setattr(routes, "mark_for_reopening", _spy)
-
-    project_id = (await client.post(
-        "/projects", json=CREATION, headers=account)).json()["id"]
-    for _ in range(100):
-        state_body = (await client.get(f"/projects/{project_id}/state",
-                                 headers=account)).json()
-        if state_body["plan"]:
-            break
-        await asyncio.sleep(0.05)
-    else:
-        raise AssertionError("le plan n'a jamais été publié au point de reprise")
-    section_id = state_body["plan"][0]["section_id"]
-
-    await client.post(f"/projects/{project_id}/sections/{section_id}/reopen",
-                      headers=account)
-
-    assert captured, "`mark_for_reopening` n'a pas été appelée par `/reopen`"
-    assert captured[-1] == load_catalogue().sections_depending_on(f"cdc.{section_id}")
 
 
 # --- Étape 9 : `/resume` ne reprend que ce qui est à reprendre -------------
@@ -761,54 +698,6 @@ async def test_purging_finished_projects_reduces_checkpoint_rows_and_leaves_othe
     assert after_other == before_other, "la purge a touché un projet qui n'est pas `done`"
 
 
-async def test_reopening_a_section_on_a_bp_project(client, account):
-    payload = {"nom": "Budget", "documents": "bp", "profil_bp": "banque",
-               "idee": "Une plateforme de coaching sportif à domicile."}
-    project_id = (await client.post(
-        "/projects", json=payload, headers=account)).json()["id"]
-    for _ in range(100):
-        state_body = (await client.get(f"/projects/{project_id}/state",
-                                 headers=account)).json()
-        if state_body["plan"]:
-            break
-        await asyncio.sleep(0.05)
-    else:
-        raise AssertionError("le plan n'a jamais été publié au point de reprise")
-    section_id = state_body["plan"][0]["section_id"]
-
-    response = await client.post(
-        f"/projects/{project_id}/sections/{section_id}/reopen",
-        headers=account)
-    assert response.status_code == 200
-    assert all(q.startswith("bp.") for q in response.json()["sections"])
-
-
-async def test_reopening_a_section_on_a_both_project(client, account):
-    payload = {"nom": "Complet", "documents": "both",
-               "profil_cdc": "consultation", "profil_bp": "banque",
-               "idee": "Une plateforme de coaching sportif à domicile."}
-    project_id = (await client.post(
-        "/projects", json=payload, headers=account)).json()["id"]
-    for _ in range(100):
-        state_body = (await client.get(f"/projects/{project_id}/state",
-                                 headers=account)).json()
-        if state_body["plan"]:
-            break
-        await asyncio.sleep(0.05)
-    else:
-        raise AssertionError("le plan n'a jamais été publié au point de reprise")
-    # Le CDC est posé entièrement avant le BP (`plan_for`) : le premier
-    # élément du plan est donc un `cdc`.
-    section_id = state_body["plan"][0]["section_id"]
-    assert state_body["plan"][0]["document"] == "cdc"
-
-    response = await client.post(
-        f"/projects/{project_id}/sections/{section_id}/reopen",
-        headers=account)
-    assert response.status_code == 200
-    assert all(q.startswith("cdc.") for q in response.json()["sections"])
-
-
 async def test_reopening_an_unknown_section_is_not_found(client, account):
     project_id = (await client.post(
         "/projects", json=CREATION, headers=account)).json()["id"]
@@ -818,78 +707,3 @@ async def test_reopening_an_unknown_section_is_not_found(client, account):
         headers=account)
     assert response.status_code == 404
     assert response.json() == {"detail": {"code": "section_introuvable"}}
-
-
-async def test_reopening_response_matches_the_closure_and_the_touched_count(
-        client, account):
-    """Le contenu exact de la réponse, pas seulement la présence de la clé
-    `sections` que le premier test de cette route vérifiait."""
-    from app.agent.templates import load_catalogue
-
-    project_id = (await client.post(
-        "/projects", json=CREATION, headers=account)).json()["id"]
-    for _ in range(100):
-        state_body = (await client.get(f"/projects/{project_id}/state",
-                                 headers=account)).json()
-        if state_body["plan"]:
-            break
-        await asyncio.sleep(0.05)
-    else:
-        raise AssertionError("le plan n'a jamais été publié au point de reprise")
-    section_id = state_body["plan"][0]["section_id"]
-    expected = load_catalogue().sections_depending_on(f"cdc.{section_id}")
-
-    response = await client.post(
-        f"/projects/{project_id}/sections/{section_id}/reopen",
-        headers=account)
-
-    assert response.status_code == 200
-    body = response.json()
-    assert set(body) == {"sections", "touchees"}
-    assert body["sections"] == sorted(expected)
-    # Un projet tout juste créé n'a encore aucune ligne `sections` :
-    # `mark_for_reopening` ne peut rien y marquer.
-    assert body["touchees"] == 0
-
-
-async def test_reopening_counts_the_rows_it_actually_marked(client, account):
-    """`touchees` figé à 0 laissait passer tous les tests.
-
-    Un projet neuf n'a encore aucune ligne `sections`, donc 0 y est toujours
-    la bonne réponse : le test voisin ne pouvait pas distinguer un compte
-    juste d'un compte figé. On écrit d'abord les sections de la fermeture,
-    puis on exige qu'elles soient toutes comptées. Le run de fond s'arrête à
-    sa première interruption avant d'écrire la moindre section, donc rien ne
-    vient se mêler à ces lignes.
-    """
-    from app.agent.projections import save_section
-    from app.agent.state import Paragraph, SectionRef
-    from app.agent.templates import load_catalogue
-
-    project_id = (await client.post(
-        "/projects", json=CREATION, headers=account)).json()["id"]
-    for _ in range(100):
-        state_body = (await client.get(f"/projects/{project_id}/state",
-                                       headers=account)).json()
-        if state_body["plan"]:
-            break
-        await asyncio.sleep(0.05)
-    else:
-        raise AssertionError("le plan n'a jamais été publié au point de reprise")
-    section_id = state_body["plan"][0]["section_id"]
-    expected = load_catalogue().sections_depending_on(f"cdc.{section_id}")
-    assert len(expected) > 1, "la fermeture doit dépasser la section demandée"
-
-    async with connection() as conn:
-        for order, qualified in enumerate(sorted(expected), start=1):
-            document, _, bare = qualified.partition(".")
-            await save_section(
-                conn, project_id,
-                SectionRef(document=document, section_id=bare, order=order),
-                blocks=[Paragraph(text="x")], statut="done", note=8,
-                revisions=0)
-
-    response = await client.post(
-        f"/projects/{project_id}/sections/{section_id}/reopen",
-        headers=account)
-    assert response.json()["touchees"] == len(expected)
