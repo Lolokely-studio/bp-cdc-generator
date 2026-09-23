@@ -350,6 +350,102 @@ async def test_a_failed_deletion_of_the_old_prefix_does_not_fail_the_export(
     assert len(after["fichiers"]) == 2
 
 
+async def test_a_failing_record_leaves_the_old_prefix_and_deletes_nothing(
+        client, account, stored, monkeypatch):
+    """Les quatre dépôts réussissent, mais `record_exports` lève ENSUITE.
+
+    Ferme le point mort relevé en relecture : sans ce test, la boucle de
+    suppression pourrait migrer juste après la boucle de dépôt — donc avant
+    l'enregistrement — sans qu'aucun test ne le remarque, alors que ce
+    déplacement romprait l'invariant : un échec de la transaction laisserait
+    les lignes pointer vers un préfixe déjà supprimé, et `GET /exports`
+    servirait des liens morts.
+    """
+    from app.export import service, storage
+
+    creation = {**CREATION, "nom": "PanneEnregistrement", "documents": "both",
+               "profil_bp": "banque"}
+    project_id = (await client.post("/projects", json=creation,
+                                    headers=account)).json()["id"]
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    before = await _wait_until_done(client, project_id, account)
+    stored_before = dict(stored)
+
+    deleted = []
+
+    async def _spy_delete_prefix(prefix, *, client=None):
+        deleted.append(prefix)
+
+    async def _fail_record(conn, pid, files):
+        raise RuntimeError("panne à l'enregistrement, après un dépôt entier")
+
+    monkeypatch.setattr(storage, "delete_prefix", _spy_delete_prefix)
+    monkeypatch.setattr(service, "record_exports", _fail_record)
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    after = await _wait_until_done(client, project_id, account)
+
+    assert after["fichiers"] == before["fichiers"]
+    assert after["dernier_export"] == "echec"
+    # Rien supprimé : l'ancien export reste entièrement servable.
+    assert deleted == []
+    for path, value in stored_before.items():
+        assert stored[path] == value
+
+
+async def test_legacy_flat_paths_are_not_swept_as_a_prefix_of_the_new_export(
+        client, account, stored, monkeypatch):
+    """Une ligne écrite avant ce correctif porte un chemin PLAT
+    (`{project_id}/{document}.{format}`, sans dossier horodaté). Couper au
+    dernier `/` en tire `{project_id}` tout court — l'ANCÊTRE du dossier
+    horodaté que le nouvel export vient d'écrire. Le supprimer supprimerait
+    le nouvel export lui-même : cette forme héritée doit être reconnue et
+    traitée à part, jamais suivie aveuglément.
+    """
+    from uuid import UUID
+
+    from app.core.db import connection
+    from app.projects.repository import record_exports
+
+    creation = {**CREATION, "nom": "CheminHerite", "documents": "both",
+               "profil_bp": "banque"}
+    project_id = (await client.post("/projects", json=creation,
+                                    headers=account)).json()["id"]
+
+    # Une ligne « à l'ancienne » : chemin plat, comme avant le correctif
+    # d'atomicité. On ne passe jamais par `export_project` pour l'écrire :
+    # elle simule un export déposé par l'ancien code, toujours en base.
+    legacy = [
+        {"document": "cdc", "format": "docx",
+         "storage_path": f"{project_id}/cdc.docx", "draft": True, "faithful": True},
+        {"document": "cdc", "format": "pdf",
+         "storage_path": f"{project_id}/cdc.pdf", "draft": True, "faithful": False},
+        {"document": "bp", "format": "docx",
+         "storage_path": f"{project_id}/bp.docx", "draft": True, "faithful": True},
+        {"document": "bp", "format": "pdf",
+         "storage_path": f"{project_id}/bp.pdf", "draft": True, "faithful": False},
+    ]
+    async with connection() as conn:
+        await record_exports(conn, UUID(project_id), legacy)
+    for f in legacy:
+        stored[f["storage_path"]] = (b"contenu herite", "application/octet-stream")
+
+    await client.post(f"/projects/{project_id}/exports", headers=account)
+    after = await _wait_until_done(client, project_id, account)
+
+    assert after["dernier_export"] == "ok"
+    assert len(after["fichiers"]) == 4
+    # Les liens signés ne disent rien de la présence physique du fichier
+    # (le double de `signed_url` en rend un quelle que soit la situation) :
+    # on va vérifier le stockage en mémoire lui-même, pas la réponse HTTP.
+    new_paths = {f["lien"][len("https://signe.test/"):-len("?token=x")]
+                for f in after["fichiers"]}
+    assert len(new_paths) == 4
+    assert all(p in stored for p in new_paths), (
+        "les quatre fichiers du nouvel export doivent rester servables : "
+        "ils ne doivent jamais être emportés par le nettoyage d'un chemin hérité"
+    )
+
+
 async def test_exporting_twice_keeps_one_row_per_file(client, account, stored):
     """`dernier_export` est vérifié à CHAQUE tour, pas seulement le compte de
     fichiers à la fin : sans `on conflict`, le second export lève une

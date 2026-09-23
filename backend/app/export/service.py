@@ -126,7 +126,29 @@ async def export_project(project: dict) -> None:
         # Le ménage vient après coup, et ne doit jamais faire échouer un
         # export déjà enregistré : un fichier orphelin coûte quelques
         # centaines de kilo-octets, pas une erreur.
-        old_prefixes = {row["storage_path"].rsplit("/", 1)[0] for row in previous}
+        #
+        # Deux formes de chemin à distinguer, pas une seule coupe au dernier
+        # `/`. Un chemin HORODATÉ (`{project_id}/{horodatage}/{document}.
+        # {format}`, trois segments) se supprime par préfixe : son dossier
+        # n'appartient qu'à lui. Un chemin PLAT hérité d'avant ce correctif
+        # (`{project_id}/{document}.{format}`, deux segments) donnerait par
+        # la même coupe `{project_id}` tout court — l'ANCÊTRE du dossier
+        # horodaté qu'on vient d'écrire, pas un dossier à lui : le supprimer
+        # supprimerait le nouvel export. On ne sait pas non plus lui faire
+        # correspondre un objet exact (`storage.delete_prefix` liste un
+        # dossier, il ne cible pas un fichier précis) : plutôt que de
+        # deviner, ce chemin hérité est laissé orphelin — même coût qu'un
+        # dépôt interrompu (§7 de la doc).
+        old_prefixes = set()
+        for row in previous:
+            segments = row["storage_path"].split("/")
+            if len(segments) >= 3:
+                old_prefixes.add("/".join(segments[:-1]))
+            else:
+                logger.info(
+                    "export du projet %s : chemin hérité %s laissé "
+                    "orphelin (pas de suppression sûre par préfixe)",
+                    project_id, row["storage_path"])
         old_prefixes.discard(prefix)
         for old_prefix in old_prefixes:
             try:
