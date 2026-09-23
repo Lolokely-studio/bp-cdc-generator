@@ -3,13 +3,15 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { TopBar } from "@/components/TopBar";
-import { ApiError, api, getToken, setUnauthorizedHandler } from "@/lib/api";
+import { ApiError, api, getToken, setInactiveHandler, setUnauthorizedHandler } from "@/lib/api";
 
 /** Garde de toutes les pages derrière une session.
  *
- * Le jeton est vérifié par `/me` à l'arrivée, et chaque `401` ultérieur
- * — session expirée, révoquée — ramène à la connexion par le gestionnaire
- * que `request` appelle. */
+ * Le jeton est vérifié par `/me` à l'arrivée. Ensuite, deux gestionnaires
+ * de `request` tiennent l'écran à jour sans attendre un rechargement :
+ * chaque `401` — session expirée, révoquée — ramène à la connexion, et
+ * chaque `403 compte_inactif` — le compte désactivé en cours de route —
+ * ramène à l'écran d'attente. */
 export function AuthGate({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
@@ -17,9 +19,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setUnauthorizedHandler(() => router.replace("/connexion"));
+    setInactiveHandler(() => router.replace("/compte/en-attente"));
     if (!getToken()) {
       router.replace("/connexion");
-      return () => setUnauthorizedHandler(null);
+      return () => {
+        setUnauthorizedHandler(null);
+        setInactiveHandler(null);
+      };
     }
     let alive = true;
     api.me()
@@ -35,6 +41,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return () => {
       alive = false;
       setUnauthorizedHandler(null);
+      setInactiveHandler(null);
     };
   }, [router]);
 

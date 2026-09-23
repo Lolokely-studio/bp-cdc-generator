@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
-  API_URL, ApiError, api, errorCode, getToken, request, setToken, setUnauthorizedHandler,
+  API_URL, ApiError, api, errorCode, getToken, request, setInactiveHandler, setToken,
+  setUnauthorizedHandler,
 } from "@/lib/api";
 
 function reply(status: number, body: unknown) {
@@ -11,7 +12,10 @@ function reply(status: number, body: unknown) {
   ));
 }
 
-afterEach(() => setUnauthorizedHandler(null));
+afterEach(() => {
+  setUnauthorizedHandler(null);
+  setInactiveHandler(null);
+});
 
 describe("errorCode", () => {
   it("lit les trois formes que FastAPI donne à `detail`", () => {
@@ -67,6 +71,33 @@ describe("request", () => {
     const handler = vi.fn();
     setUnauthorizedHandler(handler);
     await expect(request("/x", z.unknown())).rejects.toMatchObject({ code: "identifiants_invalides" });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("prévient sur un 403 compte_inactif avec un jeton posé, sans l'effacer", async () => {
+    vi.stubGlobal("fetch", reply(403, { detail: { code: "compte_inactif" } }));
+    const handler = vi.fn();
+    setInactiveHandler(handler);
+    setToken("abc");
+    await expect(request("/x", z.unknown())).rejects.toMatchObject({ code: "compte_inactif" });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(getToken()).toBe("abc");
+  });
+
+  it("ne prévient pas sur un 403 compte_inactif sans jeton : la connexion le traite déjà", async () => {
+    vi.stubGlobal("fetch", reply(403, { detail: { code: "compte_inactif" } }));
+    const handler = vi.fn();
+    setInactiveHandler(handler);
+    await expect(request("/x", z.unknown())).rejects.toMatchObject({ code: "compte_inactif" });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("ne prévient pas sur un 403 d'un autre code, même avec un jeton posé", async () => {
+    vi.stubGlobal("fetch", reply(403, { detail: { code: "acces_refuse" } }));
+    const handler = vi.fn();
+    setInactiveHandler(handler);
+    setToken("abc");
+    await expect(request("/x", z.unknown())).rejects.toMatchObject({ code: "acces_refuse" });
     expect(handler).not.toHaveBeenCalled();
   });
 

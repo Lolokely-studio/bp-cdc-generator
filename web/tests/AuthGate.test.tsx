@@ -46,5 +46,8 @@ describe("AuthGate", () => {
     setToken("abc");
     render(<AuthGate><p>privé</p></AuthGate>);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/connexion"));
+    // Pas l'écran de panne en même temps : un 401 avec jeton est un cas
+    // prévu, pas une erreur inconnue.
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

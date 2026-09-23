@@ -52,10 +52,22 @@ export function errorCode(detail: unknown): string {
 }
 
 let onUnauthorized: (() => void) | null = null;
+let onInactive: (() => void) | null = null;
 
 /** Appelé quand une session posée est refusée : expirée, révoquée. */
 export function setUnauthorizedHandler(handler: (() => void) | null): void {
   onUnauthorized = handler;
+}
+
+/** Appelé quand un compte déjà connecté est désactivé en cours de session
+ * (§3.1) : la désactivation doit prendre effet tout de suite, pas au
+ * prochain rechargement fortuit. Le jeton n'est PAS effacé ici — la
+ * session reste valable, c'est le compte qui attend son activation, et
+ * l'utilisateur retrouvera ses projets une fois activé. Un `403
+ * compte_inactif` SANS jeton — la connexion d'un compte non activé — ne
+ * déclenche rien : c'est la page de connexion qui le traite déjà. */
+export function setInactiveHandler(handler: (() => void) | null): void {
+  onInactive = handler;
 }
 
 type RequestOptions = { method?: "GET" | "POST"; body?: unknown; signal?: AbortSignal };
@@ -77,13 +89,20 @@ export async function request<T>(path: string, schema: z.ZodType<T>, options: Re
 
   if (!response.ok) {
     const detail = payload && typeof payload === "object" ? (payload as { detail?: unknown }).detail : undefined;
+    const code = errorCode(detail);
     // Un 401 SANS jeton est un mot de passe refusé à la connexion ; AVEC
     // jeton, c'est une session morte, et tout l'écran doit le savoir.
     if (response.status === 401 && token) {
       setToken(null);
       onUnauthorized?.();
     }
-    throw new ApiError(response.status, errorCode(detail), detail);
+    // Un 403 compte_inactif AVEC jeton : le compte vient d'être désactivé
+    // pendant que la session tournait. SANS jeton, c'est juste la connexion
+    // d'un compte non activé — déjà traitée par la page de connexion.
+    if (response.status === 403 && token && code === "compte_inactif") {
+      onInactive?.();
+    }
+    throw new ApiError(response.status, code, detail);
   }
   return schema.parse(payload);
 }
