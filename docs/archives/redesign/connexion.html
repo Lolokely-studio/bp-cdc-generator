@@ -46,11 +46,13 @@
           <span class="field__label">Adresse e-mail</span>
           <input class="input" type="email" autocomplete="email" aria-invalid="true" value="marion.leduc@atelier-noria.fr">
         </label>
-        <label class="field">
-          <span class="field__label">Mot de passe</span>
-          <input class="input" type="password" autocomplete="new-password">
-          <span class="field__hint">Dix caractères au moins.</span>
-        </label>
+        <div class="field">
+          <label>
+            <span class="field__label">Mot de passe</span>
+            <input class="input" type="password" autocomplete="new-password" aria-describedby="mdp-astuce">
+          </label>
+          <span class="field__hint" id="mdp-astuce">Dix caractères au moins.</span>
+        </div>
         <div style="margin-top:1.125rem">
           <button class="btn btn--primary btn--block" type="submit">Demander un accès</button>
         </div>

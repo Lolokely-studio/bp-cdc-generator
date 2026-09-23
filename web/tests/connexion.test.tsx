@@ -56,7 +56,7 @@ describe("la page de connexion", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<ConnexionPage />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Créer un compte" }));
+    await user.click(screen.getByRole("tab", { name: "Créer un compte" }));
     await fill("lucie@exemple.fr", "motdepasse123");
     await user.click(screen.getByRole("button", { name: "Demander un accès" }));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/compte/en-attente"));
@@ -69,11 +69,39 @@ describe("la page de connexion", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<ConnexionPage />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Créer un compte" }));
+    await user.click(screen.getByRole("tab", { name: "Créer un compte" }));
     await fill("lucie@exemple.fr", "court");
     await user.click(screen.getByRole("button", { name: "Demander un accès" }));
     expect(await screen.findByRole("alert"))
       .toHaveTextContent("Le mot de passe doit faire au moins 10 caractères.");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("bascule par de vrais onglets, navigables aux flèches", async () => {
+    const user = userEvent.setup();
+    render(<ConnexionPage />);
+    const connexion = screen.getByRole("tab", { name: "Se connecter" });
+    const creation = screen.getByRole("tab", { name: "Créer un compte" });
+
+    expect(connexion).toHaveAttribute("aria-selected", "true");
+    expect(creation).toHaveAttribute("tabindex", "-1");
+
+    connexion.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(creation).toHaveAttribute("aria-selected", "true");
+    expect(creation).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Demander un accès" })).toBeInTheDocument();
+
+    await user.keyboard("{ArrowLeft}");
+    expect(connexion).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "Se connecter" })).toBeInTheDocument();
+  });
+
+  it("distingue l'onglet du bouton d'envoi, qui portent le même nom", () => {
+    render(<ConnexionPage />);
+    // Le bout en bout cherche `role: "button"` nommé « Se connecter ». Si
+    // l'onglet répondait aussi à ce rôle, il en trouverait deux et
+    // échouerait sur une ambiguïté.
+    expect(screen.getByRole("button", { name: "Se connecter" })).toHaveAttribute("type", "submit");
   });
 });

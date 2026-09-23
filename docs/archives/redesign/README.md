@@ -90,3 +90,8 @@ Il emprunte Playwright à `web/node_modules` : c'est la seule copie du dépôt.
   le fond si le jeton bougeait. Elle le dérive maintenant avec `color-mix(in srgb, var(--ground)
   88%, transparent)`. `color-mix()` demande Safari 16.2, Chrome 111 ou Firefox 113 ; en deçà,
   la barre perd sa transparence, sans devenir illisible.
+- `connexion.html` nichait la note d'aide du mot de passe (`.field__hint`) à l'intérieur du
+  `<label>` du champ. Un lecteur d'écran annonce alors le nom du champ suivi de la note
+  entière, et c'est aussi ce que `getByLabelText("Mot de passe")` lit : il cesse de
+  reconnaître « Mot de passe » tout court. Le champ « Mot de passe » à l'inscription pose
+  maintenant la note comme sœur du `<label>`, reliée par `aria-describedby`.
