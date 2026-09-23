@@ -86,3 +86,7 @@ Il emprunte Playwright à `web/node_modules` : c'est la seule copie du dépôt.
   inventer un serait mentir. Un indicateur, et la raison des deux minutes.
 - Inter et Source Serif viennent de Google Fonts. Dans l'application, `next/font` les sert
   depuis le domaine du site.
+- `.topbar` recopiait `--ground` à la main dans un `rgba()` : la barre haute ne suivait plus
+  le fond si le jeton bougeait. Elle le dérive maintenant avec `color-mix(in srgb, var(--ground)
+  88%, transparent)`. `color-mix()` demande Safari 16.2, Chrome 111 ou Firefox 113 ; en deçà,
+  la barre perd sa transparence, sans devenir illisible.

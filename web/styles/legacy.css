@@ -64,6 +64,10 @@ textarea.m-input{resize:vertical;line-height:1.5}
 .m-steps li.ok .ic{background:var(--ok);border-color:var(--ok)}
 .m-steps li.ok .ic::after{content:"";position:absolute;left:5px;top:2px;width:4px;height:8px;border:solid var(--ground);border-width:0 2px 2px 0;transform:rotate(45deg)}
 .m-steps li.run .ic{border-color:var(--ink);border-right-color:transparent}
+.m-src{font-size:.68rem;font-weight:600;border-radius:999px;padding:0 7px;border:1px solid currentColor;white-space:nowrap;height:fit-content}
+.m-src.user{color:var(--ok)}
+.m-src.inferred{color:var(--wait)}
+.m-src.unknown{color:var(--ink-soft)}
 .m-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .m-chip{border:1px solid var(--rule-strong);background:transparent;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:.9rem}
 .m-chip:hover{border-color:var(--ink)}
