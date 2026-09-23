@@ -34,4 +34,13 @@ export const BACKEND_ENV: Record<string, string> = {
   OPENROUTER_API_KEY: "",
   NVIDIA_API_KEY: "",
   GROQ_CLOUD_API_KEY: "",
+  // Ces sept variables existent aussi dans le `.env` du poste ; ce fichier
+  // doit toutes les recouvrir pour que la promesse ci-dessus soit vraie.
+  LANGSMITH_API_KEY: "",
+  LANGSMITH_PROJECT: "",
+  GOTENBERG_USERNAME: "",
+  GOTENBERG_PASSWORD: "",
+  SUPABASE_BUCKET_NAME: "exports",
+  SESSION_TTL_HOURS: "24",
+  CEREBRAS_CLOUD_API_KEY: "",
 };
