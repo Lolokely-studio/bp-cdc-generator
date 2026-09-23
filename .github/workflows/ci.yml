@@ -33,3 +33,50 @@ jobs:
           SUPABASE_DB_PASSWORD: esquisse
           SUPABASE_DB_NAME: esquisse_test
         run: uv run pytest -v
+
+  web:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: esquisse
+          POSTGRES_USER: esquisse
+          POSTGRES_DB: esquisse_test
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # Le bout en bout démarre lui-même le backend : il lui faut ses
+      # dépendances Python, même dans le travail « web ».
+      - name: Installer les dépendances du backend
+        working-directory: backend
+        run: uv sync --frozen
+      - name: Installer les dépendances du front
+        working-directory: web
+        run: npm ci
+      - name: Typage
+        working-directory: web
+        run: npm run typecheck
+      - name: Tests unitaires
+        working-directory: web
+        run: npm test
+      - name: Navigateur de test
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Parcours de bout en bout
+        working-directory: web
+        run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/playwright-report/

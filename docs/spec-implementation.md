@@ -229,6 +229,10 @@ Les deux seuils font deux choses différentes et ne doivent pas être confondus 
 
 Cinq points d'arrêt : documents et profils, saisie de l'idée, lot de questions, relecture d'une section (conditionnelle), arbitrage des incohérences. Chacun appelle `interrupt()` avec une charge utile typée que le front sait afficher.
 
+La relecture porte aussi les blocs du brouillon, pour qu'un navigateur rechargé pendant une relecture ait quelque chose à montrer, et accepte trois réponses : `{"action": "accept"}`, `{"action": "rewrite", "problems": [...]}` et `{"action": "skip"}` — la section est alors enregistrée `skipped` et les documents portent la mention Brouillon (§7).
+
+L'arbitrage des incohérences prend une liste de décisions, `{"index": 0, "decision": "corriger", "consigne": "…"}` ou `{"index": 1, "decision": "ignorer"}`. Une correction met en file de réécriture les sections que l'incohérence nomme ; le run les reprend avant de s'arrêter, sans refaire le contrôle de cohérence. `POST /reopen` emprunte la même file, avec la consigne de l'utilisateur, et n'est permis que sur un projet terminé qui n'est pas en cours d'export.
+
 ### 4.6 État du graphe et tables métier
 
 Le point de reprise LangGraph fait foi **pour la reprise**. Les tables `facts` et `sections` sont des **projections** écrites par les nœuds, qui servent à afficher un projet sans réhydrater le graphe.
@@ -286,6 +290,8 @@ POST   /auth/login
 POST   /auth/logout
 GET    /me
 
+GET    /catalogue                         titres des sections, forme des faits
+
 GET    /projects                          liste du propriétaire
 POST   /projects                          crée, démarre le run
 GET    /projects/{id}                     entête et progression
@@ -320,6 +326,8 @@ Le navigateur se connecte **directement au backend**, sans passer par les foncti
 **Une exception, décidée pendant le plan 4.** Si un run avance déjà sur le même fil au moment de la réponse, `/answer` renvoie `409` avec le code `run_deja_en_cours`, et non `200`. Ce cas arrive quand une reprise (`/resume`) est en cours : un run planté laisse son interruption en attente, donc la réponse porte un identifiant encore valide, mais c'est la reprise qui avance. Répondre `200` avec `rejoue: false` ferait croire à l'utilisateur que sa réponse est passée alors qu'elle est jetée. Le front, sur ce `409`, relit `/state` et renvoie la réponse si l'interruption est toujours la même.
 
 **Un état de passage à connaître.** Pendant un `/answer`, `/state` peut renvoyer `run_status: waiting` avec `interaction: null` : la ligne n'est pas encore mise à jour alors que le point de reprise a déjà consommé la réponse. Le front relit `/state` quand il rencontre cet état.
+
+**Réponse consommée, ligne en retard.** Juste après un `/answer` accepté, `/state` peut encore rendre l'interaction à laquelle on vient de répondre : la ligne dit `waiting` tant que le run n'a pas repris. Le front retient l'identifiant auquel il a répondu et ne repose pas la question tant que c'est le même — sauf si le run passe en `failed`, qui doit se voir.
 
 ---
 
