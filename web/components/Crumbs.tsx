@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { Fragment, createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 export type Crumb = { label: string; href?: string };
 
@@ -11,12 +11,12 @@ export function Crumbs({ items }: { items: Crumb[] }) {
   return (
     <nav className="crumbs" aria-label="Fil d'ariane">
       {items.map((item, index) => (
-        <span key={`${item.label}-${index}`}>
+        <Fragment key={`${item.label}-${index}`}>
           {index > 0 && <span className="crumbs__sep" aria-hidden="true">/</span>}
           {index === last || !item.href
             ? <span className="crumbs__here">{item.label}</span>
             : <Link href={item.href}>{item.label}</Link>}
-        </span>
+        </Fragment>
       ))}
     </nav>
   );
@@ -43,6 +43,6 @@ export function useCrumbs() {
  * une page qui le reconstruit à chaque rendu ne boucle pas. */
 export function useSetCrumbs(items: Crumb[]) {
   const { set } = useContext(CrumbsContext);
-  const clef = JSON.stringify(items);
-  useEffect(() => { set(JSON.parse(clef) as Crumb[]); }, [clef, set]);
+  const serialized = JSON.stringify(items);
+  useEffect(() => { set(JSON.parse(serialized) as Crumb[]); }, [serialized, set]);
 }

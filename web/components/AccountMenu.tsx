@@ -12,21 +12,21 @@ export function AccountMenu({ email, onLogout }: { email: string; onLogout: () =
 
   useEffect(() => {
     if (!open) return;
-    const dehors = (event: MouseEvent) => {
+    const onOutsideClick = (event: MouseEvent) => {
       if (!root.current?.contains(event.target as Node)) setOpen(false);
     };
-    const echap = (event: KeyboardEvent) => {
+    const onEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setOpen(false);
       // Sans cela, le focus retombe sur le corps du document et la
       // navigation au clavier repart du début de la page.
       button.current?.focus();
     };
-    document.addEventListener("mousedown", dehors);
-    document.addEventListener("keydown", echap);
+    document.addEventListener("mousedown", onOutsideClick);
+    document.addEventListener("keydown", onEscape);
     return () => {
-      document.removeEventListener("mousedown", dehors);
-      document.removeEventListener("keydown", echap);
+      document.removeEventListener("mousedown", onOutsideClick);
+      document.removeEventListener("keydown", onEscape);
     };
   }, [open]);
 
@@ -34,7 +34,7 @@ export function AccountMenu({ email, onLogout }: { email: string; onLogout: () =
     <div className="account" ref={root}>
       <button className="account__btn" type="button" ref={button}
         aria-expanded={open} aria-haspopup="true" aria-label={`Compte de ${email}`}
-        onClick={() => setOpen((etait) => !etait)}>
+        onClick={() => setOpen((wasOpen) => !wasOpen)}>
         <span className="avatar" title={email} aria-hidden="true">{initials(email)}</span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
           strokeWidth="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>

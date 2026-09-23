@@ -15,6 +15,21 @@ describe("le fil d'ariane", () => {
     expect(screen.getByText("Documents")).toHaveClass("crumbs__here");
   });
 
+  it("pose chaque maillon en enfant direct, comme le sélecteur l'exige", () => {
+    // `.crumbs > :not(.crumbs__here)` masque les maillons précédents sous
+    // 48 rem. Une enveloppe sans classe entre les deux masquerait tout, y
+    // compris la position courante. jsdom n'applique pas le CSS : c'est la
+    // forme du DOM qu'on verrouille ici.
+    render(<Crumbs items={[
+      { label: "Mes projets", href: "/projets" },
+      { label: "Documents" },
+    ]} />);
+    const nav = document.querySelector(".crumbs")!;
+    const children = [...nav.children];
+    expect(children.map((el) => el.className)).toEqual(["", "crumbs__sep", "crumbs__here"]);
+    expect(children[0].tagName).toBe("A");
+  });
+
   it("rend une position seule sans aucun lien", () => {
     render(<Crumbs items={[{ label: "Mes projets" }]} />);
     expect(screen.queryByRole("link")).toBeNull();
