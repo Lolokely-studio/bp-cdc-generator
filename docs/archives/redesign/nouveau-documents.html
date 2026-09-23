@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quels documents — Esquisse</title>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <a class="brand" href="projets.html"><span class="mark" aria-hidden="true"></span>Esquisse</a>
+    <nav class="crumbs" aria-label="Fil d'ariane"><a href="projets.html">Mes projets</a><span class="crumbs__sep" aria-hidden="true">/</span><span class="crumbs__here">Nouveau projet</span></nav>
+    <div class="account">
+      <button class="account__btn" type="button" aria-expanded="false" aria-haspopup="true"
+              aria-label="Compte de marion.leduc@atelier-noria.fr">
+        <span class="avatar" aria-hidden="true">ML</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="account__menu" hidden>
+        <div class="account__who">
+          <p class="account__mail">marion.leduc@atelier-noria.fr</p>
+          <p class="t-fine">Compte activé</p>
+        </div>
+        <button class="account__item" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 17l5-5-5-5M20 12H9M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5"/></svg>
+          Se déconnecter
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page page--narrow">
+    <ol class="steps">
+        <li class="steps__item steps__item--now" aria-current="step"><span class="steps__pip">1</span>Documents</li>
+        <li class="steps__item "><span class="steps__pip">2</span>Idée</li>
+        <li class="steps__item "><span class="steps__pip">3</span>Rédaction</li>
+    </ol>
+
+    <div>
+      <h1 class="t-page">Quels documents voulez-vous générer ?</h1>
+      <p class="page__sub">Ce qui est commun aux deux ne vous sera demandé qu'une fois.</p>
+    </div>
+
+    <div class="choices" role="radiogroup" id="choix-documents" aria-label="Documents à générer">
+          <button class="choice" type="button" role="radio" data-valeur="cdc"
+                  aria-checked="false" tabindex="-1">
+            <span class="choice__top">
+              <span class="choice__name">Cahier des charges</span>
+              <span class="choice__pip" aria-hidden="true"></span>
+            </span>
+            <span class="tag tag--idle tag--flat">21 sections</span>
+            <span class="choice__text">Besoins, exigences, contraintes, planning et budget, pour cadrer la réalisation.</span>
+          </button>
+          <button class="choice" type="button" role="radio" data-valeur="bp"
+                  aria-checked="false" tabindex="-1">
+            <span class="choice__top">
+              <span class="choice__name">Business plan</span>
+              <span class="choice__pip" aria-hidden="true"></span>
+            </span>
+            <span class="tag tag--idle tag--flat">26 sections</span>
+            <span class="choice__text">Marché, modèle économique, stratégie et prévisionnel financier sur trois ans.</span>
+          </button>
+          <button class="choice" type="button" role="radio" data-valeur="both"
+                  aria-checked="true" tabindex="0">
+            <span class="choice__top">
+              <span class="choice__name">Les deux</span>
+              <span class="choice__pip" aria-hidden="true"></span>
+            </span>
+            <span class="tag tag--idle tag--flat">47 sections</span>
+            <span class="choice__text">Les deux documents rédigés en cohérence, avec un contrôle croisé à la fin.</span>
+          </button>
+    </div>
+
+    <div class="ask" data-visible-si="cdc both">
+      <p class="ask__q">À quoi servira le cahier des charges ?</p>
+      <p class="ask__why">
+        Pour consulter des prestataires, le document doit être opposable : il gagne une section
+        « cadre de réponse », et chaque besoin porte un niveau d'exigence.
+      </p>
+          <div class="segment" role="radiogroup" aria-label="Usage du cahier des charges">
+            <button class="segment__opt" type="button" role="radio" data-valeur="consultation"
+                    aria-checked="true" tabindex="0">Consulter des prestataires</button>
+            <button class="segment__opt" type="button" role="radio" data-valeur="cadrage"
+                    aria-checked="false" tabindex="-1">Cadrer mon projet</button>
+          </div>
+    </div>
+
+    <div class="ask" data-visible-si="bp both">
+      <p class="ask__q">Qui lira le business plan ?</p>
+      <p class="ask__why">
+        Le lecteur change le ton et l'ordre des arguments. Les chiffres, eux, ne bougent pas.
+      </p>
+          <div class="segment" role="radiogroup" aria-label="Lecteur du business plan">
+            <button class="segment__opt" type="button" role="radio" data-valeur="banque"
+                    aria-checked="true" tabindex="0">Une banque ou un financeur public</button>
+            <button class="segment__opt" type="button" role="radio" data-valeur="investisseur"
+                    aria-checked="false" tabindex="-1">Un investisseur privé</button>
+          </div>
+    </div>
+
+    <div class="actions">
+      <a class="btn btn--ghost" href="projets.html">Annuler</a>
+      <a class="btn btn--primary" href="nouveau-idee.html">Continuer</a>
+    </div>
+  </main>
+</div>
+<script src="js/mock.js"></script>
+</body>
+</html>

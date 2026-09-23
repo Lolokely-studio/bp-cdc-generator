@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Votre idée — Esquisse</title>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <a class="brand" href="projets.html"><span class="mark" aria-hidden="true"></span>Esquisse</a>
+    <nav class="crumbs" aria-label="Fil d'ariane"><a href="projets.html">Mes projets</a><span class="crumbs__sep" aria-hidden="true">/</span><span class="crumbs__here">Nouveau projet</span></nav>
+    <div class="account">
+      <button class="account__btn" type="button" aria-expanded="false" aria-haspopup="true"
+              aria-label="Compte de marion.leduc@atelier-noria.fr">
+        <span class="avatar" aria-hidden="true">ML</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="account__menu" hidden>
+        <div class="account__who">
+          <p class="account__mail">marion.leduc@atelier-noria.fr</p>
+          <p class="t-fine">Compte activé</p>
+        </div>
+        <button class="account__item" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 17l5-5-5-5M20 12H9M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5"/></svg>
+          Se déconnecter
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page page--narrow">
+    <ol class="steps">
+        <li class="steps__item steps__item--done"><span class="steps__pip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg></span>Documents</li>
+        <li class="steps__item steps__item--now" aria-current="step"><span class="steps__pip">2</span>Idée</li>
+        <li class="steps__item "><span class="steps__pip">3</span>Rédaction</li>
+    </ol>
+
+    <div>
+      <h1 class="t-page">Décrivez votre projet</h1>
+      <p class="page__sub">Quelques phrases suffisent : le problème, pour qui, et comment vous le résolvez.</p>
+    </div>
+
+    <form novalidate>
+      <label class="field">
+        <span class="field__label">Nom du projet</span>
+        <input class="input" maxlength="200" value="Atelier de torréfaction Noria">
+      </label>
+
+      <label class="field">
+        <span class="field__head">
+          <span class="field__label">Votre idée</span>
+          <span class="field__count" id="compte-idee" aria-live="off"></span>
+        </span>
+        <textarea class="textarea" rows="7" maxlength="5000" data-compteur="compte-idee"
+                  placeholder="Nous torréfions du café de spécialité pour les restaurants de l'agglomération…">Nous ouvrons un atelier de torréfaction à Nantes pour les cafés de spécialité. Les restaurants et les bureaux de l'agglomération achètent aujourd'hui du café industriel ou le font venir de Paris, avec deux semaines entre la torréfaction et la tasse. Nous torréfions sur place, en petits lots, et livrons à vélo sous quarante-huit heures. Nous visons quatre-vingts comptes professionnels la première année.</textarea>
+        <span class="field__hint">Vous pourrez tout préciser ensuite : l'agent posera les questions qui manquent.</span>
+      </label>
+
+      <div class="actions">
+        <a class="btn btn--ghost" href="nouveau-documents.html">Retour</a>
+        <button class="btn btn--primary" type="submit">Analyser mon idée</button>
+      </div>
+    </form>
+  </main>
+</div>
+<script src="js/mock.js"></script>
+</body>
+</html>
