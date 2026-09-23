@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vos documents — Esquisse</title>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <a class="brand" href="projets.html"><span class="mark" aria-hidden="true"></span>Esquisse</a>
+    <nav class="crumbs" aria-label="Fil d'ariane"><a href="projets.html">Mes projets</a><span class="crumbs__sep" aria-hidden="true">/</span><a href="atelier.html">Atelier de torréfaction Noria</a><span class="crumbs__sep" aria-hidden="true">/</span><span class="crumbs__here">Documents</span></nav>
+    <div class="account">
+      <button class="account__btn" type="button" aria-expanded="false" aria-haspopup="true"
+              aria-label="Compte de marion.leduc@atelier-noria.fr">
+        <span class="avatar" aria-hidden="true">ML</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="account__menu" hidden>
+        <div class="account__who">
+          <p class="account__mail">marion.leduc@atelier-noria.fr</p>
+          <p class="t-fine">Compte activé</p>
+        </div>
+        <button class="account__item" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 17l5-5-5-5M20 12H9M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5"/></svg>
+          Se déconnecter
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page">
+    <div class="page__head">
+      <div class="page__head-text">
+        <h1 class="t-page">Vos documents sont prêts</h1>
+        <p class="page__sub">Atelier de torréfaction Noria, derniers fichiers il y a 6 minutes</p>
+      </div>
+      <div class="btn-row">
+        <a class="btn btn--outline" href="atelier.html">Retour à la rédaction</a>
+      </div>
+    </div>
+
+    <div class="docs">
+      <div class="doc">
+        <span class="sheet" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <div class="doc__body">
+          <p class="doc__title"><span class="t-card">Cahier des charges</span></p>
+          <p class="t-fine">21 sections, 34 pages</p>
+          <div class="btn-row">
+            <a class="btn btn--outline btn--sm" href="#">Télécharger le Word</a>
+            <a class="btn btn--outline btn--sm" href="#">Télécharger le PDF</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="doc">
+        <span class="sheet" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <div class="doc__body">
+          <p class="doc__title">
+            <span class="t-card">Business plan</span>
+            <span class="tag tag--wait">Brouillon</span>
+          </p>
+          <p class="t-fine">26 sections, 41 pages</p>
+          <div class="btn-row">
+            <a class="btn btn--outline btn--sm" href="#">Télécharger le Word</a>
+            <a class="btn btn--outline btn--sm" href="#">Télécharger le PDF</a>
+          </div>
+          <p class="t-fine" style="margin-top:.5rem">
+            Une section a été passée sans validation : le document porte un filigrane.
+          </p>
+          <p class="t-fine" style="margin-top:.25rem">
+            Ce PDF vient du convertisseur de secours. Sa mise en page peut différer&nbsp;;
+            c'est le Word qui fait foi.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <p class="t-fine">Les liens expirent au bout de dix minutes. Rechargez la page pour en obtenir de neufs.</p>
+
+    <div class="btn-row">
+      <button class="btn btn--outline" type="button">Regénérer les documents</button>
+    </div>
+
+    <div class="split">
+      <section class="panel">
+        <div class="panel__head"><h2 class="t-section">À compléter avant diffusion</h2></div>
+        <div class="panel__body">
+          <ul class="rows">
+            <li>
+              <span><mark>Montant du prêt sollicité</mark></span>
+              <span class="t-fine">Business plan, Plan de financement</span>
+            </li>
+            <li>
+              <span><mark>Nom du maître d'œuvre</mark></span>
+              <span class="t-fine">Cahier des charges, Gouvernance du projet</span>
+            </li>
+            <li>
+              <span><mark>Date de mise en service</mark></span>
+              <span class="t-fine">Cahier des charges, Planning</span>
+            </li>
+          </ul>
+        </div>
+        <div class="panel__note t-fine">
+          Ces mentions figurent aussi en annexe des documents exportés.
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head"><h2 class="t-section">Rouvrir une section</h2></div>
+        <div class="panel__body">
+          <p class="t-note" style="margin-bottom:.875rem">
+            La section est réécrite, avec celles qui s'appuient dessus. Il faudra regénérer les
+            documents ensuite.
+          </p>
+          <label class="field">
+            <span class="field__label">Section</span>
+            <select class="select">
+              <option>Choisir une section</option>
+              <option>CDC — Contexte et objectifs</option>
+              <option>CDC — Besoins fonctionnels</option>
+              <option>CDC — Planning</option>
+              <option>BP — Étude de marché</option>
+              <option>BP — Plan de financement</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field__label">Que faut-il changer ?</span>
+            <textarea class="textarea" rows="3" placeholder="Une phrase suffit."></textarea>
+            <span class="field__hint">Sans consigne, la section est reprise avec les faits actuels.</span>
+          </label>
+          <div class="actions actions--start actions--plain" style="margin-top:1rem">
+            <button class="btn btn--outline" type="button">Rouvrir et réécrire</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+<script src="js/mock.js"></script>
+</body>
+</html>

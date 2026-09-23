@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compte en attente — Esquisse</title>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="shell">
+  <div class="auth">
+    <a class="auth__brand" href="projets.html"><span class="mark" aria-hidden="true"></span>Esquisse</a>
+
+    <div class="auth__card">
+      <h1 class="t-section">Votre compte attend son activation</h1>
+      <p class="t-note" style="margin-top:.375rem">
+        Il existe, mais il n'ouvre encore rien. Un administrateur l'active avant de vous laisser
+        lancer une rédaction : c'est ce qui permet de savoir qui consomme les quotas de génération.
+      </p>
+
+      <div style="margin:1.125rem 0">
+        <div class="facts">
+          <div class="fact">
+            <span class="fact__key">Adresse</span>
+            <span class="fact__val">marion.leduc@atelier-noria.fr</span>
+          </div>
+          <div class="fact">
+            <span class="fact__key">Compte créé</span>
+            <span class="fact__val">il y a 4 minutes</span>
+          </div>
+          <div class="fact">
+            <span class="fact__key">État</span>
+            <span class="fact__val"><span class="tag tag--wait">En attente d'activation</span></span>
+          </div>
+        </div>
+      </div>
+
+      <a class="btn btn--outline btn--block" href="connexion.html">Retour à la connexion</a>
+    </div>
+
+    <p class="auth__foot">Revenez vous connecter une fois le compte activé.</p>
+  </div>
+</div>
+<script src="js/mock.js"></script>
+</body>
+</html>
