@@ -73,7 +73,9 @@ describe("ExportsView", () => {
       "GET /projects/p-1/exports": () => json({ en_cours: false, dernier_export: "echec", fichiers: [] }),
     }));
     show();
-    expect(await screen.findByRole("alert")).toHaveTextContent("La dernière génération a échoué");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "La dernière génération a échoué. Les documents précédents, s'il y en a, sont intacts : réessayez.",
+    );
   });
 
   it("prévient qu'un export lancé avant la fin sera un brouillon", async () => {
