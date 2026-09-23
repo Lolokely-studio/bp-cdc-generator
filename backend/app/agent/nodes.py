@@ -42,6 +42,14 @@ REWRITE_SCORE = 7
 # liste de faits utiles peut donc coûter un tableau, en silence.
 QUESTION_BATCH_SIZE = 6
 
+# Ce que porte `problems` pour une section rouverte sans consigne. Le
+# rédacteur doit savoir pourquoi il reprend : une liste vide se lirait
+# « rien à corriger », et il recopierait sa version précédente.
+REOPENED_WITHOUT_NOTE = (
+    "l'utilisateur a rouvert cette section sans préciser ce qui ne va pas : "
+    "reprends-la en tenant compte des faits actuels"
+)
+
 
 def _catalogue() -> Catalogue:
     return load_catalogue()
@@ -50,6 +58,25 @@ def _catalogue() -> Catalogue:
 def _current(state) -> tuple[SectionRef, SectionTemplate]:
     ref = state["plan"][state["cursor"]]
     return ref, _catalogue().section(f"{ref.document}.{ref.section_id}")
+
+
+def qualified(ref: SectionRef) -> str:
+    """`cdc.perimetre` : les identifiants de section ne sont uniques que dans
+    leur document."""
+    return f"{ref.document}.{ref.section_id}"
+
+
+def rework_queue(plan: list[SectionRef], wanted) -> list[str]:
+    """Les sections demandées qui figurent au plan, dans l'ordre du plan.
+
+    L'ordre du plan et non celui de la demande : une section s'écrit après
+    celles dont elle dépend, et la réécriture doit le respecter. Un
+    identifiant hors du plan est écarté — un modèle peut nommer une section
+    inventée, et `sections_depending_on` connaît des sections qu'un profil
+    exclut.
+    """
+    wanted = set(wanted)
+    return [qualified(ref) for ref in plan if qualified(ref) in wanted]
 
 
 def missing_required_facts(state) -> list[str]:
@@ -114,6 +141,8 @@ def route_after_critique(state) -> str:
 
 
 def route_after_save(state) -> str:
+    if state.get("reworking"):
+        return "next_rework"
     return "analyse_gaps" if state["cursor"] < len(state["plan"]) else "coherence_check"
 
 
@@ -127,6 +156,28 @@ async def analyse_gaps(state) -> dict:
     chacun des milliers de points de reprise d'un projet.
     """
     return {}
+
+
+async def next_rework(state) -> dict:
+    """Place le curseur sur la prochaine section de la file de réécriture.
+
+    File vide : la réécriture est finie. Le curseur revient en fin de plan et
+    le run s'arrête SANS refaire le contrôle de cohérence : il a déjà été
+    arbitré, et le refaire pourrait relever de nouvelles incohérences à
+    chaque passage, sans fin.
+    """
+    queue = rework_queue(state["plan"], state.get("rework") or [])
+    if not queue:
+        return {"rework": [], "reworking": False, "cursor": len(state["plan"])}
+    target = queue[0]
+    index = next(i for i, ref in enumerate(state["plan"]) if qualified(ref) == target)
+    notes = (state.get("rework_notes") or {}).get(target) or [REOPENED_WITHOUT_NOTE]
+    # `problems` porte la consigne jusqu'au rédacteur : c'est ce que
+    # `writing_prompt` lui présente comme « à corriger ». `check_numbers`
+    # l'écrase ensuite, comme sur n'importe quelle section.
+    return {"rework": queue, "reworking": True, "cursor": index,
+            "problems": list(notes), "draft": None, "score": None,
+            "revisions": 0, "question_rounds": 0, "skip_current": False}
 
 
 async def compute(state) -> dict:
@@ -187,22 +238,29 @@ async def save(state) -> dict:
     fonction écrit sert à afficher un projet sans réhydrater le graphe.
     """
     ref, _ = _current(state)
+    statut = "skipped" if state.get("skip_current") else "done"
     async with connection() as conn:
         await save_facts(conn, state["project_id"], state["facts"])
         await save_section(conn, state["project_id"], ref,
-                           blocks=state["draft"] or [], statut="done",
+                           blocks=state["draft"] or [], statut=statut,
                            note=state["score"], revisions=state["revisions"])
     publish(state["project_id"], RunEvent("section_saved", {
         "document": ref.document,
         "section_id": ref.section_id,
         "score": state["score"],
     }))
-    publish(state["project_id"], RunEvent("progress", {
-        "cursor": state["cursor"] + 1,
-        "total": len(state["plan"]),
-    }))
-    return {"cursor": state["cursor"] + 1, "draft": None, "score": None,
-            "problems": [], "revisions": 0, "question_rounds": 0}
+    update = {"cursor": state["cursor"] + 1, "draft": None, "score": None,
+              "problems": [], "revisions": 0, "question_rounds": 0,
+              "skip_current": False}
+    progress = {"cursor": state["cursor"] + 1, "total": len(state["plan"])}
+    if state.get("reworking"):
+        remaining = [q for q in state.get("rework") or [] if q != qualified(ref)]
+        update["rework"] = remaining
+        # Pendant une réécriture le curseur saute d'une section à l'autre :
+        # « 4 sur 14 » ne dirait rien d'utile. Ce qui reste à reprendre, si.
+        progress["reecriture"] = len(remaining)
+    publish(state["project_id"], RunEvent("progress", progress))
+    return update
 
 
 # ---------------------------------------------- nœuds appelant le modèle
@@ -320,4 +378,10 @@ async def coherence_check(state, transport=None) -> dict:
         transport=transport,
     )
     found = reponse.parsed.inconsistencies if reponse.parsed else []
-    return {"inconsistencies": [i.model_dump() for i in found]}
+    # Un modèle nomme parfois une section inventée, ou une section d'un
+    # document que ce projet n'a pas. La garder ferait réécrire le vide.
+    plan_ids = {qualified(ref) for ref in state["plan"]}
+    return {"inconsistencies": [
+        {**i.model_dump(), "sections": [s for s in i.sections if s in plan_ids]}
+        for i in found
+    ]}

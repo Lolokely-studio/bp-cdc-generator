@@ -164,7 +164,7 @@ async def test_projections_of_one_project_never_reach_another(project):
 
 
 def test_the_documented_statuses_are_the_only_ones():
-    assert SECTION_STATUSES == ("pending", "writing", "done", "reopened")
+    assert SECTION_STATUSES == ("pending", "writing", "done", "reopened", "skipped")
 
 
 async def test_reopening_a_section_never_touches_its_namesake_in_the_other_document(project):

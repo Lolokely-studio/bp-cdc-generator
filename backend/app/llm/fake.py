@@ -37,6 +37,13 @@ _OFFERED_TABLE = re.compile(r"\[Tableau:\s*([a-z0-9_]+)\]")
 # pourrait jamais être rattachée au bon fait.
 _OFFERED_FACT = re.compile(r"^- ([a-z0-9_]+) \(", re.MULTILINE)
 
+# Les sections qu'un prompt de cohérence présente, une par titre `### cdc.x`.
+# Troisième cas où le simulé recopie ce que le prompt offre plutôt que
+# d'inventer, pour la même raison que les deux autres : un vrai modèle nomme
+# les sections qu'on lui a montrées.
+_OFFERED_SECTION = re.compile(r"^### ((?:cdc|bp)\.[a-z0-9_]+)$", re.MULTILINE)
+_SECTION_PATH = re.compile(r"\.sections\[\d+\]$")
+
 
 class FakeUnsupportedType(Exception):
     """Le modèle simulé ne sait pas fabriquer de valeur pour ce champ.
@@ -100,7 +107,10 @@ def _bounds(metadata, low: float, high: float) -> tuple[float, float]:
     return low, high
 
 
-def _value_for(annotation, seed: int, path: str, metadata=(), facts: tuple[str, ...] = ()):
+def _value_for(
+    annotation, seed: int, path: str, metadata=(),
+    facts: tuple[str, ...] = (), sections: tuple[str, ...] = (),
+):
     """Une valeur plausible pour une annotation de champ pydantic.
 
     L'ordre des tests compte : `Literal` et les unions se reconnaissent par
@@ -127,7 +137,7 @@ def _value_for(annotation, seed: int, path: str, metadata=(), facts: tuple[str, 
             raise FakeUnsupportedType(f"{path} : union sans branche exploitable")
         # On remplit toujours l'optionnel : un champ laissé à `None` ne teste
         # rien en aval, alors qu'une valeur présente traverse le graphe.
-        return _value_for(branches[0], seed, path, metadata, facts)
+        return _value_for(branches[0], seed, path, metadata, facts, sections)
 
     if origin in (list, set, frozenset, tuple):
         arguments = [arg for arg in get_args(annotation) if arg is not Ellipsis]
@@ -143,18 +153,19 @@ def _value_for(annotation, seed: int, path: str, metadata=(), facts: tuple[str, 
         # qu'un vrai modèle, pas plus.
         count = len(facts) if facts and path.endswith(".questions") else 2
         return [
-            _value_for(item, seed + index + 1, f"{path}[{index}]", metadata, facts)
+            _value_for(item, seed + index + 1, f"{path}[{index}]", metadata, facts, sections)
             for index in range(count)
         ]
 
     if origin is dict:
         arguments = get_args(annotation)
         value_type = arguments[1] if len(arguments) == 2 else str
-        return {"cle": _value_for(value_type, seed + 1, f"{path}[cle]", metadata, facts)}
+        return {"cle": _value_for(value_type, seed + 1, f"{path}[cle]", metadata,
+                                  facts, sections)}
 
     if isinstance(annotation, type):
         if issubclass(annotation, BaseModel):
-            return _object_for(annotation, seed, path, facts)
+            return _object_for(annotation, seed, path, facts, sections)
         if issubclass(annotation, Enum):
             return list(annotation)[0].value
         if annotation is bool:
@@ -168,6 +179,8 @@ def _value_for(annotation, seed: int, path: str, metadata=(), facts: tuple[str, 
         if annotation is str:
             if facts and path.endswith(".fact_id"):
                 return facts[seed % len(facts)]
+            if sections and _SECTION_PATH.search(path):
+                return sections[seed % len(sections)]
             return _SENTENCES[seed % len(_SENTENCES)]
 
     raise FakeUnsupportedType(
@@ -177,13 +190,15 @@ def _value_for(annotation, seed: int, path: str, metadata=(), facts: tuple[str, 
 
 
 def _object_for(
-    schema: type[BaseModel], seed: int, path: str, facts: tuple[str, ...] = ()
+    schema: type[BaseModel], seed: int, path: str,
+    facts: tuple[str, ...] = (), sections: tuple[str, ...] = (),
 ) -> dict:
     """Décale la graine par champ : sans cela, tous les champs de même type
     porteraient la même valeur et un test d'interversion passerait."""
     return {
         name: _value_for(
-            field.annotation, seed + index + 1, f"{path}.{name}", field.metadata, facts
+            field.annotation, seed + index + 1, f"{path}.{name}", field.metadata,
+            facts, sections,
         )
         for index, (name, field) in enumerate(schema.model_fields.items())
     }
@@ -210,8 +225,10 @@ class FakeTransport:
             text = _paragraph(seed, sentences=6)
             parsed = None
         else:
-            facts = tuple(_OFFERED_FACT.findall("\n".join(m.content for m in messages)))
-            payload = _object_for(schema, seed, schema.__name__, facts)
+            joined = "\n".join(m.content for m in messages)
+            facts = tuple(_OFFERED_FACT.findall(joined))
+            sections = tuple(_OFFERED_SECTION.findall(joined))
+            payload = _object_for(schema, seed, schema.__name__, facts, sections)
             text = json.dumps(payload, ensure_ascii=False, sort_keys=True)
             parsed = schema.model_validate(payload)
         tokens = estimate_tokens(messages) + estimate_tokens([Message("assistant", text)])
