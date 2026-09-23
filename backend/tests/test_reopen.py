@@ -130,6 +130,20 @@ async def test_reopening_without_a_body_gives_the_writer_a_reason(client, accoun
 
 
 async def test_reopening_while_the_run_waits_is_refused_and_marks_nothing(client, account):
+    """Le run de fond est arrêté à sa première interruption et n'écrit rien
+    pendant ce temps : on peut donc poser des lignes `sections` à la main
+    sans qu'il ne vienne s'en mêler — même motif que
+    `tests/test_resume.py::test_reopening_counts_the_rows_it_actually_marked`.
+
+    Sans ces lignes, la table `sections` est encore vide au moment du refus,
+    et `all(statut != "reopened" ...)` est vraie pour n'importe quelle
+    raison : elle ne distingue pas un refus qui ne marque rien d'un refus qui
+    marquerait AVANT de répondre 409. Ces lignes rendent l'assertion
+    discriminante.
+    """
+    from app.agent.projections import save_section
+    from app.agent.state import Paragraph, SectionRef
+
     project_id = (await client.post("/projects", json=CREATION, headers=account)).json()["id"]
     for _ in range(200):
         state = (await client.get(f"/projects/{project_id}/state", headers=account)).json()
@@ -139,8 +153,19 @@ async def test_reopening_while_the_run_waits_is_refused_and_marks_nothing(client
     else:
         raise AssertionError("le run n'a jamais atteint sa première interruption")
 
+    first = state["plan"][0]
+    target = f"{first['document']}.{first['section_id']}"
+    expected = _expected_queue(state, target)
+    async with connection() as conn:
+        for order, qualified in enumerate(expected, start=1):
+            document, _, bare = qualified.partition(".")
+            await save_section(
+                conn, UUID(project_id),
+                SectionRef(document=document, section_id=bare, order=order),
+                blocks=[Paragraph(text="x")], statut="done", note=8, revisions=1)
+
     response = await client.post(
-        f"/projects/{project_id}/sections/{state['plan'][0]['section_id']}/reopen",
+        f"/projects/{project_id}/sections/{first['section_id']}/reopen",
         headers=account)
 
     assert response.status_code == 409
