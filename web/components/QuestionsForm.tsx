@@ -101,7 +101,7 @@ export function QuestionsForm({ interaction, catalogue, onSubmit }: {
 
   return (
     <form onSubmit={submit} noValidate>
-      <p className="m-muted" style={{ marginBottom: 16 }}>
+      <p className="t-note" style={{ marginBottom: 16 }}>
         {interaction.questions.length === 1 ? "Une information manque" : "Quelques informations manquent"} pour
         rédiger cette section.
       </p>

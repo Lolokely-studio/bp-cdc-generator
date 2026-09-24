@@ -45,7 +45,7 @@ export function ReopenForm({ projectId, state, catalogue, disabled }: {
   return (
     <form onSubmit={submit} noValidate>
       <p className="m-cap">Rouvrir une section</p>
-      <p className="m-muted small">
+      <p className="t-note t-fine">
         La section est réécrite, avec celles qui s'appuient sur elle. Il faudra régénérer les documents ensuite.
       </p>
       <div style={{ marginTop: 12 }}>

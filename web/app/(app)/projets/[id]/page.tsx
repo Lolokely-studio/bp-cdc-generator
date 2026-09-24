@@ -118,7 +118,7 @@ export default function WorkspacePage() {
 
   if (loadError) {
     return (
-      <main className="m-body">
+      <main className="page">
         <p className="m-err" role="alert">{loadError}</p>
         <div className="m-actions" style={{ justifyContent: "flex-start" }}>
           <Link className="m-btn sec" href="/projets">Retour aux projets</Link>
@@ -126,7 +126,7 @@ export default function WorkspacePage() {
       </main>
     );
   }
-  if (!state) return <main className="m-body"><p className="m-muted">Chargement du projet…</p></main>;
+  if (!state) return <main className="page"><p className="t-note">Chargement du projet…</p></main>;
 
   if (state.interaction?.kind === "inconsistencies") {
     return (

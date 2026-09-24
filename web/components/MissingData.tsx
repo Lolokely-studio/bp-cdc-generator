@@ -10,13 +10,13 @@ export function MissingData({ sections, catalogue }: { sections: Section[]; cata
     <div>
       <p className="m-cap">Données à compléter avant diffusion</p>
       {missing.length === 0 ? (
-        <p className="m-muted small">Aucune : rien ne manque dans ce qui a été rédigé.</p>
+        <p className="t-note t-fine">Aucune : rien ne manque dans ce qui a été rédigé.</p>
       ) : (
         <ul className="m-list">
           {missing.map((item, index) => (
             <li key={`${item.document}.${item.sectionId}|${item.label}|${index}`}>
               <span><mark>{item.label}</mark></span>
-              <span className="m-muted small">
+              <span className="t-note t-fine">
                 {DOCUMENT_LABEL[item.document]}, {sectionTitle(catalogue, item.document, item.sectionId)}
               </span>
             </li>

@@ -58,24 +58,24 @@ export default function NewProjectPage() {
 
   if (step === 1) {
     return (
-      <main className="m-body m-narrow">
+      <main className="page page--narrow">
         <Stepper current={1} />
-        <h1 className="m-h">Quel(s) document(s) voulez-vous générer ?</h1>
-        <p className="m-muted">Les informations communes aux deux documents ne vous seront demandées qu'une seule fois.</p>
+        <h1 className="t-page">Quel(s) document(s) voulez-vous générer ?</h1>
+        <p className="t-note">Les informations communes aux deux documents ne vous seront demandées qu'une seule fois.</p>
         <div className="m-tiles">
           {TILES.map((tile) => (
             <button key={tile.value} className="m-tile" type="button"
               aria-pressed={documents === tile.value} onClick={() => setDocuments(tile.value)}>
               <b>{tile.title}</b>
-              <span className="m-muted small">{sectionCount(catalogue, tile.value, profilCdc, profilBp)} sections</span>
-              <span className="small">{tile.text}</span>
+              <span className="t-note t-fine">{sectionCount(catalogue, tile.value, profilCdc, profilBp)} sections</span>
+              <span className="t-fine">{tile.text}</span>
             </button>
           ))}
         </div>
         {documents !== "bp" && (
           <div className="m-profile">
             <p className="m-cap">À quoi servira le cahier des charges ?</p>
-            <p className="m-muted small">
+            <p className="t-note t-fine">
               Pour consulter des prestataires, le document doit être opposable : il gagne une section
               « cadre de réponse » et un niveau d'exigence sur chaque besoin.
             </p>
@@ -92,7 +92,7 @@ export default function NewProjectPage() {
         {documents !== "cdc" && (
           <div className="m-profile">
             <p className="m-cap">Qui lira le business plan ?</p>
-            <p className="m-muted small">Le lecteur change le ton et l'ordre des arguments. Les chiffres, eux, ne bougent pas.</p>
+            <p className="t-note t-fine">Le lecteur change le ton et l'ordre des arguments. Les chiffres, eux, ne bougent pas.</p>
             <div className="m-chips">
               {BP_PROFILES.map((profile) => (
                 <button key={profile.value} className="m-chip" type="button"
@@ -112,10 +112,10 @@ export default function NewProjectPage() {
   }
 
   return (
-    <main className="m-body m-narrow">
+    <main className="page page--narrow">
       <Stepper current={2} />
-      <h1 className="m-h">Décrivez votre projet</h1>
-      <p className="m-muted">Quelques phrases suffisent : le problème, pour qui, et comment vous le résolvez.</p>
+      <h1 className="t-page">Décrivez votre projet</h1>
+      <p className="t-note">Quelques phrases suffisent : le problème, pour qui, et comment vous le résolvez.</p>
       <form onSubmit={create} noValidate>
         <div style={{ marginTop: 18 }}>
           <label className="m-label" htmlFor="nom">Nom du projet</label>

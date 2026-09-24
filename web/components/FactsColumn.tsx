@@ -8,14 +8,14 @@ export function FactsColumn({ facts, catalogue }: { facts: Record<string, Fact>;
   return (
     <aside className="m-col facts" aria-label="Mémoire du projet">
       <p className="m-cap">Mémoire du projet</p>
-      <p className="m-muted small">Partagée entre le cahier des charges et le business plan.</p>
+      <p className="t-note t-fine">Partagée entre le cahier des charges et le business plan.</p>
       <div className="m-legend">
         <span className="m-src user">Vous</span>
         <span className="m-src inferred">Déduit</span>
         <span className="m-src unknown">Inconnu</span>
       </div>
       {known.length === 0 ? (
-        <p className="m-muted small">Les informations apparaîtront ici au fil de vos réponses.</p>
+        <p className="t-note t-fine">Les informations apparaîtront ici au fil de vos réponses.</p>
       ) : (
         <div className="m-facts">
           {known.map((fact) => {

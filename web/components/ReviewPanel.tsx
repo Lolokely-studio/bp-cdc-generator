@@ -25,7 +25,7 @@ export function ReviewPanel({ interaction, onSubmit }: {
     <>
       <div className="m-status">
         {interaction.score !== null && <span className="m-src user">Auto-critique {interaction.score}/10</span>}
-        <span className="m-muted small">Prête à relire</span>
+        <span className="t-note t-fine">Prête à relire</span>
       </div>
       {interaction.problems.length > 0 && (
         <div className="m-note">
@@ -57,7 +57,7 @@ export function ReviewPanel({ interaction, onSubmit }: {
             <button className="m-btn sec" type="button" disabled={busy}
               onClick={() => send({ action: "skip" })}>Passer la section</button>
           </div>
-          <p className="m-muted small">
+          <p className="t-note t-fine">
             Passer la section la garde telle quelle, mais les documents porteront la mention Brouillon.
           </p>
         </>

@@ -15,12 +15,13 @@ function deferred<T>() {
 }
 
 describe("le tableau de bord des projets", () => {
-  it("dit qu'il charge, sans afficher de carte, pendant l'appel", async () => {
+  it("dit qu'il charge par des fiches fantômes, sans aucune vraie carte", async () => {
     const { promise } = deferred<Response>();
     vi.stubGlobal("fetch", vi.fn(() => promise));
     render(<ProjectsPage />);
-    expect(screen.getByText("Chargement…")).toBeInTheDocument();
-    expect(document.querySelector(".m-projects")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("Chargement de vos projets.");
+    expect(document.querySelectorAll(".project.skeleton")).toHaveLength(3);
+    expect(document.querySelectorAll(".project:not(.skeleton)")).toHaveLength(0);
   });
 
   it("affiche les projets reçus, avec la phrase de tête", async () => {
@@ -39,7 +40,16 @@ describe("le tableau de bord des projets", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ detail: "erreur" }), { status: 500 })));
     render(<ProjectsPage />);
     expect(await screen.findByRole("alert")).toHaveTextContent("La liste des projets n'a pas pu être chargée.");
-    expect(document.querySelector(".m-projects")).toBeNull();
-    await waitFor(() => expect(screen.queryByText("Chargement…")).toBeNull());
+    expect(document.querySelector(".projects")).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
+  it("invite à créer un projet quand il n'y en a aucun", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200 })));
+    render(<ProjectsPage />);
+    expect(await screen.findByText("Rien encore ici")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Créer un premier projet" }))
+      .toHaveAttribute("href", "/projets/nouveau");
+    expect(document.querySelector(".projects")).toBeNull();
   });
 });

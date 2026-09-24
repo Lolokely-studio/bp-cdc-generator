@@ -34,6 +34,17 @@ export const STATUS_TAG: Record<RunStatus, { label: string; done: boolean }> = {
   done: { label: "Terminé", done: true },
 };
 
+/** Le ton de chaque statut, dans le vocabulaire unique des cinq états.
+ * `idle` et `running` disent tous les deux « ça tourne » : un projet qui
+ * attend son démarrage n'est pas dans un état différent, pour qui regarde. */
+export const STATUS_TONE: Record<RunStatus, "ok" | "wait" | "live" | "stop"> = {
+  idle: "live",
+  running: "live",
+  waiting: "wait",
+  failed: "stop",
+  done: "ok",
+};
+
 export function sectionTitle(catalogue: Catalogue, document: DocumentKind, sectionId: string): string {
   return catalogue.documents[document].sections.find((s) => s.id === sectionId)?.titre ?? sectionId;
 }

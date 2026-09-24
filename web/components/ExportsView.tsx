@@ -62,8 +62,8 @@ export function ExportsView({ projectId, pollMs = 2000 }: { projectId: string; p
 
   if (!exports || !state) {
     return (
-      <main className="m-body">
-        <p className="m-muted">Chargement…</p>
+      <main className="page">
+        <p className="t-note">Chargement…</p>
         {error && <p className="m-err" role="alert">{error}</p>}
       </main>
     );
@@ -74,11 +74,11 @@ export function ExportsView({ projectId, pollMs = 2000 }: { projectId: string; p
   const finished = state.projet.run_status === "done";
 
   return (
-    <main className="m-body">
+    <main className="page">
       <div className="m-head">
         <div>
-          <h1 className="m-h">{files.length > 0 ? "Vos documents sont prêts" : "Générer les documents"}</h1>
-          <p className="m-muted">
+          <h1 className="t-page">{files.length > 0 ? "Vos documents sont prêts" : "Générer les documents"}</h1>
+          <p className="t-note">
             {state.projet.nom}{latest ? ` · derniers fichiers ${relativeDate(latest)}` : ""}
           </p>
         </div>

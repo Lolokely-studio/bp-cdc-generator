@@ -57,7 +57,7 @@ export function ExportFiles({ files }: { files: ExportFile[] }) {
           );
         })}
       </div>
-      <p className="m-muted small" style={{ marginTop: 10 }}>
+      <p className="t-note t-fine" style={{ marginTop: 10 }}>
         Les liens expirent au bout de dix minutes : rechargez la page pour en obtenir de neufs.
       </p>
     </>
