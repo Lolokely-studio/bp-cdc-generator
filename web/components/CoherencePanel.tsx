@@ -73,8 +73,9 @@ export function CoherencePanel({ interaction, catalogue, onSubmit }: {
                 <label className="field__label" htmlFor={`consigne-${index}`}>Comment corriger ?</label>
                 <textarea id={`consigne-${index}`} className="textarea" rows={2} value={choice.consigne}
                   placeholder={inconsistency.proposal ?? ""}
+                  aria-describedby={`consigne-${index}-hint`}
                   onChange={(e) => update(index, { consigne: e.target.value })} />
-                <p className="field__hint">
+                <p className="field__hint" id={`consigne-${index}-hint`}>
                   {inconsistency.proposal ? "Laissez vide pour appliquer la proposition." : "Une phrase suffit."}
                 </p>
               </div>

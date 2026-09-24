@@ -188,9 +188,6 @@
 
 .m-fact .v { display: block; font-size: 0.875rem; line-height: 1.4; }
 
-/* Un fait qui vient d'arriver s'éclaire, puis s'éteint. */
-.m-fact.fresh { background: var(--wait-bg); }
-
 /* --- Écrans de fin et de panne ------------------------------------------ */
 
 .m-done { max-width: 36rem; padding-top: 1.5rem; }
@@ -207,6 +204,7 @@
 }
 
 .m-conf > b { display: block; margin-bottom: 0.25rem; }
+.m-conf .segment { margin-top: 0.625rem; }
 
 /* --------------------------------------------------------------------------
    Mouvement
@@ -217,7 +215,6 @@
 @media (prefers-reduced-motion: no-preference) {
   .m-pulse, .m-caret { animation: m-pulse 1s ease-in-out infinite; }
   @keyframes m-pulse { 50% { opacity: 0.25; } }
-  .m-fact { transition: background-color 1.2s ease; }
 }
 
 /* --------------------------------------------------------------------------

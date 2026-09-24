@@ -125,3 +125,11 @@ Il emprunte Playwright à `web/node_modules` : c'est la seule copie du dépôt.
   que le texte.
 - `documents.html` écrivait « Regénérer les documents » sans accent, corrigé en
   « Régénérer » le 2026-09-24. Le code portait déjà la bonne orthographe.
+- `app.css` élargissait déjà `.segment__opt[aria-checked]` à `[aria-pressed]` et ajoutait
+  `.segment__opt:disabled` pour que `CoherencePanel` garde ses boutons `aria-pressed` avec la
+  même apparence que le groupe radio (décision 6 du plan) — correction faite pendant la tâche
+  5 mais non notée ici jusqu'au 2026-09-24.
+- `.callout` ne posait aucune règle pour un `<ul>` : aucune maquette n'en met dans un encart,
+  mais le port de `ReviewPanel` en a eu besoin. Ajouté le 2026-09-24 :
+  `.callout ul { margin-top: 0.375rem; padding-left: 1.2em; list-style: disc; }`, pour que la
+  liste garde ses puces si une maquette future en pose une.

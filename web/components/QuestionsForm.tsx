@@ -16,14 +16,16 @@ function QuestionField({ question, definition, field, error, onChange }: {
 }) {
   const id = `q-${question.fact_id}`;
   const errorId = `${id}-err`;
+  const hintId = `${id}-hint`;
   const type = definition?.type ?? "texte_court";
+  const hint = hintFor(definition);
+  const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(" ") || undefined;
   const shared = {
     id,
     disabled: field.unknown,
     "aria-invalid": error ? true : undefined,
-    "aria-describedby": error ? errorId : undefined,
+    "aria-describedby": describedBy,
   };
-  const hint = hintFor(definition);
 
   let input;
   if (type === "texte_long" || type === "liste") {
@@ -60,7 +62,7 @@ function QuestionField({ question, definition, field, error, onChange }: {
     <div className="field">
       <label className="field__label" htmlFor={id}>{question.question}</label>
       {input}
-      {hint && <p className="field__hint">{hint}</p>}
+      {hint && <p className="field__hint" id={hintId}>{hint}</p>}
       <label className="check">
         <input type="checkbox" checked={field.unknown} onChange={(e) => onChange({ unknown: e.target.checked })} />
         {" "}Je ne sais pas

@@ -29,8 +29,10 @@ export function ReviewPanel({ interaction, onSubmit }: {
       </div>
       {interaction.problems.length > 0 && (
         <div className="callout callout--wait">
-          <b>Ce que l'auto-critique relève</b>
-          <ul>{interaction.problems.map((problem, index) => <li key={index}>{problem}</li>)}</ul>
+          <span className="callout__body">
+            <b>Ce que l'auto-critique relève</b>
+            <ul>{interaction.problems.map((problem, index) => <li key={index}>{problem}</li>)}</ul>
+          </span>
         </div>
       )}
       <Paper blocks={interaction.blocks} />

@@ -120,8 +120,6 @@
   box-shadow: var(--shadow-pop);
 }
 
-.account__menu[hidden] { display: none; }
-
 .account__who {
   padding: 0.5rem 0.625rem 0.625rem;
   border-bottom: 1px solid var(--rule-soft);
@@ -303,7 +301,6 @@
 }
 
 .ticks i.is-done { height: 14px; background: var(--ok); }
-.ticks i.is-now  { height: 14px; background: var(--ink); }
 
 /* --------------------------------------------------------------------------
    Attente : des fiches fantômes, pour que la page ne saute pas
@@ -367,6 +364,7 @@
 .callout svg { flex: none; margin-top: 2px; }
 .callout__body { min-width: 0; }
 .callout strong { font-weight: 600; }
+.callout ul { margin-top: 0.375rem; padding-left: 1.2em; list-style: disc; }
 
 .callout--wait { background: var(--wait-bg); color: var(--wait); }
 .callout--stop { background: var(--stop-bg); color: var(--stop); }

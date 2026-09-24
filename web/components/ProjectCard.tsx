@@ -18,7 +18,8 @@ export function ProjectCard({ project, now }: { project: ProjectSummary; now?: D
       {/* Une encoche par section : on lit l'avancement et la taille du
           document d'un seul coup d'œil, ce qu'un pourcentage cache. */}
       <span className="ticks" role="progressbar" aria-label="Sections faites"
-        aria-valuemin={0} aria-valuemax={project.sections_total} aria-valuenow={project.sections_faites}>
+        aria-valuemin={0} aria-valuemax={project.sections_total} aria-valuenow={project.sections_faites}
+        aria-valuetext={`${project.sections_faites} sections rédigées sur ${project.sections_total}`}>
         {Array.from({ length: project.sections_total }, (_, index) => (
           <i key={index} className={index < project.sections_faites ? "is-done" : undefined} />
         ))}

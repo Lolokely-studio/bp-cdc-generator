@@ -114,6 +114,22 @@ export function ExportsView({ projectId, pollMs = 2000 }: { projectId: string; p
         </div>
       )}
 
+      {!exports.en_cours && exports.dernier_export === "echec" && (
+        <div className="callout callout--stop" role="alert">
+          <span className="callout__body">
+            La dernière génération a échoué. Certains fichiers ont pu être remplacés et
+            d'autres non : relancez pour retrouver un jeu complet.
+          </span>
+        </div>
+      )}
+      {error && (
+        <div className="callout callout--stop" role="alert">
+          <span className="callout__body">{error}</span>
+        </div>
+      )}
+
+      <ExportFiles files={files} />
+
       {exports.en_cours ? (
         <div className="callout callout--live" role="status">
           <span className="spinner" aria-hidden="true" />
@@ -130,22 +146,6 @@ export function ExportsView({ projectId, pollMs = 2000 }: { projectId: string; p
           </button>
         </div>
       )}
-
-      {!exports.en_cours && exports.dernier_export === "echec" && (
-        <div className="callout callout--stop" role="alert">
-          <span className="callout__body">
-            La dernière génération a échoué. Certains fichiers ont pu être remplacés et
-            d'autres non : relancez pour retrouver un jeu complet.
-          </span>
-        </div>
-      )}
-      {error && (
-        <div className="callout callout--stop" role="alert">
-          <span className="callout__body">{error}</span>
-        </div>
-      )}
-
-      <ExportFiles files={files} />
 
       <div className="split">
         <MissingData sections={state.sections} catalogue={catalogue} />

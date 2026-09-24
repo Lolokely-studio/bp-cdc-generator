@@ -223,6 +223,9 @@ img { max-width: 100%; }
 .select {
   appearance: none;
   padding-right: 2rem;
+  /* Un data-URI ne peut pas lire une variable CSS : `stroke='%2364748b'`
+     recopie la valeur de --ink-soft à la main, faute de pouvoir l'interpoler.
+     Si le jeton change, cette valeur doit suivre. */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2364748b' stroke-width='1.8'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.625rem center;
