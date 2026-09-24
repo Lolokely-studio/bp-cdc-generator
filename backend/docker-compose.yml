@@ -15,13 +15,18 @@ services:
     ports: ["5433:5432"]
 
   # Même image que `render.yaml`, pour éprouver la conversion réelle en local
-  # avant un déploiement. Identifiants de développement en clair : ils ne
-  # protègent rien qui compte sur une machine locale.
+  # avant un déploiement.
+  #
+  # Les identifiants viennent de `backend/.env`, que Compose lit tout seul
+  # pour ses substitutions : le conteneur attend donc exactement ce que le
+  # backend envoie, et il n'y a qu'un endroit à changer. Sans eux, le repli
+  # se déclencherait en silence sur un 401 et le PDF porterait la mention
+  # « mise en page non fidèle » sans qu'on sache pourquoi.
   gotenberg:
     image: docker.io/gotenberg/gotenberg:8.37.0-libreoffice
     environment:
       API_ENABLE_BASIC_AUTH: "true"
-      GOTENBERG_API_BASIC_AUTH_USERNAME: gotenberg
-      GOTENBERG_API_BASIC_AUTH_PASSWORD: gotenberg
+      GOTENBERG_API_BASIC_AUTH_USERNAME: ${GOTENBERG_USERNAME:?renseignez GOTENBERG_USERNAME dans backend/.env}
+      GOTENBERG_API_BASIC_AUTH_PASSWORD: ${GOTENBERG_PASSWORD:?renseignez GOTENBERG_PASSWORD dans backend/.env}
       API_TIMEOUT: "120s"
     ports: ["3000:3000"]
