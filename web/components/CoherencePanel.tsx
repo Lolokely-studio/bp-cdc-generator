@@ -61,20 +61,20 @@ export function CoherencePanel({ interaction, catalogue, onSubmit }: {
               <p className="t-note t-fine">Aucune section du plan n'est nommée : seule « Ignorer » est possible.</p>
             )}
             {inconsistency.proposal && <p className="t-fine">Proposition : {inconsistency.proposal}</p>}
-            <div className="m-chips" role="group" aria-label={`Incohérence ${index + 1}`}>
-              <button className="m-chip" type="button" aria-pressed={choice.decision === "corriger"}
+            <div className="segment" role="group" aria-label={`Incohérence ${index + 1}`}>
+              <button className="segment__opt" type="button" aria-pressed={choice.decision === "corriger"}
                 disabled={inconsistency.sections.length === 0}
                 onClick={() => update(index, { decision: "corriger" })}>Corriger</button>
-              <button className="m-chip" type="button" aria-pressed={choice.decision === "ignorer"}
+              <button className="segment__opt" type="button" aria-pressed={choice.decision === "ignorer"}
                 onClick={() => update(index, { decision: "ignorer" })}>Ignorer</button>
             </div>
             {choice.decision === "corriger" && (
               <div style={{ marginTop: 12 }}>
-                <label className="m-label" htmlFor={`consigne-${index}`}>Comment corriger ?</label>
-                <textarea id={`consigne-${index}`} className="m-input" rows={2} value={choice.consigne}
+                <label className="field__label" htmlFor={`consigne-${index}`}>Comment corriger ?</label>
+                <textarea id={`consigne-${index}`} className="textarea" rows={2} value={choice.consigne}
                   placeholder={inconsistency.proposal ?? ""}
                   onChange={(e) => update(index, { consigne: e.target.value })} />
-                <p className="m-hint">
+                <p className="field__hint">
                   {inconsistency.proposal ? "Laissez vide pour appliquer la proposition." : "Une phrase suffit."}
                 </p>
               </div>
@@ -82,9 +82,9 @@ export function CoherencePanel({ interaction, catalogue, onSubmit }: {
           </div>
         );
       })}
-      {error && <p className="m-err" role="alert">{error}</p>}
-      <div className="m-actions">
-        <button className="m-btn" type="button" disabled={busy} onClick={submit}>Appliquer et continuer</button>
+      {error && <p className="callout callout--stop" role="alert">{error}</p>}
+      <div className="actions actions--start">
+        <button className="btn btn--primary" type="button" disabled={busy} onClick={submit}>Appliquer et continuer</button>
       </div>
     </main>
   );

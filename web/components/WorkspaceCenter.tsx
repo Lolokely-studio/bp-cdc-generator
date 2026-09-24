@@ -30,7 +30,7 @@ function FailedPanel({ error, onResume }: { error: LiveError | null; onResume: (
       <h1 className="t-page">La rédaction s'est interrompue</h1>
       <p>Rien n'est perdu : chaque étape franchie est enregistrée, et la reprise repart de la dernière.</p>
       {error?.message && <p className="t-note t-fine">Détail : {error.message}</p>}
-      <button className="m-btn" type="button" disabled={busy}
+      <button className="btn btn--primary" type="button" disabled={busy}
         onClick={async () => { setBusy(true); try { await onResume(); } finally { setBusy(false); } }}>
         Reprendre
       </button>
@@ -47,7 +47,7 @@ function StalledPanel({ onResume }: { onResume: () => Promise<void> }) {
         Le lancement n'a pas pris la main depuis l'enregistrement du projet. Rien n'est perdu : vous pouvez le
         relancer.
       </p>
-      <button className="m-btn" type="button" disabled={busy}
+      <button className="btn btn--primary" type="button" disabled={busy}
         onClick={async () => { setBusy(true); try { await onResume(); } finally { setBusy(false); } }}>
         Lancer la rédaction
       </button>
@@ -65,7 +65,7 @@ function DonePanel({ projectId, state }: { projectId: string; state: ProjectStat
         {skipped > 0 && ` ${skipped} section${skipped > 1 ? "s ont été passées" : " a été passée"} sans validation :
         les documents porteront la mention Brouillon.`}
       </p>
-      <Link className="m-btn" href={`/projets/${projectId}/exports`}>Générer les documents</Link>
+      <Link className="btn btn--primary" href={`/projets/${projectId}/exports`}>Générer les documents</Link>
     </div>
   );
 }
@@ -106,7 +106,7 @@ function Drafting({ state, live, catalogue }: { state: ProjectState; live: Live;
       <div className="m-status">
         <span className="m-pulse" aria-hidden="true" />
         <span className="t-note">{label}</span>
-        {live.score && <span className="m-src user">Auto-critique {live.score.score}/10</span>}
+        {live.score && <span className="tag tag--idle tag--flat">Auto-critique {live.score.score}/10</span>}
       </div>
       {live.draft && <StreamingPaper text={live.draft} />}
     </>

@@ -10,9 +10,9 @@ export function FactsColumn({ facts, catalogue }: { facts: Record<string, Fact>;
       <p className="m-cap">Mémoire du projet</p>
       <p className="t-note t-fine">Partagée entre le cahier des charges et le business plan.</p>
       <div className="m-legend">
-        <span className="m-src user">Vous</span>
-        <span className="m-src inferred">Déduit</span>
-        <span className="m-src unknown">Inconnu</span>
+        <span className="src src--user">Vous</span>
+        <span className="src src--inferred">Déduit</span>
+        <span className="src src--unknown">Inconnu</span>
       </div>
       {known.length === 0 ? (
         <p className="t-note t-fine">Les informations apparaîtront ici au fil de vos réponses.</p>
@@ -25,7 +25,7 @@ export function FactsColumn({ facts, catalogue }: { facts: Record<string, Fact>;
               <div className="m-fact" key={fact.fact_id}>
                 <b>
                   {definition.libelle}
-                  <span className={`m-src ${badge.className}`}>{badge.label}</span>
+                  <span className={`src src--${badge.className}`}>{badge.label}</span>
                 </b>
                 <span className="v">{formatFactValue(definition, fact.value)}</span>
               </div>

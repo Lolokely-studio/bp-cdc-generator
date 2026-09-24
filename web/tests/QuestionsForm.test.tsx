@@ -17,7 +17,7 @@ const interaction: QuestionsInteraction = {
 
 const fieldOf = (question: string) => screen.getByLabelText(question);
 const boxOf = (question: string) =>
-  within(fieldOf(question).closest(".m-q") as HTMLElement).getByRole("checkbox");
+  within(fieldOf(question).closest(".field") as HTMLElement).getByRole("checkbox");
 
 describe("QuestionsForm", () => {
   it("donne à chaque question le champ de son type", () => {

@@ -119,9 +119,9 @@ export default function WorkspacePage() {
   if (loadError) {
     return (
       <main className="page">
-        <p className="m-err" role="alert">{loadError}</p>
-        <div className="m-actions" style={{ justifyContent: "flex-start" }}>
-          <Link className="m-btn sec" href="/projets">Retour aux projets</Link>
+        <p className="callout callout--stop" role="alert">{loadError}</p>
+        <div className="actions actions--start">
+          <Link className="btn btn--outline" href="/projets">Retour aux projets</Link>
         </div>
       </main>
     );
@@ -131,7 +131,7 @@ export default function WorkspacePage() {
   if (state.interaction?.kind === "inconsistencies") {
     return (
       <>
-        {notice && <p className="m-note" role="status">{notice}</p>}
+        {notice && <p className="callout callout--live" role="status">{notice}</p>}
         <CoherencePanel key={state.interaction.id} interaction={state.interaction}
           catalogue={catalogue} onSubmit={answer} />
       </>
@@ -142,7 +142,7 @@ export default function WorkspacePage() {
     <div className="m-ws">
       <PlanColumn state={state} catalogue={catalogue} />
       <main className="m-col center">
-        {notice && <p className="m-note" role="status">{notice}</p>}
+        {notice && <p className="callout callout--live" role="status">{notice}</p>}
         <WorkspaceCenter projectId={id} live={live} catalogue={catalogue}
           onAnswer={answer} onResume={resume} idleStuck={idleStuck} />
       </main>

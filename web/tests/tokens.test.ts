@@ -64,14 +64,14 @@ describe("les jetons", () => {
   it("ne garde aucune trace du mode sombre", () => {
     // Le mode sombre doublait chaque jeton. Il est supprimé, pas commenté :
     // une règle commentée revient toujours.
-    for (const name of ["tokens.css", "base.css", "app.css", "workspace.css", "legacy.css"]) {
+    for (const name of ["tokens.css", "base.css", "app.css", "workspace.css"]) {
       expect(sheet(name)).not.toContain("prefers-color-scheme");
       expect(sheet(name)).not.toContain("data-theme");
     }
   });
 
   it("ne garde aucune couleur de piste ni aucune ancienne police", () => {
-    const all = ["tokens.css", "base.css", "app.css", "workspace.css", "legacy.css"]
+    const all = ["tokens.css", "base.css", "app.css", "workspace.css"]
       .map(sheet).join("\n");
     for (const dead of ["--l0", "--l1", "--l2", "--l3", "--l4", "--l5",
                         "Bricolage", "Hanken"]) {
@@ -90,12 +90,18 @@ describe("les jetons", () => {
     expect(outside).not.toMatch(/\brgba?\(/);
   });
 
-  it("importe les cinq feuilles, dans l'ordre", () => {
+  it("importe les quatre feuilles, dans l'ordre", () => {
     const globals = read("app/globals.css");
-    const order = ["tokens.css", "base.css", "app.css", "workspace.css", "legacy.css"]
+    const order = ["tokens.css", "base.css", "app.css", "workspace.css"]
       .map((name) => globals.indexOf(name));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it("n'a plus d'échafaudage", () => {
+    const globals = read("app/globals.css");
+    expect(globals).not.toContain("legacy");
+    expect(() => sheet("legacy.css")).toThrow();
   });
 
   it("ne pose aucune classe qui n'ait de règle nulle part", () => {

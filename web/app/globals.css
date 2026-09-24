@@ -1,7 +1,6 @@
 /* Les jetons d'abord — tout le reste les lit. Puis le socle, la coquille,
-   l'atelier, et l'échafaudage qui disparaîtra. */
+   et l'atelier. */
 @import "../styles/tokens.css";
 @import "../styles/base.css";
 @import "../styles/app.css";
 @import "../styles/workspace.css";
-@import "../styles/legacy.css";
