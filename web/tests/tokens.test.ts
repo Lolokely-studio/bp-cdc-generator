@@ -17,6 +17,27 @@ const sheet = (name: string) => read(`styles/${name}`);
 /** Une classe qui ressemble à une classe CSS, pas à une expression. */
 const CLASS_NAME = /^[a-z][a-z0-9-]*(__[a-z0-9-]+)?(--[a-z0-9-]+)?$/;
 
+/** Les classes complètes d'un attribut `className`.
+ *
+ * Un jeton collé à une interpolation — le `tag--` de
+ * `` `tag tag--${tone}` `` — n'est pas une classe mais un préfixe, et son
+ * suffixe ne se connaît qu'à l'exécution. On ne le compte pas, et on ne
+ * compte pas davantage le nom de la variable interpolée. C'est la limite
+ * assumée de ce garde-fou : il attrape une classe littérale devenue
+ * orpheline, pas une classe composée à l'exécution. */
+function literalClasses(attr: string, isTemplate: boolean): string[] {
+  if (!isTemplate) return attr.split(/\s+/);
+  const out: string[] = [];
+  const chunks = attr.split(/\$\{[^}]*\}/);
+  chunks.forEach((chunk, i) => {
+    const tokens = chunk.split(/\s+/);
+    if (i > 0 && !/^\s/.test(chunk)) tokens.shift();
+    if (i < chunks.length - 1 && !/\s$/.test(chunk)) tokens.pop();
+    out.push(...tokens);
+  });
+  return out;
+}
+
 function filesUnder(dir: string, ext: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(join(HERE, "..", dir), { withFileTypes: true })) {
@@ -85,10 +106,9 @@ describe("les jetons", () => {
     for (const f of [...filesUnder("app", ".tsx"), ...filesUnder("components", ".tsx")]) {
       read(f).split("\n").forEach((line, i) => {
         for (const m of line.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
-          for (const group of [m[1], m[2]]) {
-            for (const name of (group ?? "").split(/[\s${}]+/)) {
-              if (CLASS_NAME.test(name) && !used.has(name)) used.set(name, `${f}:${i + 1}`);
-            }
+          const isTemplate = m[2] !== undefined;
+          for (const name of literalClasses(m[1] ?? m[2] ?? "", isTemplate)) {
+            if (CLASS_NAME.test(name) && !used.has(name)) used.set(name, `${f}:${i + 1}`);
           }
         }
       });

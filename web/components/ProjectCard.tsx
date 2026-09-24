@@ -5,11 +5,6 @@ import { DOCUMENTS_LABEL, STATUS_TAG, STATUS_TONE, relativeDate } from "@/lib/la
 export function ProjectCard({ project, now }: { project: ProjectSummary; now?: Date }) {
   const tag = STATUS_TAG[project.run_status];
   const tone = STATUS_TONE[project.run_status];
-  // `tag--${tone}` en template littéral inline échapperait au garde-fou de
-  // `tests/tokens.test.ts` : il découpe sur `${}` et prendrait « tone » (le
-  // nom de variable) et « tag-- » (le préfixe orphelin) pour des classes.
-  // Le calculer hors JSX garde le même rendu sans ce faux positif.
-  const tagClass = `tag tag--${tone}`;
   // Un projet terminé n'a plus rien à rédiger : on l'ouvre sur ses documents.
   const href = project.run_status === "done" ? `/projets/${project.id}/exports` : `/projets/${project.id}`;
   const when = relativeDate(project.updated_at, now);
@@ -17,7 +12,7 @@ export function ProjectCard({ project, now }: { project: ProjectSummary; now?: D
     <Link className="project" href={href}>
       <span className="project__top">
         <span className="project__name">{project.nom}</span>
-        <span className={tagClass}>{tag.label}</span>
+        <span className={`tag tag--${tone}`}>{tag.label}</span>
       </span>
       <span className="t-fine">{DOCUMENTS_LABEL[project.documents]}</span>
       {/* Une encoche par section : on lit l'avancement et la taille du
