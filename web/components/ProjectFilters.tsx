@@ -13,7 +13,10 @@ export function filterProjects(projects: ProjectSummary[], { query, status }: Fi
   const needle = folded(query.trim());
   return projects.filter((project) =>
     (!needle || folded(project.nom).includes(needle)) &&
-    (!status || project.run_status === status));
+    // `idle` et `running` affichent tous deux « En cours ». Comparer les
+    // valeurs brutes laisserait un projet en attente de démarrage
+    // introuvable sous le libellé qu'il porte pourtant.
+    (!status || STATUS_TAG[project.run_status].label === STATUS_TAG[status].label));
 }
 
 // `idle` et `running` portent le même libellé : les offrir deux fois

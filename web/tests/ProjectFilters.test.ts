@@ -32,4 +32,17 @@ describe("le filtre des projets", () => {
       .toEqual(["b"]);
     expect(filterProjects(projets, { query: "halle", status: "waiting" })).toEqual([]);
   });
+
+  it("range ensemble les états qui portent le même libellé", () => {
+    // `idle` et `running` affichent tous deux « En cours » sur la fiche.
+    // Filtrer sur « En cours » sans voir un projet qui l'affiche ferait
+    // passer le filtre pour cassé.
+    const mixed = [
+      summary({ id: "a", run_status: "idle" }),
+      summary({ id: "b", run_status: "running" }),
+      summary({ id: "c", run_status: "done" }),
+    ];
+    expect(filterProjects(mixed, { query: "", status: "running" }).map((p) => p.id))
+      .toEqual(["a", "b"]);
+  });
 });
