@@ -104,4 +104,15 @@ describe("la page de connexion", () => {
     // échouerait sur une ambiguïté.
     expect(screen.getByRole("button", { name: "Se connecter" })).toHaveAttribute("type", "submit");
   });
+
+  it("s'annonce par un titre, qui suit l'onglet actif", async () => {
+    // Sans titre, la page ne donne aucun repère à qui navigue de titre en
+    // titre — et `e2e/documents.spec.ts:67` s'en sert pour savoir que
+    // l'écran de connexion a remplacé celui du réveil.
+    const user = userEvent.setup();
+    render(<ConnexionPage />);
+    expect(screen.getByRole("heading", { name: "Se connecter" })).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Créer un compte" }));
+    expect(screen.getByRole("heading", { name: "Créer un compte" })).toBeInTheDocument();
+  });
 });

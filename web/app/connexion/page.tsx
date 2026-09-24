@@ -78,6 +78,10 @@ export default function ConnexionPage() {
 
   return (
     <AuthCard footer="L'accès se fait sur demande. Le compte est créé tout de suite, et activé à la main avant la première rédaction.">
+      {/* Les deux autres écrans d'entrée portent un titre visible ; ici
+          c'est l'onglet actif qui le dit à l'œil. Le titre reste pour qui
+          navigue de titre en titre, et pour que la page s'annonce. */}
+      <h1 className="sr">{register ? "Créer un compte" : "Se connecter"}</h1>
       <div className="tabs" role="tablist" aria-label="Connexion ou création de compte"
         onKeyDown={onTabKey}>
         {([["login", "Se connecter"], ["register", "Créer un compte"]] as const).map(([value, label]) => (

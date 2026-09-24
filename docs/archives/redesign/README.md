@@ -95,3 +95,9 @@ Il emprunte Playwright à `web/node_modules` : c'est la seule copie du dépôt.
   entière, et c'est aussi ce que `getByLabelText("Mot de passe")` lit : il cesse de
   reconnaître « Mot de passe » tout court. Le champ « Mot de passe » à l'inscription pose
   maintenant la note comme sœur du `<label>`, reliée par `aria-describedby`.
+- `connexion.html` ne posait aucun titre : les deux autres écrans d'entrée (compte en
+  attente, réveil du serveur) ont chacun un `<h1>`, celui-ci n'en avait pas — rien ne dit à
+  qui navigue de titre en titre que la page a changé. Chaque volet (`#volet-connexion`,
+  `#volet-creation`) porte maintenant son propre `<h1 class="sr">`, masqué à l'œil parce que
+  l'onglet actif dit déjà le même texte visuellement ; un titre visible en plus aurait fait
+  doublon avec lui.
