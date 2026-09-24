@@ -84,6 +84,16 @@ Il emprunte Playwright à `web/node_modules` : c'est la seule copie du dépôt.
   sont repris mot pour mot. Ils disent une vraie limite, pas une décoration.
 - L'écran de génération ne montre pas d'étapes : l'API ne rapporte pas d'avancement, et en
   inventer un serait mentir. Un indicateur, et la raison des deux minutes.
+- **Une étiquette ne porte que son intitulé.** Note d'aide, message
+  d'erreur, compteur, case « je ne sais pas » vivent hors du `<label>`, dans
+  le `<div class="field">`, reliés par `for`/`id` et `aria-describedby`.
+  Nichés dedans, ils entrent dans le nom accessible du champ : un lecteur
+  d'écran annonce « Votre idée 0 / 5 000 », et `getByLabelText` ne trouve
+  plus rien. Les maquettes portaient ce défaut sur cinq champs — celui de la
+  réouverture d'une section et les trois questions de l'atelier — corrigés
+  le 2026-09-24. La case « je ne sais pas » est désormais son propre
+  `<label class="check">`, au lieu d'un `<span>` niché dans l'étiquette du
+  champ, où son clic rivalisait avec celui du champ.
 - Inter et Source Serif viennent de Google Fonts. Dans l'application, `next/font` les sert
   depuis le domaine du site.
 - `.topbar` recopiait `--ground` à la main dans un `rgba()` : la barre haute ne suivait plus

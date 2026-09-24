@@ -102,11 +102,12 @@
               <option>BP — Plan de financement</option>
             </select>
           </label>
-          <label class="field">
-            <span class="field__label">Que faut-il changer ?</span>
-            <textarea class="textarea" rows="3" placeholder="Une phrase suffit."></textarea>
-            <span class="field__hint">Possible une fois la rédaction terminée, et hors génération.</span>
-          </label>
+          <div class="field">
+            <label class="field__label" for="reopen-consigne">Que faut-il changer ?</label>
+            <textarea id="reopen-consigne" class="textarea" rows="3"
+                      placeholder="Une phrase suffit." aria-describedby="reopen-aide"></textarea>
+            <span class="field__hint" id="reopen-aide">Possible une fois la rédaction terminée, et hors génération.</span>
+          </div>
           <div class="actions actions--start actions--plain" style="margin-top:1rem">
             <button class="btn btn--outline" type="button" disabled>Rouvrir et réécrire</button>
           </div>
