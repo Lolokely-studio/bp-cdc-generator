@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atelier, chargement — Esquisse</title>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/workspace.css">
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <a class="brand" href="projets.html"><span class="mark" aria-hidden="true"></span>Esquisse</a>
+    <nav class="crumbs" aria-label="Fil d'ariane"><a href="projets.html">Mes projets</a><span class="crumbs__sep" aria-hidden="true">/</span><span class="crumbs__here">Atelier de torréfaction Noria</span></nav>
+    <div class="account">
+      <button class="account__btn" type="button" aria-expanded="false" aria-haspopup="true"
+              aria-label="Compte de marion.leduc@atelier-noria.fr">
+        <span class="avatar" aria-hidden="true">ML</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="account__menu" hidden>
+        <div class="account__who">
+          <p class="account__mail">marion.leduc@atelier-noria.fr</p>
+          <p class="t-fine">Compte activé</p>
+        </div>
+        <button class="account__item" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 17l5-5-5-5M20 12H9M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5"/></svg>
+          Se déconnecter
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="m-ws skeleton">
+    <p class="sr" role="status">Chargement du projet.</p>
+
+    <aside class="m-col plan" aria-hidden="true">
+      <span class="bone bone--short"></span>
+      <div class="m-prog"></div>
+      <div class="stack stack--tight" style="margin-top:1rem">
+          <span class="bone bone--line"></span>
+          <span class="bone bone--line"></span>
+          <span class="bone bone--line"></span>
+          <span class="bone bone--line"></span>
+          <span class="bone bone--line"></span>
+          <span class="bone bone--line"></span>
+          <span class="bone bone--line"></span>
+          <span class="bone bone--line"></span>
+          <span class="bone bone--line"></span>
+      </div>
+    </aside>
+
+    <main class="m-col center" aria-hidden="true">
+      <span class="bone bone--tag"></span>
+      <span class="bone bone--head" style="margin-top:.75rem"></span>
+      <div class="m-paper" style="margin-top:1.5rem">
+        <div class="stack stack--tight">
+            <span class="bone bone--para"></span>
+            <span class="bone bone--para"></span>
+            <span class="bone bone--para"></span>
+            <span class="bone bone--para"></span>
+            <span class="bone bone--para"></span>
+            <span class="bone bone--para"></span>
+            <span class="bone bone--para"></span>
+          <span class="bone bone--para bone--last"></span>
+        </div>
+      </div>
+    </main>
+
+    <aside class="m-col m-col--facts" aria-hidden="true">
+      <span class="bone bone--short"></span>
+      <div class="stack" style="margin-top:1rem">
+        <div class="stack stack--tight">
+          <span class="bone bone--short"></span>
+          <span class="bone bone--line"></span>
+        </div>
+        <div class="stack stack--tight">
+          <span class="bone bone--short"></span>
+          <span class="bone bone--line"></span>
+        </div>
+        <div class="stack stack--tight">
+          <span class="bone bone--short"></span>
+          <span class="bone bone--line"></span>
+        </div>
+        <div class="stack stack--tight">
+          <span class="bone bone--short"></span>
+          <span class="bone bone--line"></span>
+        </div>
+        <div class="stack stack--tight">
+          <span class="bone bone--short"></span>
+          <span class="bone bone--line"></span>
+        </div>
+        <div class="stack stack--tight">
+          <span class="bone bone--short"></span>
+          <span class="bone bone--line"></span>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+<script src="js/mock.js"></script>
+</body>
+</html>

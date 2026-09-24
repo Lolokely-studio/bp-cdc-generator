@@ -98,6 +98,21 @@ describe("les jetons", () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
+  it("ne nomme aucun modificateur de colonne comme un composant du socle", () => {
+    // `.m-col.facts` percutait `.facts`, la liste clé/valeur du socle, qui
+    // est une grille : la colonne mémoire de l'atelier en héritait sans que
+    // personne l'ait voulu, et ses enfants s'espaçaient tout seuls. Le
+    // défaut a traversé la revue finale — il ne se voit qu'à l'écran.
+    const composants = new Set([
+      ...sheet("app.css").matchAll(/^\.([a-z][\w-]*)/gm),
+      ...sheet("base.css").matchAll(/^\.([a-z][\w-]*)/gm),
+    ].map((m) => m[1]));
+    const modificateurs = [...sheet("workspace.css").matchAll(/\.m-col\.([a-z-]+)/g)]
+      .map((m) => m[1]);
+
+    expect(modificateurs.filter((nom) => composants.has(nom))).toEqual([]);
+  });
+
   it("n'a plus d'échafaudage", () => {
     const globals = read("app/globals.css");
     expect(globals).not.toContain("legacy");

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, waitForElementToBeRemoved } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -87,6 +87,18 @@ describe("ExportsView", () => {
     expect(await screen.findByText(/porteront la mention Brouillon/)).toBeInTheDocument();
   });
 
+  it("montre l'échec du chargement plutôt qu'un squelette qui attend pour rien", async () => {
+    // Des formes qui attendent quelque chose qui ne viendra pas font
+    // patienter sans raison. L'erreur prime.
+    vi.stubGlobal("fetch", routeFetch({
+      "GET /projects/p-1/state": () => json({ detail: "erreur" }, 500),
+      "GET /projects/p-1/exports": () => json({ detail: "erreur" }, 500),
+    }));
+    show();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(document.querySelector(".skeleton")).toBeNull();
+  });
+
   it("dit qu'une génération tourne, sans promettre d'étapes", async () => {
     // L'API ne rapporte aucun avancement : montrer une barre ou un
     // pourcentage serait l'inventer.
@@ -95,7 +107,12 @@ describe("ExportsView", () => {
       "GET /projects/p-1/exports": () => json({ fichiers: [], en_cours: true, dernier_export: null }),
     }));
     show();
-    const encart = await screen.findByRole("status");
+    // Le squelette de chargement annonce lui aussi son attente en
+    // `role="status"`. On attend qu'il cède la place, sinon `findByRole`
+    // rend son annonce à lui et le test passerait sans rien vérifier.
+    await waitForElementToBeRemoved(
+      () => screen.queryByText("Chargement de vos documents."));
+    const encart = screen.getByRole("status");
     expect(encart).toHaveTextContent("Génération en cours.");
     expect(encart).toHaveTextContent("comptez jusqu'à deux minutes");
     expect(screen.queryByRole("progressbar")).toBeNull();

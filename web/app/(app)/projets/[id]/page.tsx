@@ -8,6 +8,7 @@ import { useSetCrumbs } from "@/components/Crumbs";
 import { FactsColumn } from "@/components/FactsColumn";
 import { PlanColumn } from "@/components/PlanColumn";
 import { WorkspaceCenter } from "@/components/WorkspaceCenter";
+import { WorkspaceSkeleton } from "@/components/WorkspaceSkeleton";
 import { ApiError, api } from "@/lib/api";
 import { sendAnswer } from "@/lib/answer";
 import { useCatalogue } from "@/lib/catalogue";
@@ -136,7 +137,7 @@ export default function WorkspacePage() {
       </main>
     );
   }
-  if (!state) return <main className="page"><p className="t-note">Chargement du projet…</p></main>;
+  if (!state) return <WorkspaceSkeleton />;
 
   if (state.interaction?.kind === "inconsistencies") {
     return (

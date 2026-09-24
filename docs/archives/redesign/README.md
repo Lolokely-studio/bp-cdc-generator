@@ -94,6 +94,18 @@ Il emprunte Playwright à `web/node_modules` : c'est la seule copie du dépôt.
   le 2026-09-24. La case « je ne sais pas » est désormais son propre
   `<label class="check">`, au lieu d'un `<span>` niché dans l'étiquette du
   champ, où son clic rivalisait avec celui du champ.
+- **Trois écrans d'attente, pas un mot « Chargement… ».** Les projets, les
+  documents et l'atelier posent un squelette qui reprend la mesure de ce qui
+  vient — sinon la page saute au moment où le contenu arrive, ce que le
+  squelette est censé éviter. Les formes portent `aria-hidden` et une seule
+  annonce en `.sr` dit l'attente : énumérer douze blocs vides à un lecteur
+  d'écran n'apprendrait rien.
+- **`m-col--facts`, et non `m-col facts`.** `.facts` est déjà un composant
+  du socle — la liste clé/valeur de « compte en attente », qui est une
+  grille. La colonne mémoire de l'atelier en héritait sans que personne
+  l'ait voulu, et ses enfants s'espaçaient tout seuls. Corrigé le
+  2026-09-24, dans la maquette comme dans le code ; un test interdit
+  désormais qu'un modificateur de colonne porte le nom d'un composant.
 - Inter et Source Serif viennent de Google Fonts. Dans l'application, `next/font` les sert
   depuis le domaine du site.
 - `.topbar` recopiait `--ground` à la main dans un `rgba()` : la barre haute ne suivait plus

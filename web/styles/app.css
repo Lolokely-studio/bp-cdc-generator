@@ -307,12 +307,37 @@
    -------------------------------------------------------------------------- */
 
 .skeleton { pointer-events: none; }
-.skeleton .bone { border-radius: 4px; background: var(--rule-soft); }
+.skeleton .bone { display: block; border-radius: 4px; background: var(--rule-soft); }
+
+/* Les os reprennent la mesure de ce qu'ils remplacent : un squelette dont
+   les blocs n'ont pas la taille du contenu fait sauter la page au moment
+   où il cède la place, ce qu'il est censé éviter. */
 .skeleton .bone--title { width: 62%; height: 1rem; }
 .skeleton .bone--tag { width: 4.5rem; height: 1.125rem; border-radius: var(--radius-pill); }
 .skeleton .bone--line { width: 78%; height: 0.75rem; }
 .skeleton .bone--ticks { width: 100%; height: 14px; }
 .skeleton .bone--short { width: 45%; height: 0.75rem; }
+.skeleton .bone--head { width: 14rem; height: 1.75rem; }
+.skeleton .bone--sub { width: 20rem; max-width: 70%; height: 0.875rem; margin-top: 0.5rem; }
+.skeleton .bone--btn { width: 9rem; height: 2.375rem; border-radius: var(--radius); }
+/* Dans une fiche de document seulement : les deux os se partagent la
+   ligne comme les vrais boutons Word et PDF, et s'empilent quand elle
+   devient trop étroite. Ailleurs — l'en-tête de page — l'os garde sa
+   largeur fixe. */
+.skeleton .doc .btn-row .bone--btn { flex: 1 1 8rem; width: auto; }
+.skeleton .bone--para { width: 100%; height: 0.875rem; }
+.skeleton .bone--para:nth-child(odd) { width: 92%; }
+.skeleton .bone--last { width: 58%; }
+
+/* La vignette d'un document : même gabarit que `.sheet`, sans ses traits. */
+.skeleton .bone--sheet {
+  width: 3.25rem; height: 4.25rem;
+  flex: none;
+  border-radius: 3px;
+}
+
+.skeleton .stack { display: grid; gap: 0.5rem; min-width: 0; flex: 1; }
+.skeleton .stack--tight { gap: 0.375rem; }
 
 @media (prefers-reduced-motion: no-preference) {
   .skeleton .bone { animation: breathe 1.4s ease-in-out infinite; }

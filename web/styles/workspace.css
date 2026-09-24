@@ -16,11 +16,16 @@
 
 .m-col { padding: 1.125rem; }
 .m-col.plan { border-right: 1px solid var(--rule); }
-.m-col.facts { border-left: 1px solid var(--rule); }
+/* `m-col--facts` et non `m-col facts` : `.facts` est déjà un composant du
+   socle — la liste clé/valeur de l'écran « compte en attente », qui est une
+   grille. La colonne mémoire en héritait sans que personne l'ait voulu, et
+   ses enfants s'espaçaient tout seuls. Un modificateur ne peut pas percuter
+   un composant. */
+.m-col--facts { border-left: 1px solid var(--rule); }
 
 /* Les colonnes latérales s'enfoncent dans le sol ; le centre est la
    surface sur laquelle on travaille. */
-.m-col.plan, .m-col.facts { background: var(--ground); }
+.m-col.plan, .m-col--facts { background: var(--ground); }
 .m-col.center { padding: 1.5rem 1.75rem; min-width: 0; background: var(--surface); }
 
 /* --- Intitulé de colonne ------------------------------------------------ */
@@ -223,7 +228,7 @@
 
 @media (max-width: 68.75rem) {
   .m-ws { grid-template-columns: 15rem minmax(0, 1fr); }
-  .m-col.facts { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--rule); }
+  .m-col--facts { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--rule); }
 }
 
 @media (max-width: 47.5rem) {

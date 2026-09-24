@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useSetCrumbs } from "@/components/Crumbs";
 import { ExportFiles } from "@/components/ExportFiles";
+import { ExportsSkeleton } from "@/components/ExportsSkeleton";
 import { MissingData } from "@/components/MissingData";
 import { ReopenForm } from "@/components/ReopenForm";
 import { ApiError, api } from "@/lib/api";
@@ -71,16 +72,18 @@ export function ExportsView({ projectId, pollMs = 2000 }: { projectId: string; p
   ]);
 
   if (!exports || !state) {
-    return (
-      <main className="page">
-        <p className="t-note">Chargement…</p>
-        {error && (
+    // L'erreur prime sur le squelette : montrer des formes qui attendent
+    // quelque chose qui ne viendra pas ferait patienter pour rien.
+    if (error) {
+      return (
+        <main className="page">
           <div className="callout callout--stop" role="alert">
             <span className="callout__body">{error}</span>
           </div>
-        )}
-      </main>
-    );
+        </main>
+      );
+    }
+    return <ExportsSkeleton />;
   }
 
   const files = exports.fichiers;

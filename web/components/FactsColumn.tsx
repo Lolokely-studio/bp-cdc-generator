@@ -6,7 +6,7 @@ export function FactsColumn({ facts, catalogue }: { facts: Record<string, Fact>;
   // Un fait hors catalogue n'a ni libellé ni type : il ne s'affiche pas.
   const known = Object.values(facts).filter((fact) => catalogue.faits[fact.fact_id]);
   return (
-    <aside className="m-col facts" aria-label="Mémoire du projet">
+    <aside className="m-col m-col--facts" aria-label="Mémoire du projet">
       <p className="m-cap">Mémoire du projet</p>
       <p className="t-note t-fine">Partagée entre le cahier des charges et le business plan.</p>
       <div className="m-legend">
