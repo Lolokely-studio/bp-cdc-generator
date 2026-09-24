@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
+import { AppShellSkeleton } from "@/components/AppShellSkeleton";
 import { CrumbsProvider } from "@/components/Crumbs";
 import { TopBar } from "@/components/TopBar";
 import { ApiError, api, getToken, setInactiveHandler, setUnauthorizedHandler } from "@/lib/api";
@@ -53,9 +54,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </main>
     );
   }
-  if (!email) {
-    return <main className="page"><p className="t-note">Chargement…</p></main>;
-  }
+  if (!email) return <AppShellSkeleton />;
   return (
     <CrumbsProvider>
       <TopBar email={email} />

@@ -94,12 +94,20 @@ Il emprunte Playwright à `web/node_modules` : c'est la seule copie du dépôt.
   le 2026-09-24. La case « je ne sais pas » est désormais son propre
   `<label class="check">`, au lieu d'un `<span>` niché dans l'étiquette du
   champ, où son clic rivalisait avec celui du champ.
-- **Trois écrans d'attente, pas un mot « Chargement… ».** Les projets, les
+- **Quatre écrans d'attente, pas un mot « Chargement… ».** Les projets, les
   documents et l'atelier posent un squelette qui reprend la mesure de ce qui
   vient — sinon la page saute au moment où le contenu arrive, ce que le
   squelette est censé éviter. Les formes portent `aria-hidden` et une seule
   annonce en `.sr` dit l'attente : énumérer douze blocs vides à un lecteur
   d'écran n'apprendrait rien.
+- **Le quatrième est différent, et c'est voulu.** Le seuil — la vérification
+  de session — enveloppe toutes les pages, qui n'ont pas la même forme. Il
+  pose donc la coquille, marque comprise, et **rien d'autre** : en deviner
+  une ferait sauter la page deux fois, quand ce squelette cède la place puis
+  quand celui de l'écran s'installe. Il se tait aussi pendant 250 ms, comme
+  l'écran de réveil : la vérification répond en général en quelques dizaines
+  de millisecondes, et montrer puis retirer un squelette si vite ne ferait
+  que clignoter.
 - **`m-col--facts`, et non `m-col facts`.** `.facts` est déjà un composant
   du socle — la liste clé/valeur de « compte en attente », qui est une
   grille. La colonne mémoire de l'atelier en héritait sans que personne

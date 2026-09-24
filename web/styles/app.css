@@ -336,6 +336,11 @@
   border-radius: 3px;
 }
 
+/* Les deux formes de la barre haute : le fil d'ariane et le compte. La
+   marque, elle, n'est pas un os — on la connaît, on la pose. */
+.skeleton .bone--crumb { width: 11rem; max-width: 40vw; height: 0.875rem; margin-inline-start: 0.5rem; }
+.skeleton .bone--avatar { width: 2rem; height: 2rem; border-radius: var(--radius-pill); margin-inline-start: auto; }
+
 .skeleton .stack { display: grid; gap: 0.5rem; min-width: 0; flex: 1; }
 .skeleton .stack--tight { gap: 0.375rem; }
 
