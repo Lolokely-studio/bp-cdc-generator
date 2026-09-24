@@ -107,3 +107,9 @@ Il emprunte Playwright à `web/node_modules` : c'est la seule copie du dépôt.
   « Votre idée » seul. Le champ pose maintenant un `<div class="field">`, un
   `<label class="field__label" for="idee">` qui ne contient que le texte du champ, et relie
   le compteur et l'indice au `<textarea>` par `aria-describedby`.
+- `nouveau-idee.html` posait aussi le champ « Nom du projet » dans un `<label class="field">`
+  enveloppant. Il ne portait pas encore d'erreur visible dans la maquette statique, mais la
+  même forme dans l'application s'est révélée sujette au même défaut dès qu'un message
+  d'erreur s'affiche à l'intérieur. Le champ pose maintenant, comme celui de « Votre idée »,
+  un `<div class="field">` et un `<label class="field__label" for="nom">` qui ne contient
+  que le texte.

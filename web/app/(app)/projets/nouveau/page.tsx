@@ -128,13 +128,18 @@ export default function NewProjectPage() {
         </p>
       </div>
       <form onSubmit={create} noValidate>
-        <label className="field">
-          <span className="field__label">Nom du projet</span>
-          <input className="input" maxLength={200} value={nom}
+        <div className="field">
+          {/* L'erreur reste hors du `<label>` : dedans, elle rejoindrait
+              « Nom du projet » dans le nom accessible du champ, et
+              `getByLabelText` cesserait de le reconnaître dès qu'elle
+              s'affiche. */}
+          <label className="field__label" htmlFor="nom">Nom du projet</label>
+          <input id="nom" className="input" maxLength={200} value={nom}
             aria-invalid={errors.nom ? true : undefined}
+            aria-describedby={errors.nom ? "nom-erreur" : undefined}
             onChange={(e) => setNom(e.target.value)} />
-          {errors.nom && <span className="field__error">{errors.nom}</span>}
-        </label>
+          {errors.nom && <span className="field__error" id="nom-erreur">{errors.nom}</span>}
+        </div>
         <div className="field">
           <span className="field__head">
             {/* Un `<span>`, pas un `<label>` autour du compteur : sinon « 0 / 5 000 »
@@ -145,9 +150,10 @@ export default function NewProjectPage() {
             <CharCount value={idee} max={MAX_IDEA} id="compte-idee" />
           </span>
           <textarea id="idee" className="textarea" rows={7} value={idee}
-            aria-invalid={errors.idee ? true : undefined} aria-describedby="compte-idee"
+            aria-invalid={errors.idee ? true : undefined}
+            aria-describedby={errors.idee ? "compte-idee idee-erreur" : "compte-idee"}
             onChange={(e) => setIdee(e.target.value)} />
-          {errors.idee && <span className="field__error">{errors.idee}</span>}
+          {errors.idee && <span className="field__error" id="idee-erreur">{errors.idee}</span>}
         </div>
         {errors.form && (
           <div className="callout callout--stop" role="alert" style={{ marginTop: "1rem" }}>

@@ -91,4 +91,18 @@ describe("la création d'un projet", () => {
     expect(screen.getByText("L'idée tient en 5000 caractères au plus.")).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("garde chaque champ trouvable par son étiquette quand l'erreur s'affiche", async () => {
+    // Une erreur nichée dans le `<label>` rejoint le nom accessible du
+    // champ : « Nom du projet » devient « Nom du projet Donnez un nom au
+    // projet. », et `getByLabelText` ne trouve plus rien. Le piège s'est
+    // déjà refermé trois fois sur ce plan.
+    const user = userEvent.setup();
+    page();
+    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Analyser mon idée" }));
+    expect(screen.getByText("Donnez un nom au projet.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Nom du projet")).toBeInTheDocument();
+    expect(screen.getByLabelText("Votre idée")).toBeInTheDocument();
+  });
 });
