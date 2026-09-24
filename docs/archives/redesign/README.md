@@ -123,3 +123,5 @@ Il emprunte Playwright à `web/node_modules` : c'est la seule copie du dépôt.
   d'erreur s'affiche à l'intérieur. Le champ pose maintenant, comme celui de « Votre idée »,
   un `<div class="field">` et un `<label class="field__label" for="nom">` qui ne contient
   que le texte.
+- `documents.html` écrivait « Regénérer les documents » sans accent, corrigé en
+  « Régénérer » le 2026-09-24. Le code portait déjà la bonne orthographe.

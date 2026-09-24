@@ -58,3 +58,30 @@ test("les écrans tiennent aux quatre largeurs", async ({ page }) => {
     }
   }
 });
+
+test("l'atelier et les documents tiennent aux quatre largeurs", async ({ page }) => {
+  // L'atelier est le seul écran à trois colonnes, avec deux replis : la
+  // mémoire passe sous les autres à 1100 px, puis tout s'empile à 760 px.
+  // C'est celui qui risque le plus.
+  await login(page);
+
+  const card = page.locator("a.project").first();
+  // Pas de `test.skip` : un cas sauté en silence ne protège rien. Si la
+  // base de test est vide, c'est le montage qu'il faut réparer.
+  await expect(card, "la base de test doit porter au moins un projet").toBeVisible();
+
+  // La fiche mène à l'atelier ou aux documents selon l'état du projet. On
+  // prend son identifiant et on visite les deux, pour que le cas tienne la
+  // promesse de son nom quel que soit l'état du premier projet.
+  const href = await card.getAttribute("href");
+  const id = href!.match(/\/projets\/([^/]+)/)![1];
+
+  for (const route of [`/projets/${id}`, `/projets/${id}/exports`]) {
+    for (const width of WIDTHS) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(route);
+      await page.waitForLoadState("networkidle");
+      expect(await problems(page, width), `${route} à ${width}px`).toEqual([]);
+    }
+  }
+});
