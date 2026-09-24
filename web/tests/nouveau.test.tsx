@@ -22,9 +22,9 @@ describe("la création d'un projet", () => {
     const user = userEvent.setup();
     page();
 
-    await user.click(screen.getByRole("button", { name: /Cahier des charges/ }));
+    await user.click(screen.getByRole("radio", { name: /Cahier des charges/ }));
     expect(screen.queryByText("Qui lira le business plan ?")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Cadrer mon projet" }));
+    await user.click(screen.getByRole("radio", { name: "Cadrer mon projet" }));
     await user.click(screen.getByRole("button", { name: "Continuer" }));
     await user.type(screen.getByLabelText("Nom du projet"), "CoachDom");
     await user.type(screen.getByLabelText("Votre idée"), "Des coachs à domicile.");
@@ -41,9 +41,9 @@ describe("la création d'un projet", () => {
   it("annonce le nombre de sections du profil choisi", async () => {
     const user = userEvent.setup();
     page();
-    expect(screen.getByRole("button", { name: /Cahier des charges/ })).toHaveTextContent("3 sections");
-    await user.click(screen.getByRole("button", { name: "Cadrer mon projet" }));
-    expect(screen.getByRole("button", { name: /Cahier des charges/ })).toHaveTextContent("2 sections");
+    expect(screen.getByRole("radio", { name: /Cahier des charges/ })).toHaveTextContent("3 sections");
+    await user.click(screen.getByRole("radio", { name: "Cadrer mon projet" }));
+    expect(screen.getByRole("radio", { name: /Cahier des charges/ })).toHaveTextContent("2 sections");
   });
 
   it("refuse un nom ou une idée vides, sans appeler l'API", async () => {
@@ -55,6 +55,40 @@ describe("la création d'un projet", () => {
     await user.click(screen.getByRole("button", { name: "Analyser mon idée" }));
     expect(screen.getByText("Donnez un nom au projet.")).toBeInTheDocument();
     expect(screen.getByText("Décrivez votre idée en quelques phrases.")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("montre ce qui reste à écrire, et le dit quand la borne approche", async () => {
+    const user = userEvent.setup();
+    page();
+    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    const idee = screen.getByLabelText("Votre idée");
+    await user.type(idee, "Des coachs.");
+    expect(screen.getByText("11 / 5 000")).toBeInTheDocument();
+  });
+
+  it("passe le compteur en alerte dès 90 % de la borne", async () => {
+    const user = userEvent.setup();
+    page();
+    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    const idee = screen.getByLabelText("Votre idée");
+    await user.click(idee);
+    await user.paste("a".repeat(4500));
+    expect(screen.getByText("4 500 / 5 000")).toHaveClass("field__count--near");
+  });
+
+  it("laisse un texte collé dépasser la borne, et le refuse à l'envoi", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    page();
+    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.type(screen.getByLabelText("Nom du projet"), "CoachDom");
+    const idee = screen.getByLabelText("Votre idée");
+    await user.click(idee);
+    await user.paste("a".repeat(5001));
+    await user.click(screen.getByRole("button", { name: "Analyser mon idée" }));
+    expect(screen.getByText("L'idée tient en 5000 caractères au plus.")).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

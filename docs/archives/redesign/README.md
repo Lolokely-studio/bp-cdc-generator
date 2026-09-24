@@ -101,3 +101,9 @@ Il emprunte Playwright à `web/node_modules` : c'est la seule copie du dépôt.
   `#volet-creation`) porte maintenant son propre `<h1 class="sr">`, masqué à l'œil parce que
   l'onglet actif dit déjà le même texte visuellement ; un titre visible en plus aurait fait
   doublon avec lui.
+- `nouveau-idee.html` avait le même défaut que `connexion.html` : le `<label class="field">`
+  du champ « Votre idée » enveloppait à la fois `.field__label` et `.field__count`, si bien
+  que `getByLabelText("Votre idée")` lisait « Votre idée 0 / 5 000 » et cessait de reconnaître
+  « Votre idée » seul. Le champ pose maintenant un `<div class="field">`, un
+  `<label class="field__label" for="idee">` qui ne contient que le texte du champ, et relie
+  le compteur et l'indice au `<textarea>` par `aria-describedby`.

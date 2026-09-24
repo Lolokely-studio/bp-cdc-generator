@@ -680,11 +680,18 @@
 
 .segment__opt:hover { color: var(--ink); }
 
-.segment__opt[aria-checked="true"] {
+/* Deux motifs, une apparence. `aria-checked` pour un groupe radio ;
+   `aria-pressed` pour une paire dont un côté peut être désactivé — un
+   arbitrage qui ne nomme aucune section ne peut pas être corrigé, ce
+   qu'un groupe radio ne dirait pas. */
+.segment__opt[aria-checked="true"],
+.segment__opt[aria-pressed="true"] {
   background: var(--ink);
   color: #fff;
   font-weight: 600;
 }
+
+.segment__opt:disabled { opacity: 0.45; pointer-events: none; }
 
 /* Replié, un contrôle segmenté n'est plus une piste : il devient une liste
    d'options empilées, chacune sur toute la largeur. */

@@ -17,18 +17,6 @@
 .m-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .m-tag{font-size:.74rem;font-weight:600;border-radius:999px;padding:1px 8px;border:1px solid var(--rule-strong);color:var(--ink-soft)}
 .m-tag.done{color:var(--ok);border-color:var(--ok)}
-.m-stepper{display:flex;gap:22px;margin-bottom:22px;font-size:.88rem;color:var(--ink-soft);flex-wrap:wrap}
-.m-stepper span{display:flex;gap:7px;align-items:center}
-.m-stepper em{font-style:normal;width:22px;height:22px;border-radius:50%;border:1px solid var(--rule-strong);display:grid;place-items:center;font-size:.78rem}
-.m-stepper .on{color:var(--ink);font-weight:600}
-.m-stepper .on em{background:var(--ink);color:var(--ground);border-color:var(--ink)}
-.m-stepper .past em{background:var(--ok);color:var(--ground);border-color:var(--ok)}
-.m-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}
-.m-profile{margin-top:22px;padding-top:18px;border-top:1px solid var(--rule)}
-.m-tile{text-align:left;border:1.5px solid var(--rule-strong);border-radius:12px;background:var(--surface);padding:18px;cursor:pointer;display:flex;flex-direction:column;gap:6px}
-.m-tile:hover{border-color:var(--ink)}
-.m-tile[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
-.m-tile b{font-size:1.05rem}
 .m-label{display:block;font-weight:500;margin:0 0 6px;font-size:.95rem}
 .m-input{width:100%;border:1px solid var(--rule-strong);border-radius:8px;padding:9px 11px;background:var(--ground);color:var(--ink);font:inherit;font-size:.95rem}
 .m-input:disabled{opacity:.5}
@@ -72,7 +60,7 @@ textarea.m-input{resize:vertical;line-height:1.5}
   @keyframes mSpin{to{transform:rotate(360deg)}}
 }
 @media (max-width:760px){
-  .m-tiles,.m-split{grid-template-columns:1fr}
+  .m-split{grid-template-columns:1fr}
 }
 
 /* Ajouts de l'application, absents de la maquette : la maquette vivait dans

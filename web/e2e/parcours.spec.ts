@@ -73,8 +73,8 @@ test("du compte aux documents, puis une section rouverte", async ({ page }) => {
   await login(page);
 
   await page.getByRole("link", { name: "Nouveau projet" }).click();
-  await page.getByRole("button", { name: /Cahier des charges/ }).click();
-  await page.getByRole("button", { name: "Cadrer mon projet" }).click();
+  await page.getByRole("radio", { name: /Cahier des charges/ }).click();
+  await page.getByRole("radio", { name: "Cadrer mon projet" }).click();
   await page.getByRole("button", { name: "Continuer" }).click();
   await page.getByLabel("Nom du projet").fill("CoachDom");
   await page.getByLabel("Votre idée").fill("Une plateforme de coaching sportif à domicile.");
