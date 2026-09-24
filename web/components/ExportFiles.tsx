@@ -18,36 +18,36 @@ export function ExportFiles({ files }: { files: ExportFile[] }) {
 
   return (
     <>
-      <div className="m-docs">
+      <div className="docs">
         {groups.map((group) => {
           const brouillon = Boolean(group.docx?.brouillon || group.pdf?.brouillon);
           return (
-            <div className="m-docc" key={group.document}>
-              <div className="m-thumb" aria-hidden="true"><i /><i /><i /><i /><i /></div>
-              <div>
-                <b>
-                  {DOCUMENT_LABEL[group.document]}
-                  {brouillon && <span className="m-tag">Brouillon</span>}
-                </b>
-                <div className="m-row">
+            <div className="doc" key={group.document}>
+              <span className="sheet" aria-hidden="true"><i /><i /><i /><i /><i /></span>
+              <div className="doc__body">
+                <p className="doc__title">
+                  <span className="t-card">{DOCUMENT_LABEL[group.document]}</span>
+                  {brouillon && <span className="tag tag--wait">Brouillon</span>}
+                </p>
+                <div className="btn-row">
                   {group.docx && (
-                    <a className="m-btn sm" href={group.docx.lien} target="_blank" rel="noopener noreferrer">
+                    <a className="btn btn--outline btn--sm" href={group.docx.lien} target="_blank" rel="noopener noreferrer">
                       Télécharger le Word
                     </a>
                   )}
                   {group.pdf && (
-                    <a className="m-btn sm sec" href={group.pdf.lien} target="_blank" rel="noopener noreferrer">
+                    <a className="btn btn--outline btn--sm" href={group.pdf.lien} target="_blank" rel="noopener noreferrer">
                       Télécharger le PDF
                     </a>
                   )}
                 </div>
                 {brouillon && (
-                  <p className="m-hint">
+                  <p className="t-fine">
                     Au moins une section a été passée sans validation : le document porte un filigrane.
                   </p>
                 )}
                 {group.pdf && !group.pdf.fidele && (
-                  <p className="m-hint">
+                  <p className="t-fine">
                     Ce PDF vient du convertisseur de secours : sa mise en page peut différer de
                     l'original — c'est le Word, qui fait foi.
                   </p>
@@ -57,7 +57,7 @@ export function ExportFiles({ files }: { files: ExportFile[] }) {
           );
         })}
       </div>
-      <p className="m-muted small" style={{ marginTop: 10 }}>
+      <p className="t-note t-fine" style={{ marginTop: 10 }}>
         Les liens expirent au bout de dix minutes : rechargez la page pour en obtenir de neufs.
       </p>
     </>

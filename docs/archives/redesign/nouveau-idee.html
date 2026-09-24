@@ -45,20 +45,21 @@
     </div>
 
     <form novalidate>
-      <label class="field">
-        <span class="field__label">Nom du projet</span>
-        <input class="input" maxlength="200" value="Atelier de torréfaction Noria">
-      </label>
+      <div class="field">
+        <label class="field__label" for="nom">Nom du projet</label>
+        <input id="nom" class="input" maxlength="200" value="Atelier de torréfaction Noria">
+      </div>
 
-      <label class="field">
+      <div class="field">
         <span class="field__head">
-          <span class="field__label">Votre idée</span>
+          <label class="field__label" for="idee">Votre idée</label>
           <span class="field__count" id="compte-idee" aria-live="off"></span>
         </span>
-        <textarea class="textarea" rows="7" maxlength="5000" data-compteur="compte-idee"
+        <textarea id="idee" class="textarea" rows="7" maxlength="5000" data-compteur="compte-idee"
+                  aria-describedby="compte-idee indice-idee"
                   placeholder="Nous torréfions du café de spécialité pour les restaurants de l'agglomération…">Nous ouvrons un atelier de torréfaction à Nantes pour les cafés de spécialité. Les restaurants et les bureaux de l'agglomération achètent aujourd'hui du café industriel ou le font venir de Paris, avec deux semaines entre la torréfaction et la tasse. Nous torréfions sur place, en petits lots, et livrons à vélo sous quarante-huit heures. Nous visons quatre-vingts comptes professionnels la première année.</textarea>
-        <span class="field__hint">Vous pourrez tout préciser ensuite : l'agent posera les questions qui manquent.</span>
-      </label>
+        <span class="field__hint" id="indice-idee">Vous pourrez tout préciser ensuite : l'agent posera les questions qui manquent.</span>
+      </div>
 
       <div class="actions">
         <a class="btn btn--ghost" href="nouveau-documents.html">Retour</a>

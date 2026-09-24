@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useReducer, useState } from "react";
 import { CoherencePanel } from "@/components/CoherencePanel";
+import { useSetCrumbs } from "@/components/Crumbs";
 import { FactsColumn } from "@/components/FactsColumn";
 import { PlanColumn } from "@/components/PlanColumn";
 import { WorkspaceCenter } from "@/components/WorkspaceCenter";
@@ -26,12 +27,19 @@ const TRANSIENT_MS = 700;
 // et l'écran propose « Reprendre » à la place d'attendre pour toujours.
 const IDLE_STUCK_MS = 20_000;
 
+// Constat 2 de la revue finale. Le bandeau passager porte aussi bien une
+// information (« déjà répondu ») qu'un échec (réponse mal formée, réponse
+// non partie, reprise non lancée) : `live` = ça tourne, `stop` = interrompu,
+// échoué, refusé (`tokens.css`). Le ton et le rôle ARIA suivent la nature du
+// message, pas un tag unique.
+type Notice = { text: string; tone: "live" | "stop" };
+
 export default function WorkspacePage() {
   const { id } = useParams<{ id: string }>();
   const catalogue = useCatalogue();
   const [live, dispatch] = useReducer(liveReducer, initialLive);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [idleStuck, setIdleStuck] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -49,6 +57,11 @@ export default function WorkspacePage() {
 
   const state = live.state;
   const status = state?.projet.run_status;
+
+  useSetCrumbs([
+    { label: "Mes projets", href: "/projets" },
+    { label: state?.projet.nom ?? "Projet" },
+  ]);
 
   // Constat 5 de la revue finale : un projet mort-né reste `idle` pour
   // toujours. Passé `IDLE_STUCK_MS` sans en sortir, on cesse d'y croire —
@@ -90,12 +103,15 @@ export default function WorkspacePage() {
     setNotice(null);
     try {
       const outcome = await sendAnswer(id, interaction.id, reponse);
-      if (outcome === "perimee") setNotice("Cette étape avait déjà reçu une réponse : voici où en est le projet.");
+      if (outcome === "perimee") setNotice({ text: "Cette étape avait déjà reçu une réponse : voici où en est le projet.", tone: "live" });
       else dispatch({ type: "answered", interactionId: interaction.id });
     } catch (error) {
-      setNotice(error instanceof ApiError && error.code === "reponse_mal_formee"
-        ? "La réponse n'a pas la forme attendue. Rechargez la page et réessayez."
-        : "La réponse n'est pas partie. Vérifiez la connexion et réessayez.");
+      setNotice({
+        text: error instanceof ApiError && error.code === "reponse_mal_formee"
+          ? "La réponse n'a pas la forme attendue. Rechargez la page et réessayez."
+          : "La réponse n'est pas partie. Vérifiez la connexion et réessayez.",
+        tone: "stop",
+      });
     }
     await refresh();
   }
@@ -105,27 +121,31 @@ export default function WorkspacePage() {
     try {
       await api.resume(id);
     } catch {
-      setNotice("La reprise n'a pas pu être lancée. Réessayez dans un instant.");
+      setNotice({ text: "La reprise n'a pas pu être lancée. Réessayez dans un instant.", tone: "stop" });
     }
     await refresh();
   }
 
   if (loadError) {
     return (
-      <main className="m-body">
-        <p className="m-err" role="alert">{loadError}</p>
-        <div className="m-actions" style={{ justifyContent: "flex-start" }}>
-          <Link className="m-btn sec" href="/projets">Retour aux projets</Link>
+      <main className="page">
+        <p className="callout callout--stop" role="alert">{loadError}</p>
+        <div className="actions actions--start">
+          <Link className="btn btn--outline" href="/projets">Retour aux projets</Link>
         </div>
       </main>
     );
   }
-  if (!state) return <main className="m-body"><p className="m-muted">Chargement du projet…</p></main>;
+  if (!state) return <main className="page"><p className="t-note">Chargement du projet…</p></main>;
 
   if (state.interaction?.kind === "inconsistencies") {
     return (
       <>
-        {notice && <p className="m-note" role="status">{notice}</p>}
+        {notice && (
+          <p className={`callout callout--${notice.tone}`} role={notice.tone === "stop" ? "alert" : "status"}>
+            {notice.text}
+          </p>
+        )}
         <CoherencePanel key={state.interaction.id} interaction={state.interaction}
           catalogue={catalogue} onSubmit={answer} />
       </>
@@ -136,7 +156,11 @@ export default function WorkspacePage() {
     <div className="m-ws">
       <PlanColumn state={state} catalogue={catalogue} />
       <main className="m-col center">
-        {notice && <p className="m-note" role="status">{notice}</p>}
+        {notice && (
+          <p className={`callout callout--${notice.tone}`} role={notice.tone === "stop" ? "alert" : "status"}>
+            {notice.text}
+          </p>
+        )}
         <WorkspaceCenter projectId={id} live={live} catalogue={catalogue}
           onAnswer={answer} onResume={resume} idleStuck={idleStuck} />
       </main>

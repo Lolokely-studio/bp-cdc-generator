@@ -5,3 +5,7 @@ next-env.d.ts
 test-results/
 playwright-report/
 .env*.local
+
+# Générés par `next dev` / `next build` (règles Next pour les agents)
+AGENTS.md
+CLAUDE.md

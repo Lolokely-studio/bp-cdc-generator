@@ -22,12 +22,12 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
 
   if (failed) {
     return (
-      <main className="m-body">
-        <p className="m-err" role="alert">Le catalogue des sections n'a pas pu être chargé. Rechargez la page.</p>
+      <main className="page">
+        <p className="callout callout--stop" role="alert">Le catalogue des sections n'a pas pu être chargé. Rechargez la page.</p>
       </main>
     );
   }
-  if (!catalogue) return <main className="m-body"><p className="m-muted">Chargement…</p></main>;
+  if (!catalogue) return <main className="page"><p className="t-note">Chargement…</p></main>;
   return <CatalogueContext.Provider value={catalogue}>{children}</CatalogueContext.Provider>;
 }
 

@@ -1,0 +1,234 @@
+/* ==========================================================================
+   Esquisse — l'atelier de rédaction
+   La structure ne change pas : plan à gauche, ce qu'on écrit au centre,
+   mémoire à droite. Seules les valeurs changent — les classes sont
+   réécrites sur les nouveaux jetons, et tout ce qui était un bouton, un
+   champ ou un titre passe aux classes du socle plutôt que d'en redéfinir
+   une deuxième version ici.
+   ========================================================================== */
+
+.m-ws {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 15.5rem minmax(0, 1fr) 17rem;
+  min-height: 0;
+}
+
+.m-col { padding: 1.125rem; }
+.m-col.plan { border-right: 1px solid var(--rule); }
+.m-col.facts { border-left: 1px solid var(--rule); }
+
+/* Les colonnes latérales s'enfoncent dans le sol ; le centre est la
+   surface sur laquelle on travaille. */
+.m-col.plan, .m-col.facts { background: var(--ground); }
+.m-col.center { padding: 1.5rem 1.75rem; min-width: 0; background: var(--surface); }
+
+/* --- Intitulé de colonne ------------------------------------------------ */
+
+.m-cap { font-size: 0.8125rem; font-weight: 600; color: var(--ink-mid); margin-bottom: 0.5rem; }
+
+/* --- Avancement du plan ------------------------------------------------- */
+
+.m-prog {
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--rule);
+  overflow: hidden;
+  margin: 0.125rem 0 0.375rem;
+}
+
+.m-prog i { display: block; height: 100%; background: var(--ok); }
+
+.m-planlist { margin-top: 0.75rem; }
+
+.m-planlist li {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: start;
+  padding: 0.3125rem 0.125rem;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+.m-planlist li.ok { color: var(--ink-mid); }
+.m-planlist li.now { color: var(--ink); font-weight: 600; }
+
+.m-planlist .st {
+  position: relative;
+  width: 14px; height: 14px;
+  margin-top: 1px;
+  border: 1.5px solid var(--rule-strong);
+  border-radius: 50%;
+}
+
+.m-planlist li.ok .st { background: var(--ok); border-color: var(--ok); }
+
+.m-planlist li.ok .st::after {
+  content: "";
+  position: absolute;
+  left: 4px; top: 1px;
+  width: 3px; height: 7px;
+  border: solid var(--surface);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.m-planlist li.now .st { border: 4px solid var(--ink); }
+.m-planlist li.skipped .st { border-style: dashed; }
+
+/* Étiquette CDC / BP : le document dont vient la section. */
+.m-doc {
+  padding: 0 0.3125rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+/* --- En-tête de section ------------------------------------------------- */
+
+.m-sechead { display: flex; align-items: center; gap: 0.625rem; margin-bottom: 0.375rem; }
+
+.m-status {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+  margin: 0.625rem 0 0.875rem;
+}
+
+.m-pulse {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--live);
+  display: inline-block;
+  flex: none;
+}
+
+/* --- La prose --------------------------------------------------------- */
+
+.m-paper {
+  padding: 1.5rem 1.75rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--surface);
+  font-family: var(--serif);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  max-width: 68ch;
+}
+
+.m-paper p { margin: 0 0 0.75rem; }
+.m-paper p:last-child { margin-bottom: 0; }
+.m-paper ul { margin: 0 0 0.75rem; padding-left: 1.2em; list-style: disc; }
+.m-paper li { margin-bottom: 0.25rem; }
+
+.m-paper table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--sans);
+  font-size: 0.8125rem;
+  margin: 0.25rem 0 0.875rem;
+}
+
+.m-paper caption {
+  padding: 0 0 0.375rem;
+  font-family: var(--sans);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.m-paper th, .m-paper td {
+  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid var(--rule);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.m-paper th:first-child, .m-paper td:first-child { text-align: left; font-variant-numeric: normal; }
+.m-paper th { font-weight: 600; color: var(--ink-soft); }
+
+.m-tablewrap { overflow-x: auto; }
+
+/* Le curseur qui suit le texte pendant que l'agent écrit. */
+.m-caret {
+  display: inline-block;
+  width: 8px; height: 1.1em;
+  background: var(--ink);
+  vertical-align: text-bottom;
+}
+
+/* --- Mémoire du projet -------------------------------------------------- */
+
+.m-legend { display: flex; flex-wrap: wrap; gap: 0.375rem; margin: 0.5rem 0 0.25rem; }
+
+.m-facts { margin-top: 0.625rem; }
+
+.m-fact {
+  padding: 0.5625rem 0.375rem;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 4px;
+}
+
+.m-fact b {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.375rem;
+  margin-bottom: 0.125rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.m-fact .v { display: block; font-size: 0.875rem; line-height: 1.4; }
+
+/* --- Écrans de fin et de panne ------------------------------------------ */
+
+.m-done { max-width: 36rem; padding-top: 1.5rem; }
+.m-done p { margin: 0.5rem 0 1.125rem; color: var(--ink-soft); }
+
+/* --- Contrôle de cohérence ---------------------------------------------- */
+
+.m-conf {
+  padding: 1rem;
+  margin-top: 0.75rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.m-conf > b { display: block; margin-bottom: 0.25rem; }
+.m-conf .segment { margin-top: 0.625rem; }
+
+/* --------------------------------------------------------------------------
+   Mouvement
+   Rien ne bouge sans raison : chaque animation dit qu'un travail est en
+   cours, et s'arrête quand il s'arrête.
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  .m-pulse, .m-caret { animation: m-pulse 1s ease-in-out infinite; }
+  @keyframes m-pulse { 50% { opacity: 0.25; } }
+}
+
+/* --------------------------------------------------------------------------
+   Paliers
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 68.75rem) {
+  .m-ws { grid-template-columns: 15rem minmax(0, 1fr); }
+  .m-col.facts { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--rule); }
+}
+
+@media (max-width: 47.5rem) {
+  .m-ws { grid-template-columns: 1fr; }
+  .m-col.plan { max-height: 15rem; overflow: auto; border-right: 0; border-bottom: 1px solid var(--rule); }
+  .m-col.center { padding: 1.125rem; }
+  .m-paper { padding: 1.125rem; font-size: 1rem; }
+}

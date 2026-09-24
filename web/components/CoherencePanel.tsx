@@ -40,11 +40,11 @@ export function CoherencePanel({ interaction, catalogue, onSubmit }: {
 
   const count = interaction.inconsistencies.length;
   return (
-    <main className="m-body m-narrow">
-      <h1 className="m-h">
+    <main className="page page--narrow">
+      <h1 className="t-page">
         {count === 1 ? "Une incohérence entre les documents" : `${count} incohérences entre les documents`}
       </h1>
-      <p className="m-muted">
+      <p className="t-note">
         Choisissez comment les résoudre. Les sections à corriger seront réécrites avant l'export.
       </p>
       {interaction.inconsistencies.map((inconsistency, index) => {
@@ -52,29 +52,30 @@ export function CoherencePanel({ interaction, catalogue, onSubmit }: {
         return (
           <div className="m-conf" key={index}>
             <b>{humanize(inconsistency.kind)}</b>
-            <p className="m-muted small">{inconsistency.description}</p>
+            <p className="t-note t-fine">{inconsistency.description}</p>
             {inconsistency.sections.length > 0 ? (
-              <p className="m-muted small">
+              <p className="t-note t-fine">
                 Sections concernées : {inconsistency.sections.map((q) => qualifiedTitle(catalogue, q)).join(", ")}
               </p>
             ) : (
-              <p className="m-muted small">Aucune section du plan n'est nommée : seule « Ignorer » est possible.</p>
+              <p className="t-note t-fine">Aucune section du plan n'est nommée : seule « Ignorer » est possible.</p>
             )}
-            {inconsistency.proposal && <p className="small">Proposition : {inconsistency.proposal}</p>}
-            <div className="m-chips" role="group" aria-label={`Incohérence ${index + 1}`}>
-              <button className="m-chip" type="button" aria-pressed={choice.decision === "corriger"}
+            {inconsistency.proposal && <p className="t-fine">Proposition : {inconsistency.proposal}</p>}
+            <div className="segment" role="group" aria-label={`Incohérence ${index + 1}`}>
+              <button className="segment__opt" type="button" aria-pressed={choice.decision === "corriger"}
                 disabled={inconsistency.sections.length === 0}
                 onClick={() => update(index, { decision: "corriger" })}>Corriger</button>
-              <button className="m-chip" type="button" aria-pressed={choice.decision === "ignorer"}
+              <button className="segment__opt" type="button" aria-pressed={choice.decision === "ignorer"}
                 onClick={() => update(index, { decision: "ignorer" })}>Ignorer</button>
             </div>
             {choice.decision === "corriger" && (
               <div style={{ marginTop: 12 }}>
-                <label className="m-label" htmlFor={`consigne-${index}`}>Comment corriger ?</label>
-                <textarea id={`consigne-${index}`} className="m-input" rows={2} value={choice.consigne}
+                <label className="field__label" htmlFor={`consigne-${index}`}>Comment corriger ?</label>
+                <textarea id={`consigne-${index}`} className="textarea" rows={2} value={choice.consigne}
                   placeholder={inconsistency.proposal ?? ""}
+                  aria-describedby={`consigne-${index}-hint`}
                   onChange={(e) => update(index, { consigne: e.target.value })} />
-                <p className="m-hint">
+                <p className="field__hint" id={`consigne-${index}-hint`}>
                   {inconsistency.proposal ? "Laissez vide pour appliquer la proposition." : "Une phrase suffit."}
                 </p>
               </div>
@@ -82,9 +83,9 @@ export function CoherencePanel({ interaction, catalogue, onSubmit }: {
           </div>
         );
       })}
-      {error && <p className="m-err" role="alert">{error}</p>}
-      <div className="m-actions">
-        <button className="m-btn" type="button" disabled={busy} onClick={submit}>Appliquer et continuer</button>
+      {error && <p className="callout callout--stop" role="alert">{error}</p>}
+      <div className="actions actions--start">
+        <button className="btn btn--primary" type="button" disabled={busy} onClick={submit}>Appliquer et continuer</button>
       </div>
     </main>
   );

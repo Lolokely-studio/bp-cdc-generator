@@ -84,5 +84,52 @@ Il emprunte Playwright à `web/node_modules` : c'est la seule copie du dépôt.
   sont repris mot pour mot. Ils disent une vraie limite, pas une décoration.
 - L'écran de génération ne montre pas d'étapes : l'API ne rapporte pas d'avancement, et en
   inventer un serait mentir. Un indicateur, et la raison des deux minutes.
+- **Une étiquette ne porte que son intitulé.** Note d'aide, message
+  d'erreur, compteur, case « je ne sais pas » vivent hors du `<label>`, dans
+  le `<div class="field">`, reliés par `for`/`id` et `aria-describedby`.
+  Nichés dedans, ils entrent dans le nom accessible du champ : un lecteur
+  d'écran annonce « Votre idée 0 / 5 000 », et `getByLabelText` ne trouve
+  plus rien. Les maquettes portaient ce défaut sur cinq champs — celui de la
+  réouverture d'une section et les trois questions de l'atelier — corrigés
+  le 2026-09-24. La case « je ne sais pas » est désormais son propre
+  `<label class="check">`, au lieu d'un `<span>` niché dans l'étiquette du
+  champ, où son clic rivalisait avec celui du champ.
 - Inter et Source Serif viennent de Google Fonts. Dans l'application, `next/font` les sert
   depuis le domaine du site.
+- `.topbar` recopiait `--ground` à la main dans un `rgba()` : la barre haute ne suivait plus
+  le fond si le jeton bougeait. Elle le dérive maintenant avec `color-mix(in srgb, var(--ground)
+  88%, transparent)`. `color-mix()` demande Safari 16.2, Chrome 111 ou Firefox 113 ; en deçà,
+  la barre perd sa transparence, sans devenir illisible.
+- `connexion.html` nichait la note d'aide du mot de passe (`.field__hint`) à l'intérieur du
+  `<label>` du champ. Un lecteur d'écran annonce alors le nom du champ suivi de la note
+  entière, et c'est aussi ce que `getByLabelText("Mot de passe")` lit : il cesse de
+  reconnaître « Mot de passe » tout court. Le champ « Mot de passe » à l'inscription pose
+  maintenant la note comme sœur du `<label>`, reliée par `aria-describedby`.
+- `connexion.html` ne posait aucun titre : les deux autres écrans d'entrée (compte en
+  attente, réveil du serveur) ont chacun un `<h1>`, celui-ci n'en avait pas — rien ne dit à
+  qui navigue de titre en titre que la page a changé. Chaque volet (`#volet-connexion`,
+  `#volet-creation`) porte maintenant son propre `<h1 class="sr">`, masqué à l'œil parce que
+  l'onglet actif dit déjà le même texte visuellement ; un titre visible en plus aurait fait
+  doublon avec lui.
+- `nouveau-idee.html` avait le même défaut que `connexion.html` : le `<label class="field">`
+  du champ « Votre idée » enveloppait à la fois `.field__label` et `.field__count`, si bien
+  que `getByLabelText("Votre idée")` lisait « Votre idée 0 / 5 000 » et cessait de reconnaître
+  « Votre idée » seul. Le champ pose maintenant un `<div class="field">`, un
+  `<label class="field__label" for="idee">` qui ne contient que le texte du champ, et relie
+  le compteur et l'indice au `<textarea>` par `aria-describedby`.
+- `nouveau-idee.html` posait aussi le champ « Nom du projet » dans un `<label class="field">`
+  enveloppant. Il ne portait pas encore d'erreur visible dans la maquette statique, mais la
+  même forme dans l'application s'est révélée sujette au même défaut dès qu'un message
+  d'erreur s'affiche à l'intérieur. Le champ pose maintenant, comme celui de « Votre idée »,
+  un `<div class="field">` et un `<label class="field__label" for="nom">` qui ne contient
+  que le texte.
+- `documents.html` écrivait « Regénérer les documents » sans accent, corrigé en
+  « Régénérer » le 2026-09-24. Le code portait déjà la bonne orthographe.
+- `app.css` élargissait déjà `.segment__opt[aria-checked]` à `[aria-pressed]` et ajoutait
+  `.segment__opt:disabled` pour que `CoherencePanel` garde ses boutons `aria-pressed` avec la
+  même apparence que le groupe radio (décision 6 du plan) — correction faite pendant la tâche
+  5 mais non notée ici jusqu'au 2026-09-24.
+- `.callout` ne posait aucune règle pour un `<ul>` : aucune maquette n'en met dans un encart,
+  mais le port de `ReviewPanel` en a eu besoin. Ajouté le 2026-09-24 :
+  `.callout ul { margin-top: 0.375rem; padding-left: 1.2em; list-style: disc; }`, pour que la
+  liste garde ses puces si une maquette future en pose une.

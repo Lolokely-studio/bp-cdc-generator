@@ -120,8 +120,6 @@
   box-shadow: var(--shadow-pop);
 }
 
-.account__menu[hidden] { display: none; }
-
 .account__who {
   padding: 0.5rem 0.625rem 0.625rem;
   border-bottom: 1px solid var(--rule-soft);

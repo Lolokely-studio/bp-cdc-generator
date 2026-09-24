@@ -9,28 +9,28 @@ describe("ProjectCard", () => {
   it("mène un projet terminé à ses exports", () => {
     render(<ProjectCard now={now} project={summary({ run_status: "done", sections_faites: 2, sections_total: 2 })} />);
     expect(screen.getByRole("link")).toHaveAttribute("href", "/projets/p-1/exports");
-    expect(screen.getByText("Terminé")).toHaveClass("m-tag", "done");
+    expect(screen.getByText("Terminé")).toHaveClass("tag", "tag--ok");
   });
 
   it("mène un projet en cours à la rédaction, avec sa progression", () => {
     render(<ProjectCard now={now} project={summary({ run_status: "waiting", sections_faites: 3, sections_total: 14 })} />);
     expect(screen.getByRole("link")).toHaveAttribute("href", "/projets/p-1");
-    expect(screen.getByText("À vous de répondre")).not.toHaveClass("done");
-    expect(screen.getByText("3 sections faites sur 14, modifié il y a 2 heures")).toBeInTheDocument();
+    expect(screen.getByText("À vous de répondre")).toHaveClass("tag--wait");
+    expect(screen.getByText("modifié il y a 2 heures")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "3");
   });
 
-  it("remplit la barre de progression à hauteur du nombre de sections faites", () => {
+  it("rend une encoche par section, remplie pour celles qui sont faites", () => {
     render(<ProjectCard now={now} project={summary({ sections_faites: 3, sections_total: 12 })} />);
-    const bar = screen.getByRole("progressbar");
-    expect(bar).toHaveAttribute("aria-valuemax", "12");
-    expect(bar.querySelector("i")).toHaveStyle({ width: "25%" });
+    const barre = screen.getByRole("progressbar");
+    expect(barre).toHaveAttribute("aria-valuemax", "12");
+    expect(barre.querySelectorAll("i")).toHaveLength(12);
+    expect(barre.querySelectorAll("i.is-done")).toHaveLength(3);
   });
 
-  it("ne divise pas par zéro quand le plan n'est pas encore connu", () => {
+  it("ne rend aucune encoche quand le plan n'est pas encore connu", () => {
     render(<ProjectCard now={now} project={summary({ sections_faites: 0, sections_total: 0 })} />);
-    const bar = screen.getByRole("progressbar");
-    expect(bar.querySelector("i")).toHaveStyle({ width: "0%" });
+    expect(screen.getByRole("progressbar").querySelectorAll("i")).toHaveLength(0);
     expect(screen.queryByText(/NaN/)).toBeNull();
   });
 });

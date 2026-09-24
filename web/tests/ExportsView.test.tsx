@@ -86,4 +86,19 @@ describe("ExportsView", () => {
     show();
     expect(await screen.findByText(/porteront la mention Brouillon/)).toBeInTheDocument();
   });
+
+  it("dit qu'une génération tourne, sans promettre d'étapes", async () => {
+    // L'API ne rapporte aucun avancement : montrer une barre ou un
+    // pourcentage serait l'inventer.
+    vi.stubGlobal("fetch", routeFetch({
+      "GET /projects/p-1/state": () => json(DONE),
+      "GET /projects/p-1/exports": () => json({ fichiers: [], en_cours: true, dernier_export: null }),
+    }));
+    show();
+    const encart = await screen.findByRole("status");
+    expect(encart).toHaveTextContent("Génération en cours.");
+    expect(encart).toHaveTextContent("comptez jusqu'à deux minutes");
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Générer les documents" })).toBeNull();
+  });
 });

@@ -26,12 +26,23 @@ export const BP_PROFILES = [
   { value: "investisseur", label: "Un investisseur privé" },
 ] as const;
 
-export const STATUS_TAG: Record<RunStatus, { label: string; done: boolean }> = {
-  idle: { label: "En cours", done: false },
-  running: { label: "En cours", done: false },
-  waiting: { label: "À vous de répondre", done: false },
-  failed: { label: "Interrompu", done: false },
-  done: { label: "Terminé", done: true },
+export const STATUS_TAG: Record<RunStatus, { label: string }> = {
+  idle: { label: "En cours" },
+  running: { label: "En cours" },
+  waiting: { label: "À vous de répondre" },
+  failed: { label: "Interrompu" },
+  done: { label: "Terminé" },
+};
+
+/** Le ton de chaque statut, dans le vocabulaire unique des cinq états.
+ * `idle` et `running` disent tous les deux « ça tourne » : un projet qui
+ * attend son démarrage n'est pas dans un état différent, pour qui regarde. */
+export const STATUS_TONE: Record<RunStatus, "ok" | "wait" | "live" | "stop"> = {
+  idle: "live",
+  running: "live",
+  waiting: "wait",
+  failed: "stop",
+  done: "ok",
 };
 
 export function sectionTitle(catalogue: Catalogue, document: DocumentKind, sectionId: string): string {

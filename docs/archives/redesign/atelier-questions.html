@@ -166,30 +166,35 @@
       </p>
 
       <form style="max-width:38rem" novalidate>
-        <label class="field">
-          <span class="field__label">Quel montant de prêt comptez-vous solliciter ?</span>
-          <input class="input" inputmode="decimal" placeholder="En euros">
-          <span class="field__hint">Un montant en euros, sans centimes.</span>
-          <span class="check"><input type="checkbox"> Je ne sais pas</span>
-        </label>
+        <!-- L'étiquette ne porte que son intitulé : une note ou une case
+             nichée dedans rejoindrait le nom accessible du champ. Le lien se
+             fait par `for`/`id` et `aria-describedby`. -->
+        <div class="field">
+          <label class="field__label" for="q-pret">Quel montant de prêt comptez-vous solliciter ?</label>
+          <input id="q-pret" class="input" inputmode="decimal" placeholder="En euros"
+                 aria-describedby="q-pret-aide">
+          <span class="field__hint" id="q-pret-aide">Un montant en euros, sans centimes.</span>
+          <label class="check"><input type="checkbox"> Je ne sais pas</label>
+        </div>
 
-        <label class="field" style="margin-top:1.25rem">
-          <span class="field__label">Qui assure la torréfaction au démarrage ?</span>
-          <select class="select">
+        <div class="field" style="margin-top:1.25rem">
+          <label class="field__label" for="q-torrefaction">Qui assure la torréfaction au démarrage ?</label>
+          <select id="q-torrefaction" class="select">
             <option value="">Choisir une réponse</option>
             <option>Vous-même</option>
             <option>Un torréfacteur salarié</option>
             <option>Un prestataire</option>
           </select>
-          <span class="check"><input type="checkbox"> Je ne sais pas</span>
-        </label>
+          <label class="check"><input type="checkbox"> Je ne sais pas</label>
+        </div>
 
-        <label class="field" style="margin-top:1.25rem">
-          <span class="field__label">Sur quels arguments comptez-vous gagner un premier compte ?</span>
-          <textarea class="textarea" rows="4" aria-invalid="true"></textarea>
-          <span class="field__error">Répondez, ou cochez « je ne sais pas ».</span>
-          <span class="check"><input type="checkbox"> Je ne sais pas</span>
-        </label>
+        <div class="field" style="margin-top:1.25rem">
+          <label class="field__label" for="q-arguments">Sur quels arguments comptez-vous gagner un premier compte ?</label>
+          <textarea id="q-arguments" class="textarea" rows="4" aria-invalid="true"
+                    aria-describedby="q-arguments-erreur"></textarea>
+          <span class="field__error" id="q-arguments-erreur">Répondez, ou cochez « je ne sais pas ».</span>
+          <label class="check"><input type="checkbox"> Je ne sais pas</label>
+        </div>
 
         <div class="actions actions--start">
           <button class="btn btn--primary" type="submit">Envoyer les réponses</button>

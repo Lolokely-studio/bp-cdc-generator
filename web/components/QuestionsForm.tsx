@@ -16,53 +16,58 @@ function QuestionField({ question, definition, field, error, onChange }: {
 }) {
   const id = `q-${question.fact_id}`;
   const errorId = `${id}-err`;
+  const hintId = `${id}-hint`;
   const type = definition?.type ?? "texte_court";
+  const hint = hintFor(definition);
+  const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(" ") || undefined;
   const shared = {
     id,
-    className: "m-input",
     disabled: field.unknown,
     "aria-invalid": error ? true : undefined,
-    "aria-describedby": error ? errorId : undefined,
+    "aria-describedby": describedBy,
   };
-  const hint = hintFor(definition);
 
   let input;
   if (type === "texte_long" || type === "liste") {
-    input = <textarea {...shared} rows={type === "liste" ? 4 : 3} value={field.raw}
+    input = <textarea {...shared} className="textarea" rows={type === "liste" ? 4 : 3} value={field.raw}
       onChange={(e) => onChange({ raw: e.target.value })} />;
   } else if (type === "choix" && definition) {
     input = (
-      <select {...shared} value={field.raw} onChange={(e) => onChange({ raw: e.target.value })}>
+      <select {...shared} className="select" value={field.raw} onChange={(e) => onChange({ raw: e.target.value })}>
         <option value="">Choisir…</option>
         {definition.options.map((option) => <option key={option} value={option}>{humanize(option)}</option>)}
       </select>
     );
   } else if (type === "booleen") {
     input = (
-      <select {...shared} value={field.raw} onChange={(e) => onChange({ raw: e.target.value })}>
+      <select {...shared} className="select" value={field.raw} onChange={(e) => onChange({ raw: e.target.value })}>
         <option value="">Choisir…</option>
         <option value="oui">Oui</option>
         <option value="non">Non</option>
       </select>
     );
   } else if (type === "date") {
-    input = <input {...shared} type="date" value={field.raw} onChange={(e) => onChange({ raw: e.target.value })} />;
+    input = <input {...shared} className="input" type="date" value={field.raw}
+      onChange={(e) => onChange({ raw: e.target.value })} />;
   } else {
     const numeric = ["montant", "nombre", "pourcentage", "duree"].includes(type);
-    input = <input {...shared} inputMode={numeric ? "decimal" : undefined} value={field.raw}
+    input = <input {...shared} className="input" inputMode={numeric ? "decimal" : undefined} value={field.raw}
       onChange={(e) => onChange({ raw: e.target.value })} />;
   }
 
+  // L'étiquette ne porte que son intitulé : la note d'aide et la case
+  // « je ne sais pas » vivent hors du `<label>`, reliées par
+  // `htmlFor`/`id` et `aria-describedby`.
   return (
-    <div className="m-q">
-      <label className="m-label" htmlFor={id}>{question.question}</label>
+    <div className="field">
+      <label className="field__label" htmlFor={id}>{question.question}</label>
       {input}
-      {hint && <p className="m-hint">{hint}</p>}
-      <label className="m-check">
+      {hint && <p className="field__hint" id={hintId}>{hint}</p>}
+      <label className="check">
         <input type="checkbox" checked={field.unknown} onChange={(e) => onChange({ unknown: e.target.checked })} />
         {" "}Je ne sais pas
       </label>
-      {error && <p className="m-err" id={errorId}>{error}</p>}
+      {error && <p className="field__error" id={errorId}>{error}</p>}
     </div>
   );
 }
@@ -101,7 +106,7 @@ export function QuestionsForm({ interaction, catalogue, onSubmit }: {
 
   return (
     <form onSubmit={submit} noValidate>
-      <p className="m-muted" style={{ marginBottom: 16 }}>
+      <p className="t-note" style={{ marginBottom: 16 }}>
         {interaction.questions.length === 1 ? "Une information manque" : "Quelques informations manquent"} pour
         rédiger cette section.
       </p>
@@ -112,8 +117,8 @@ export function QuestionsForm({ interaction, catalogue, onSubmit }: {
           error={errors[question.fact_id]}
           onChange={(patch) => update(question.fact_id, patch)} />
       ))}
-      <div className="m-actions" style={{ justifyContent: "flex-start" }}>
-        <button className="m-btn" type="submit" disabled={busy}>
+      <div className="actions actions--start">
+        <button className="btn btn--primary" type="submit" disabled={busy}>
           {busy ? "Envoi…" : "Envoyer les réponses"}
         </button>
       </div>

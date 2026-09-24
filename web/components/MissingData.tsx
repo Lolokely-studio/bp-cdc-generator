@@ -7,22 +7,27 @@ import { missingData } from "@/lib/placeholders";
 export function MissingData({ sections, catalogue }: { sections: Section[]; catalogue: Catalogue }) {
   const missing = missingData(sections);
   return (
-    <div>
-      <p className="m-cap">Données à compléter avant diffusion</p>
-      {missing.length === 0 ? (
-        <p className="m-muted small">Aucune : rien ne manque dans ce qui a été rédigé.</p>
-      ) : (
-        <ul className="m-list">
-          {missing.map((item, index) => (
-            <li key={`${item.document}.${item.sectionId}|${item.label}|${index}`}>
-              <span><mark>{item.label}</mark></span>
-              <span className="m-muted small">
-                {DOCUMENT_LABEL[item.document]}, {sectionTitle(catalogue, item.document, item.sectionId)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <section className="panel">
+      <div className="panel__head"><h2 className="t-section">À compléter avant diffusion</h2></div>
+      <div className="panel__body">
+        {missing.length === 0 ? (
+          <p className="t-note">Aucune : rien ne manque dans ce qui a été rédigé.</p>
+        ) : (
+          <ul className="rows">
+            {missing.map((item, index) => (
+              <li key={`${item.document}.${item.sectionId}|${item.label}|${index}`}>
+                <span><mark>{item.label}</mark></span>
+                <span className="t-fine">
+                  {DOCUMENT_LABEL[item.document]}, {sectionTitle(catalogue, item.document, item.sectionId)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="panel__note t-fine">
+        Ces mentions figurent aussi en annexe des documents exportés.
+      </div>
+    </section>
   );
 }

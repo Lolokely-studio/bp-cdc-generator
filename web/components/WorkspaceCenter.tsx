@@ -16,9 +16,9 @@ function SectionHead({ state, catalogue }: { state: ProjectState; catalogue: Cat
     <>
       <div className="m-sechead">
         <span className="m-doc">{DOCUMENT_LABEL[ref.document]}</span>
-        <span className="m-muted small">Section {state.curseur + 1} sur {state.plan.length}</span>
+        <span className="t-note t-fine">Section {state.curseur + 1} sur {state.plan.length}</span>
       </div>
-      <h1 className="m-h">{sectionTitle(catalogue, ref.document, ref.section_id)}</h1>
+      <h1 className="t-page">{sectionTitle(catalogue, ref.document, ref.section_id)}</h1>
     </>
   );
 }
@@ -27,10 +27,10 @@ function FailedPanel({ error, onResume }: { error: LiveError | null; onResume: (
   const [busy, setBusy] = useState(false);
   return (
     <div className="m-done">
-      <h1 className="m-h">La rédaction s'est interrompue</h1>
+      <h1 className="t-page">La rédaction s'est interrompue</h1>
       <p>Rien n'est perdu : chaque étape franchie est enregistrée, et la reprise repart de la dernière.</p>
-      {error?.message && <p className="m-muted small">Détail : {error.message}</p>}
-      <button className="m-btn" type="button" disabled={busy}
+      {error?.message && <p className="t-note t-fine">Détail : {error.message}</p>}
+      <button className="btn btn--primary" type="button" disabled={busy}
         onClick={async () => { setBusy(true); try { await onResume(); } finally { setBusy(false); } }}>
         Reprendre
       </button>
@@ -42,12 +42,12 @@ function StalledPanel({ onResume }: { onResume: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   return (
     <div className="m-done">
-      <h1 className="m-h">La rédaction n'a pas démarré</h1>
+      <h1 className="t-page">La rédaction n'a pas démarré</h1>
       <p>
         Le lancement n'a pas pris la main depuis l'enregistrement du projet. Rien n'est perdu : vous pouvez le
         relancer.
       </p>
-      <button className="m-btn" type="button" disabled={busy}
+      <button className="btn btn--primary" type="button" disabled={busy}
         onClick={async () => { setBusy(true); try { await onResume(); } finally { setBusy(false); } }}>
         Lancer la rédaction
       </button>
@@ -59,13 +59,13 @@ function DonePanel({ projectId, state }: { projectId: string; state: ProjectStat
   const skipped = state.sections.filter((section) => section.statut === "skipped").length;
   return (
     <div className="m-done">
-      <h1 className="m-h">Rédaction terminée</h1>
+      <h1 className="t-page">Rédaction terminée</h1>
       <p>
         {state.plan.length} sections rédigées, et les documents confrontés l'un à l'autre.
         {skipped > 0 && ` ${skipped} section${skipped > 1 ? "s ont été passées" : " a été passée"} sans validation :
         les documents porteront la mention Brouillon.`}
       </p>
-      <Link className="m-btn" href={`/projets/${projectId}/exports`}>Générer les documents</Link>
+      <Link className="btn btn--primary" href={`/projets/${projectId}/exports`}>Générer les documents</Link>
     </div>
   );
 }
@@ -75,10 +75,10 @@ function Drafting({ state, live, catalogue }: { state: ProjectState; live: Live;
   if (!ref) {
     return (
       <>
-        <h1 className="m-h">Contrôle de cohérence</h1>
+        <h1 className="t-page">Contrôle de cohérence</h1>
         <div className="m-status">
           <span className="m-pulse" aria-hidden="true" />
-          <span className="m-muted">L'agent confronte les deux documents.</span>
+          <span className="t-note">L'agent confronte les deux documents.</span>
         </div>
       </>
     );
@@ -105,8 +105,8 @@ function Drafting({ state, live, catalogue }: { state: ProjectState; live: Live;
       <SectionHead state={state} catalogue={catalogue} />
       <div className="m-status">
         <span className="m-pulse" aria-hidden="true" />
-        <span className="m-muted">{label}</span>
-        {live.score && <span className="m-src user">Auto-critique {live.score.score}/10</span>}
+        <span className="t-note">{label}</span>
+        {live.score && <span className="tag tag--idle tag--flat">Auto-critique {live.score.score}/10</span>}
       </div>
       {live.draft && <StreamingPaper text={live.draft} />}
     </>

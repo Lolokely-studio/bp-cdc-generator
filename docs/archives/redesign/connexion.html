@@ -23,6 +23,10 @@
 
       <!-- Connexion ------------------------------------------------------ -->
       <form id="volet-connexion" role="tabpanel" aria-labelledby="onglet-connexion" novalidate>
+        <!-- Titre masqué à l'œil : l'onglet actif le dit déjà. Il reste
+             pour qui navigue de titre en titre, et pour que la page
+             s'annonce. -->
+        <h1 class="sr">Se connecter</h1>
         <label class="field">
           <span class="field__label">Adresse e-mail</span>
           <input class="input" type="email" autocomplete="email" placeholder="vous@exemple.fr">
@@ -38,6 +42,7 @@
 
       <!-- Création ------------------------------------------------------- -->
       <form id="volet-creation" role="tabpanel" aria-labelledby="onglet-creation" hidden novalidate>
+        <h1 class="sr">Créer un compte</h1>
         <div class="callout callout--stop" role="alert" style="margin-bottom:1rem">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.2v.3"/></svg>
           <span class="callout__body">Cette adresse a déjà un compte. Connectez-vous, ou choisissez-en une autre.</span>
@@ -46,11 +51,13 @@
           <span class="field__label">Adresse e-mail</span>
           <input class="input" type="email" autocomplete="email" aria-invalid="true" value="marion.leduc@atelier-noria.fr">
         </label>
-        <label class="field">
-          <span class="field__label">Mot de passe</span>
-          <input class="input" type="password" autocomplete="new-password">
-          <span class="field__hint">Dix caractères au moins.</span>
-        </label>
+        <div class="field">
+          <label>
+            <span class="field__label">Mot de passe</span>
+            <input class="input" type="password" autocomplete="new-password" aria-describedby="mdp-astuce">
+          </label>
+          <span class="field__hint" id="mdp-astuce">Dix caractères au moins.</span>
+        </div>
         <div style="margin-top:1.125rem">
           <button class="btn btn--primary btn--block" type="submit">Demander un accès</button>
         </div>

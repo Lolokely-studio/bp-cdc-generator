@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { CharCount } from "@/components/CharCount";
+import { useSetCrumbs } from "@/components/Crumbs";
+import { RadioGroup } from "@/components/RadioGroup";
 import { Stepper } from "@/components/Stepper";
 import { api } from "@/lib/api";
 import { useCatalogue } from "@/lib/catalogue";
@@ -24,6 +27,7 @@ const MAX_IDEA = 5000;
 type Errors = { nom?: string; idee?: string; form?: string };
 
 export default function NewProjectPage() {
+  useSetCrumbs([{ label: "Mes projets", href: "/projets" }, { label: "Nouveau projet" }]);
   const catalogue = useCatalogue();
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
@@ -56,81 +60,111 @@ export default function NewProjectPage() {
 
   if (step === 1) {
     return (
-      <main className="m-body m-narrow">
+      <main className="page page--narrow">
         <Stepper current={1} />
-        <h1 className="m-h">Quel(s) document(s) voulez-vous générer ?</h1>
-        <p className="m-muted">Les informations communes aux deux documents ne vous seront demandées qu'une seule fois.</p>
-        <div className="m-tiles">
-          {TILES.map((tile) => (
-            <button key={tile.value} className="m-tile" type="button"
-              aria-pressed={documents === tile.value} onClick={() => setDocuments(tile.value)}>
-              <b>{tile.title}</b>
-              <span className="m-muted small">{sectionCount(catalogue, tile.value, profilCdc, profilBp)} sections</span>
-              <span className="small">{tile.text}</span>
-            </button>
-          ))}
+        <div>
+          <h1 className="t-page">Quels documents voulez-vous générer ?</h1>
+          <p className="page__sub">Ce qui est commun aux deux ne vous sera demandé qu'une fois.</p>
         </div>
+
+        <RadioGroup label="Documents à générer" className="choices" optionClassName="choice"
+          value={documents} onChange={setDocuments}
+          options={TILES.map((tile) => ({
+            value: tile.value,
+            render: (
+              <>
+                <span className="choice__top">
+                  <span className="choice__name">{tile.title}</span>
+                  <span className="choice__pip" aria-hidden="true" />
+                </span>
+                <span className="tag tag--idle tag--flat">
+                  {sectionCount(catalogue, tile.value, profilCdc, profilBp)} sections
+                </span>
+                <span className="choice__text">{tile.text}</span>
+              </>
+            ),
+          }))} />
+
         {documents !== "bp" && (
-          <div className="m-profile">
-            <p className="m-cap">À quoi servira le cahier des charges ?</p>
-            <p className="m-muted small">
-              Pour consulter des prestataires, le document doit être opposable : il gagne une section
-              « cadre de réponse » et un niveau d'exigence sur chaque besoin.
+          <div className="ask">
+            <p className="ask__q">À quoi servira le cahier des charges ?</p>
+            <p className="ask__why">
+              Pour consulter des prestataires, le document doit être opposable : il gagne une
+              section « cadre de réponse » et un niveau d'exigence sur chaque besoin.
             </p>
-            <div className="m-chips">
-              {CDC_PROFILES.map((profile) => (
-                <button key={profile.value} className="m-chip" type="button"
-                  aria-pressed={profilCdc === profile.value} onClick={() => setProfilCdc(profile.value)}>
-                  {profile.label}
-                </button>
-              ))}
-            </div>
+            <RadioGroup label="Usage du cahier des charges" className="segment"
+              optionClassName="segment__opt" value={profilCdc} onChange={setProfilCdc}
+              options={CDC_PROFILES.map((p) => ({ value: p.value, render: p.label }))} />
           </div>
         )}
+
         {documents !== "cdc" && (
-          <div className="m-profile">
-            <p className="m-cap">Qui lira le business plan ?</p>
-            <p className="m-muted small">Le lecteur change le ton et l'ordre des arguments. Les chiffres, eux, ne bougent pas.</p>
-            <div className="m-chips">
-              {BP_PROFILES.map((profile) => (
-                <button key={profile.value} className="m-chip" type="button"
-                  aria-pressed={profilBp === profile.value} onClick={() => setProfilBp(profile.value)}>
-                  {profile.label}
-                </button>
-              ))}
-            </div>
+          <div className="ask">
+            <p className="ask__q">Qui lira le business plan ?</p>
+            <p className="ask__why">
+              Le lecteur change le ton et l'ordre des arguments. Les chiffres, eux, ne bougent pas.
+            </p>
+            <RadioGroup label="Lecteur du business plan" className="segment"
+              optionClassName="segment__opt" value={profilBp} onChange={setProfilBp}
+              options={BP_PROFILES.map((p) => ({ value: p.value, render: p.label }))} />
           </div>
         )}
-        <div className="m-actions">
-          <Link className="m-btn sec" href="/projets">Annuler</Link>
-          <button className="m-btn" type="button" onClick={() => setStep(2)}>Continuer</button>
+
+        <div className="actions">
+          <Link className="btn btn--ghost" href="/projets">Annuler</Link>
+          <button className="btn btn--primary" type="button" onClick={() => setStep(2)}>Continuer</button>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="m-body m-narrow">
+    <main className="page page--narrow">
       <Stepper current={2} />
-      <h1 className="m-h">Décrivez votre projet</h1>
-      <p className="m-muted">Quelques phrases suffisent : le problème, pour qui, et comment vous le résolvez.</p>
+      <div>
+        <h1 className="t-page">Décrivez votre projet</h1>
+        <p className="page__sub">
+          Quelques phrases suffisent : le problème, pour qui, et comment vous le résolvez.
+        </p>
+      </div>
       <form onSubmit={create} noValidate>
-        <div style={{ marginTop: 18 }}>
-          <label className="m-label" htmlFor="nom">Nom du projet</label>
-          <input id="nom" className="m-input" maxLength={200} value={nom}
-            aria-invalid={errors.nom ? true : undefined} onChange={(e) => setNom(e.target.value)} />
-          {errors.nom && <p className="m-err">{errors.nom}</p>}
+        <div className="field">
+          {/* L'erreur reste hors du `<label>` : dedans, elle rejoindrait
+              « Nom du projet » dans le nom accessible du champ, et
+              `getByLabelText` cesserait de le reconnaître dès qu'elle
+              s'affiche. */}
+          <label className="field__label" htmlFor="nom">Nom du projet</label>
+          <input id="nom" className="input" maxLength={200} value={nom}
+            aria-invalid={errors.nom ? true : undefined}
+            aria-describedby={errors.nom ? "nom-erreur" : undefined}
+            onChange={(e) => setNom(e.target.value)} />
+          {errors.nom && <span className="field__error" id="nom-erreur">{errors.nom}</span>}
         </div>
-        <div style={{ marginTop: 14 }}>
-          <label className="m-label" htmlFor="idee">Votre idée</label>
-          <textarea id="idee" className="m-input" rows={5} value={idee}
-            aria-invalid={errors.idee ? true : undefined} onChange={(e) => setIdee(e.target.value)} />
-          {errors.idee && <p className="m-err">{errors.idee}</p>}
+        <div className="field">
+          <span className="field__head">
+            {/* Un `<span>`, pas un `<label>` autour du compteur : sinon « 0 / 5 000 »
+                rejoint « Votre idée » dans le nom accessible du champ, et
+                `getByLabelText("Votre idée")` cesse de le reconnaître. Le lien se
+                fait par `htmlFor`/`id`, comme pour la note du mot de passe. */}
+            <label className="field__label" htmlFor="idee">Votre idée</label>
+            <CharCount value={idee} max={MAX_IDEA} id="compte-idee" />
+          </span>
+          <textarea id="idee" className="textarea" rows={7} value={idee}
+            aria-invalid={errors.idee ? true : undefined}
+            aria-describedby={errors.idee ? "compte-idee idee-erreur" : "compte-idee"}
+            onChange={(e) => setIdee(e.target.value)} />
+          {errors.idee && <span className="field__error" id="idee-erreur">{errors.idee}</span>}
         </div>
-        {errors.form && <p className="m-err" role="alert">{errors.form}</p>}
-        <div className="m-actions">
-          <button className="m-btn sec" type="button" onClick={() => setStep(1)}>Retour</button>
-          <button className="m-btn" type="submit" disabled={busy}>Analyser mon idée</button>
+        {errors.form && (
+          <div className="callout callout--stop" role="alert" style={{ marginTop: "1rem" }}>
+            <span className="callout__body">{errors.form}</span>
+          </div>
+        )}
+        <div className="actions">
+          <button className="btn btn--ghost" type="button" onClick={() => setStep(1)}>Retour</button>
+          <button className="btn btn--primary" type="submit" disabled={busy}>
+            {busy ? "Analyse…" : "Analyser mon idée"}
+          </button>
         </div>
       </form>
     </main>

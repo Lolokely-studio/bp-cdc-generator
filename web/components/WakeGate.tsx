@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { AuthCard } from "@/components/AuthCard";
 import { API_URL } from "@/lib/api";
 
 type Phase = "checking" | "waking" | "ready" | "down";
@@ -79,38 +80,31 @@ export function WakeGate({
   if (phase === "checking") return null;
   if (phase === "down") {
     return (
-      <main className="m-body m-narrow">
-        <h1 className="m-h">Le serveur ne répond pas</h1>
-        <p className="m-muted">
-          Il ne s'est pas réveillé au bout de trois minutes. Rien n'est perdu : vos projets
-          reprendront là où ils se sont arrêtés.
+      <AuthCard footer="Rien n'est perdu : vos projets reprendront là où ils se sont arrêtés.">
+        <h1 className="t-section">Le serveur ne répond pas</h1>
+        <p className="t-note" style={{ marginTop: ".375rem" }}>
+          Il ne s'est pas réveillé au bout de trois minutes.
         </p>
-        <div className="m-actions" style={{ justifyContent: "flex-start" }}>
-          <button
-            className="m-btn"
-            type="button"
-            onClick={() => {
-              setElapsed(0);
-              setPhase("checking");
-              setAttempt((n) => n + 1);
-            }}
-          >
+        <div style={{ marginTop: "1.125rem" }}>
+          <button className="btn btn--primary btn--block" type="button"
+            onClick={() => { setElapsed(0); setPhase("checking"); setAttempt((n) => n + 1); }}>
             Réessayer
           </button>
         </div>
-      </main>
+      </AuthCard>
     );
   }
   return (
-    <main className="m-body m-narrow" aria-live="polite">
-      <h1 className="m-h">Le serveur se réveille</h1>
-      <p className="m-muted">
-        L'hébergement gratuit s'endort après quinze minutes sans visite. Il redémarre : cela
-        prend environ une minute.
+    <AuthCard footer="Rien n'est perdu : vos projets reprendront là où ils se sont arrêtés.">
+      <h1 className="t-section">Le serveur se réveille</h1>
+      <p className="t-note" style={{ marginTop: ".375rem" }}>
+        L'hébergement s'endort après quinze minutes sans visite. Il redémarre : comptez
+        environ une minute.
       </p>
-      <ul className="m-steps">
-        <li className="run"><span className="ic" />Réveil en cours · {elapsed} s</li>
-      </ul>
-    </main>
+      <div className="callout callout--live" role="status" style={{ marginTop: "1.125rem" }}>
+        <span className="spinner" aria-hidden="true" />
+        <span className="callout__body">Réveil en cours, <span className="t-num">{elapsed}</span> s</span>
+      </div>
+    </AuthCard>
   );
 }

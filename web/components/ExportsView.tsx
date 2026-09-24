@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useSetCrumbs } from "@/components/Crumbs";
 import { ExportFiles } from "@/components/ExportFiles";
 import { MissingData } from "@/components/MissingData";
 import { ReopenForm } from "@/components/ReopenForm";
@@ -60,11 +61,24 @@ export function ExportsView({ projectId, pollMs = 2000 }: { projectId: string; p
     await loadExports();
   }
 
+  // Appelé avant tout retour anticipé : le fil d'ariane doit s'annoncer sur
+  // chaque rendu, y compris pendant le chargement, où le nom du projet n'est
+  // pas encore connu.
+  useSetCrumbs([
+    { label: "Mes projets", href: "/projets" },
+    { label: state?.projet.nom ?? "Projet", href: `/projets/${projectId}` },
+    { label: "Documents" },
+  ]);
+
   if (!exports || !state) {
     return (
-      <main className="m-body">
-        <p className="m-muted">Chargement…</p>
-        {error && <p className="m-err" role="alert">{error}</p>}
+      <main className="page">
+        <p className="t-note">Chargement…</p>
+        {error && (
+          <div className="callout callout--stop" role="alert">
+            <span className="callout__body">{error}</span>
+          </div>
+        )}
       </main>
     );
   }
@@ -74,52 +88,69 @@ export function ExportsView({ projectId, pollMs = 2000 }: { projectId: string; p
   const finished = state.projet.run_status === "done";
 
   return (
-    <main className="m-body">
-      <div className="m-head">
-        <div>
-          <h1 className="m-h">{files.length > 0 ? "Vos documents sont prêts" : "Générer les documents"}</h1>
-          <p className="m-muted">
-            {state.projet.nom}{latest ? ` · derniers fichiers ${relativeDate(latest)}` : ""}
+    <main className="page">
+      <div className="page__head">
+        <div className="page__head-text">
+          <h1 className="t-page">{files.length > 0 ? "Vos documents sont prêts" : "Générer les documents"}</h1>
+          <p className="page__sub">
+            {state.projet.nom}{latest ? `, derniers fichiers ${relativeDate(latest)}` : ""}
           </p>
         </div>
-        <Link className="m-btn sec" href={`/projets/${projectId}`}>Retour à la rédaction</Link>
+        <div className="btn-row">
+          <Link className="btn btn--outline" href={`/projets/${projectId}`}>Retour à la rédaction</Link>
+        </div>
       </div>
 
       {!finished && (
-        <p className="m-note">
-          La rédaction n'est pas terminée : les documents générés maintenant porteront la mention Brouillon.
-        </p>
+        <div className="callout callout--wait">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" /><path d="M12 7.5V12l3 2" />
+          </svg>
+          <span className="callout__body">
+            La rédaction n'est pas terminée : les documents générés maintenant porteront la
+            mention Brouillon.
+          </span>
+        </div>
       )}
 
+      {!exports.en_cours && exports.dernier_export === "echec" && (
+        <div className="callout callout--stop" role="alert">
+          <span className="callout__body">
+            La dernière génération a échoué. Certains fichiers ont pu être remplacés et
+            d'autres non : relancez pour retrouver un jeu complet.
+          </span>
+        </div>
+      )}
+      {error && (
+        <div className="callout callout--stop" role="alert">
+          <span className="callout__body">{error}</span>
+        </div>
+      )}
+
+      <ExportFiles files={files} />
+
       {exports.en_cours ? (
-        <ul className="m-steps" aria-live="polite">
-          <li className="run">
-            <span className="ic" />
-            Rendu Word, conversion PDF, puis dépôt des fichiers. Le premier export réveille le service de
-            conversion : comptez jusqu'à deux minutes.
-          </li>
-        </ul>
+        <div className="callout callout--live" role="status">
+          <span className="spinner" aria-hidden="true" />
+          <span className="callout__body">
+            <strong>Génération en cours.</strong> Rendu Word, conversion PDF, puis dépôt des
+            fichiers. Le premier export réveille le service de conversion : comptez jusqu'à
+            deux minutes.
+          </span>
+        </div>
       ) : (
-        <div className="m-actions" style={{ justifyContent: "flex-start", marginTop: 0 }}>
-          <button className="m-btn" type="button" disabled={busy} onClick={launch}>
+        <div className="btn-row">
+          <button className="btn btn--primary" type="button" disabled={busy} onClick={launch}>
             {files.length > 0 ? "Régénérer les documents" : "Générer les documents"}
           </button>
         </div>
       )}
 
-      {!exports.en_cours && exports.dernier_export === "echec" && (
-        <p className="m-err" role="alert">
-          La dernière génération a échoué. Certains fichiers ont pu être remplacés et d'autres non : relancez pour
-          retrouver un jeu complet.
-        </p>
-      )}
-      {error && <p className="m-err" role="alert">{error}</p>}
-
-      <ExportFiles files={files} />
-
-      <div className="m-split">
+      <div className="split">
         <MissingData sections={state.sections} catalogue={catalogue} />
-        <ReopenForm projectId={projectId} state={state} catalogue={catalogue} disabled={exports.en_cours} />
+        <ReopenForm projectId={projectId} state={state} catalogue={catalogue}
+          disabled={exports.en_cours} />
       </div>
     </main>
   );

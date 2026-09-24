@@ -43,40 +43,46 @@ export function ReopenForm({ projectId, state, catalogue, disabled }: {
   }
 
   return (
-    <form onSubmit={submit} noValidate>
-      <p className="m-cap">Rouvrir une section</p>
-      <p className="m-muted small">
-        La section est réécrite, avec celles qui s'appuient sur elle. Il faudra régénérer les documents ensuite.
-      </p>
-      <div style={{ marginTop: 12 }}>
-        <label className="m-label" htmlFor="reopen-section">Section</label>
-        <select id="reopen-section" className="m-input" value={section} disabled={!possible}
-          onChange={(event) => setSection(event.target.value)}>
-          <option value="">Choisir…</option>
-          {state.plan.map((ref) => {
-            const value = `${ref.document}.${ref.section_id}`;
-            return (
-              <option key={value} value={value}>
-                {DOCUMENT_SHORT[ref.document]} · {sectionTitle(catalogue, ref.document, ref.section_id)}
-              </option>
-            );
-          })}
-        </select>
-      </div>
-      <div style={{ marginTop: 12 }}>
-        <label className="m-label" htmlFor="reopen-consigne">Que faut-il changer ?</label>
-        <textarea id="reopen-consigne" className="m-input" rows={3} value={consigne} disabled={!possible}
-          onChange={(event) => setConsigne(event.target.value)} />
-        <p className="m-hint">
-          {possible
-            ? "Sans consigne, la section est reprise en tenant compte des faits actuels."
-            : "Possible une fois la rédaction terminée."}
+    <section className="panel">
+      <div className="panel__head"><h2 className="t-section">Rouvrir une section</h2></div>
+      <form className="panel__body" onSubmit={submit} noValidate>
+        <p className="t-note" style={{ marginBottom: 14 }}>
+          La section est réécrite, avec celles qui s'appuient sur elle. Il faudra régénérer les documents ensuite.
         </p>
-      </div>
-      {error && <p className="m-err" role="alert">{error}</p>}
-      <div className="m-actions" style={{ justifyContent: "flex-start" }}>
-        <button className="m-btn sec" type="submit" disabled={!possible || busy}>Rouvrir et réécrire</button>
-      </div>
-    </form>
+        <label className="field">
+          <span className="field__label">Section</span>
+          <select className="select" value={section} disabled={!possible}
+            onChange={(event) => setSection(event.target.value)}>
+            <option value="">Choisir…</option>
+            {state.plan.map((ref) => {
+              const value = `${ref.document}.${ref.section_id}`;
+              return (
+                <option key={value} value={value}>
+                  {DOCUMENT_SHORT[ref.document]} · {sectionTitle(catalogue, ref.document, ref.section_id)}
+                </option>
+              );
+            })}
+          </select>
+        </label>
+        <div className="field">
+          <label className="field__label" htmlFor="reopen-consigne">Que faut-il changer ?</label>
+          <textarea id="reopen-consigne" className="textarea" rows={3} value={consigne} disabled={!possible}
+            onChange={(event) => setConsigne(event.target.value)} aria-describedby="reopen-aide" />
+          <span className="field__hint" id="reopen-aide">
+            {possible
+              ? "Sans consigne, la section est reprise en tenant compte des faits actuels."
+              : "Possible une fois la rédaction terminée."}
+          </span>
+        </div>
+        {error && (
+          <div className="callout callout--stop" role="alert">
+            <span className="callout__body">{error}</span>
+          </div>
+        )}
+        <div className="actions actions--start actions--plain">
+          <button className="btn btn--outline" type="submit" disabled={!possible || busy}>Rouvrir et réécrire</button>
+        </div>
+      </form>
+    </section>
   );
 }

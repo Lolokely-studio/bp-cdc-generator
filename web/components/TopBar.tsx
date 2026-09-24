@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { AccountMenu } from "@/components/AccountMenu";
+import { Crumbs, useCrumbs } from "@/components/Crumbs";
 import { api, setToken } from "@/lib/api";
-import { initials } from "@/lib/messages";
 
 export function TopBar({ email }: { email: string }) {
   const router = useRouter();
+  const crumbs = useCrumbs();
 
   async function logout() {
     try {
@@ -20,16 +22,13 @@ export function TopBar({ email }: { email: string }) {
   }
 
   return (
-    <header className="m-bar">
-      <Link className="m-logo" href="/projets">
+    <header className="topbar">
+      <Link className="brand" href="/projets">
         <span className="mark" aria-hidden="true" />
         Esquisse
       </Link>
-      <div className="m-bar-r">
-        <Link className="m-link" href="/projets">Mes projets</Link>
-        <span className="m-avatar" title={email}>{initials(email)}</span>
-        <button className="m-link" type="button" onClick={logout}>Se déconnecter</button>
-      </div>
+      {crumbs.length > 0 && <Crumbs items={crumbs} />}
+      <AccountMenu email={email} onLogout={logout} />
     </header>
   );
 }

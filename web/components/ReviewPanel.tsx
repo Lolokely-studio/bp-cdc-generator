@@ -24,40 +24,42 @@ export function ReviewPanel({ interaction, onSubmit }: {
   return (
     <>
       <div className="m-status">
-        {interaction.score !== null && <span className="m-src user">Auto-critique {interaction.score}/10</span>}
-        <span className="m-muted small">Prête à relire</span>
+        {interaction.score !== null && <span className="tag tag--idle tag--flat">Auto-critique {interaction.score}/10</span>}
+        <span className="t-note t-fine">Prête à relire</span>
       </div>
       {interaction.problems.length > 0 && (
-        <div className="m-note">
-          <b>Ce que l'auto-critique relève</b>
-          <ul>{interaction.problems.map((problem, index) => <li key={index}>{problem}</li>)}</ul>
+        <div className="callout callout--wait">
+          <span className="callout__body">
+            <b>Ce que l'auto-critique relève</b>
+            <ul>{interaction.problems.map((problem, index) => <li key={index}>{problem}</li>)}</ul>
+          </span>
         </div>
       )}
       <Paper blocks={interaction.blocks} />
       {revising ? (
         <div style={{ marginTop: 18, maxWidth: "72ch" }}>
-          <label className="m-label" htmlFor="revision">Que faut-il changer ?</label>
-          <textarea id="revision" className="m-input" rows={3} value={feedback}
+          <label className="field__label" htmlFor="revision">Que faut-il changer ?</label>
+          <textarea id="revision" className="textarea" rows={3} value={feedback}
             onChange={(e) => setFeedback(e.target.value)} />
-          <div className="m-actions" style={{ justifyContent: "flex-start" }}>
-            <button className="m-btn" type="button" disabled={busy}
+          <div className="actions actions--start">
+            <button className="btn btn--primary" type="button" disabled={busy}
               onClick={() => send({ action: "rewrite", problems: feedback.trim() ? [feedback.trim()] : [] })}>
               Relancer la rédaction
             </button>
-            <button className="m-btn sec" type="button" onClick={() => setRevising(false)}>Annuler</button>
+            <button className="btn btn--outline" type="button" onClick={() => setRevising(false)}>Annuler</button>
           </div>
         </div>
       ) : (
         <>
-          <div className="m-actions" style={{ justifyContent: "flex-start" }}>
-            <button className="m-btn" type="button" disabled={busy}
+          <div className="actions actions--start">
+            <button className="btn btn--primary" type="button" disabled={busy}
               onClick={() => send({ action: "accept" })}>Approuver</button>
-            <button className="m-btn sec" type="button" disabled={busy}
+            <button className="btn btn--outline" type="button" disabled={busy}
               onClick={() => setRevising(true)}>Demander une révision</button>
-            <button className="m-btn sec" type="button" disabled={busy}
+            <button className="btn btn--outline" type="button" disabled={busy}
               onClick={() => send({ action: "skip" })}>Passer la section</button>
           </div>
-          <p className="m-muted small">
+          <p className="t-note t-fine">
             Passer la section la garde telle quelle, mais les documents porteront la mention Brouillon.
           </p>
         </>

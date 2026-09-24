@@ -1,0 +1,352 @@
+/* ==========================================================================
+   Esquisse — le socle
+   Remise à zéro, échelle typographique, commandes, champs, pastilles.
+   Rien ici ne connaît la mise en page : ce sont les pièces, pas la maison.
+   ========================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, p, figure, ul, ol, dl, dd, fieldset { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+fieldset { padding: 0; border: 0; }
+a { color: inherit; }
+img { max-width: 100%; }
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Échelle typographique
+   Six degrés, pas un de plus. Chacun a un emploi, et on ne compose pas un
+   septième en bricolant une taille au cas par cas.
+   -------------------------------------------------------------------------- */
+
+.t-page {
+  font-size: clamp(1.375rem, 2.4vw, 1.75rem);
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  line-height: 1.18;
+}
+
+.t-section {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.35;
+}
+
+.t-card {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.006em;
+}
+
+.t-body { font-size: 0.9375rem; color: var(--ink-mid); }
+.t-note { font-size: 0.875rem; color: var(--ink-soft); }
+.t-fine { font-size: 0.8125rem; color: var(--ink-soft); }
+
+.t-lead {
+  font-size: 1rem;
+  color: var(--ink-soft);
+  max-width: 62ch;
+}
+
+/* Les chiffres s'alignent en colonne : on compare des montants, des durées
+   et des compteurs de sections. */
+.t-num { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+.muted { color: var(--ink-soft); }
+.strong { font-weight: 600; }
+.nowrap { white-space: nowrap; }
+
+/* --------------------------------------------------------------------------
+   Commandes
+   -------------------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 2.375rem;
+  padding: 0 0.875rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn svg { flex: none; }
+
+.btn--primary { background: var(--ink); color: #fff; }
+.btn--primary:hover { background: var(--ink-mid); }
+
+.btn--outline { border-color: var(--rule-strong); background: var(--surface); }
+.btn--outline:hover { border-color: var(--ink); }
+
+.btn--ghost { color: var(--ink-mid); }
+.btn--ghost:hover { background: var(--surface-sunk); color: var(--ink); }
+
+.btn--danger { border-color: var(--rule-strong); background: var(--surface); color: var(--stop); }
+.btn--danger:hover { border-color: var(--stop); background: var(--stop-bg); }
+
+.btn--sm { min-height: 2rem; padding: 0 0.625rem; font-size: 0.8125rem; }
+.btn--block { width: 100%; }
+
+.btn:disabled,
+.btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
+
+.btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem; height: 2rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.icon-btn:hover { background: var(--surface-sunk); color: var(--ink); }
+
+/* --------------------------------------------------------------------------
+   Champs
+   -------------------------------------------------------------------------- */
+
+.field { display: block; }
+.field + .field { margin-top: 0.875rem; }
+
+.field__label {
+  display: block;
+  margin-bottom: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-mid);
+}
+
+.field__hint {
+  display: block;
+  margin-top: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.field__error {
+  display: block;
+  margin-top: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--stop);
+}
+
+/* Le compteur vit sur la même ligne que l'étiquette, à l'opposé : il se lit
+   pendant la frappe sans déplacer le champ. */
+.field__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.field__count {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+
+.field__count--near { color: var(--wait); }
+.field__count--over { color: var(--stop); font-weight: 600; }
+
+.input, .select, .textarea {
+  width: 100%;
+  min-height: 2.375rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--ink);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.textarea { min-height: 6rem; resize: vertical; line-height: 1.55; }
+
+.input::placeholder, .textarea::placeholder { color: var(--ink-faint); }
+
+.input:focus, .select:focus, .textarea:focus {
+  outline: 0;
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px var(--rule);
+}
+
+.input[aria-invalid="true"], .textarea[aria-invalid="true"] { border-color: var(--stop); }
+.input:disabled, .select:disabled, .textarea:disabled { background: var(--surface-sunk); color: var(--ink-faint); }
+
+.select {
+  appearance: none;
+  padding-right: 2rem;
+  /* Un data-URI ne peut pas lire une variable CSS : `stroke='%2364748b'`
+     recopie la valeur de --ink-soft à la main, faute de pouvoir l'interpoler.
+     Si le jeton change, cette valeur doit suivre. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2364748b' stroke-width='1.8'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.625rem center;
+}
+
+.search { position: relative; flex: 1 1 14rem; min-width: 0; }
+.search .input { padding-left: 2.25rem; }
+
+.search__icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-faint);
+  pointer-events: none;
+}
+
+/* Le carré fait 16 px ; c'est l'étiquette qui reçoit le doigt, et elle
+   tient 32 px de haut. */
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2rem;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.check input { accent-color: var(--ink); width: 1rem; height: 1rem; }
+
+/* --------------------------------------------------------------------------
+   Pastilles d'état — le vocabulaire unique
+   -------------------------------------------------------------------------- */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.1875rem 0.5rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.tag::before {
+  content: "";
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.tag--flat::before { display: none; }
+
+.tag--ok   { background: var(--ok-bg);   color: var(--ok); }
+.tag--wait { background: var(--wait-bg); color: var(--wait); }
+.tag--live { background: var(--live-bg); color: var(--live); }
+.tag--stop { background: var(--stop-bg); color: var(--stop); }
+.tag--idle { background: var(--idle-bg); color: var(--idle); }
+
+/* Provenance d'un fait : contour seul, pour ne pas concurrencer les
+   pastilles d'état qui, elles, sont pleines. */
+.src {
+  display: inline-flex;
+  align-items: center;
+  height: fit-content;
+  padding: 0 0.4375rem;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.src--user { color: var(--ok); }
+.src--inferred { color: var(--wait); }
+.src--unknown { color: var(--ink-faint); }
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem; height: 2rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunk);
+  color: var(--ink-mid);
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex: none;
+}
+
+/* La marque : un feuillet avec deux lignes de texte. */
+.mark {
+  position: relative;
+  display: inline-block;
+  width: 1.375rem; height: 1.375rem;
+  border-radius: 6px;
+  background: var(--ink);
+  flex: none;
+}
+
+.mark::before, .mark::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--ground);
+}
+
+.mark::before { top: 7px; right: 5px; }
+.mark::after  { top: 12px; right: 9px; }
+
+mark {
+  background: var(--wait-bg);
+  color: var(--wait);
+  padding: 0 0.1875rem;
+  border-radius: 3px;
+  font-weight: 500;
+}

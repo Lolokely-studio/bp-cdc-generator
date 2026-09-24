@@ -1,0 +1,63 @@
+/* ==========================================================================
+   Esquisse — les jetons
+   Une seule source pour la couleur, la mesure et la police. Tout le reste
+   du CSS lit ici ; rien n'écrit une valeur en dur.
+
+   La palette vient de la refonte Pont : encre slate 900 sur blanc cassé.
+   Clair uniquement — le mode sombre de l'ancienne feuille a été retiré,
+   il doublait chaque jeton sans que personne ne l'ait demandé.
+   ========================================================================== */
+
+:root {
+  /* --- Fonds ------------------------------------------------------------ */
+  --ground: #f8fafc;        /* le sol : le contenu s'y pose            */
+  --surface: #ffffff;       /* ce qui se détache du sol                */
+  --surface-sunk: #f1f5f9;  /* ce qui s'y enfonce : pistes, creux      */
+
+  /* --- Encre ------------------------------------------------------------ */
+  --ink: #0f172a;
+  --ink-mid: #334155;
+  --ink-soft: #64748b;
+  --ink-faint: #94a3b8;
+
+  /* --- Filets ----------------------------------------------------------- */
+  --rule: #e2e8f0;
+  --rule-soft: #f1f5f9;
+  --rule-strong: #cbd5e1;
+
+  /* --- États ------------------------------------------------------------
+     Cinq tons, et cinq seulement. Chaque statut de l'application tombe dans
+     l'un d'eux, partout de la même façon :
+       ok    terminé, validé, renseigné par vous
+       wait  vous attendez, ou on vous attend
+       live  quelque chose tourne en ce moment
+       stop  interrompu, échoué, refusé
+       idle  déclaré, mais rien ne bouge encore
+     -------------------------------------------------------------------- */
+  --ok: #047857;   --ok-bg: #ecfdf5;
+  --wait: #b45309; --wait-bg: #fffbeb;
+  --live: #1d4ed8; --live-bg: #eff6ff;
+  --stop: #b91c1c; --stop-bg: #fef2f2;
+  --idle: #475569; --idle-bg: #f1f5f9;
+
+  /* --- Mesures ---------------------------------------------------------- */
+  --topbar: 3.75rem;
+  --pad: clamp(1rem, 2.5vw, 2rem);
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.05);
+  --shadow-pop: 0 12px 32px -8px rgba(15, 23, 42, 0.16);
+
+  /* --- Polices ----------------------------------------------------------
+     Deux familles. Inter porte l'interface ; Source Serif ne sert qu'à la
+     prose des sections rédigées, pour qu'un document ressemble à un
+     document et pas à un écran.
+     -------------------------------------------------------------------- */
+  /* Les polices viennent de `next/font` : servies depuis le domaine du site,
+     sans requête vers Google, et exposées en variables sur <html>. */
+  --sans: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --serif: var(--font-serif), Georgia, "Times New Roman", serif;
+}
