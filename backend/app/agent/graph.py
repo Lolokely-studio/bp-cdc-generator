@@ -219,17 +219,29 @@ async def compiled_graph():
     return build_graph().compile(checkpointer=await saver())
 
 
-def initial_state(project_id: str, documents: str, profil_cdc, profil_bp, idea: str):
-    """L'état de départ. Les documents, les profils et l'idée sont déjà connus :
-    l'API les a recueillis avant de démarrer le run, et la ligne `projects` ne
-    peut pas exister sans eux."""
+def initial_state(project_id: str, documents: str, profil_cdc, profil_bp, idea: str,
+                  nom: str = ""):
+    """L'état de départ. Les documents, les profils, l'idée et le nom sont déjà
+    connus : l'API les a recueillis avant de démarrer le run, et la ligne
+    `projects` ne peut pas exister sans eux.
+
+    Le nom est posé comme fait `nom_projet`, de source `user`. Il ne l'était
+    pas : la ligne le portait, l'état du graphe non, et l'extraction le
+    déduisait manquant — la prose livrée écrivait alors `[nom_projet]` en
+    toutes lettres. `user` plutôt que `deduced` parce que c'est une saisie, et
+    que `merge_facts` interdit à une déduction d'écraser une réponse.
+
+    La valeur par défaut est vide pour les appels de test qui ne s'intéressent
+    pas au nom ; aucun fait n'est alors posé, ce qui est l'ancien
+    comportement."""
     return {
         "project_id": project_id,
         "documents": documents,
         "profil_cdc": profil_cdc,
         "profil_bp": profil_bp,
         "idea": idea,
-        "facts": {},
+        "facts": ({"nom_projet": Fact(fact_id="nom_projet", value=nom, source="user")}
+                  if nom.strip() else {}),
         "plan": load_catalogue().plan_for(documents, profil_cdc, profil_bp),
         "cursor": 0,
         "draft": None,

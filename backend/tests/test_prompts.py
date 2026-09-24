@@ -136,11 +136,12 @@ def test_tables_are_numbered_in_order_of_appearance():
     assert [b.number for b in blocks if isinstance(b, Table)] == [1, 2]
 
 
-def test_a_table_marker_without_its_computation_is_refused():
-    # Mieux vaut échouer ici — la section repart, le modèle recommence — que
-    # produire un document avec un trou silencieux à la place d'un tableau.
-    with pytest.raises(ValueError):
-        parse_written_text("[Tableau: inexistant]", [])
+def test_a_table_marker_without_its_computation_is_dropped():
+    # Ce test affirmait l'inverse : on levait, au motif qu'une section
+    # relancée repart. Le 2026-09-24 a montré que non — le modèle réinvente
+    # un nom à chaque reprise et le projet ne finit jamais. Un tableau
+    # manquant se voit dans le document ; un projet bloqué, non.
+    assert parse_written_text("[Tableau: inexistant]", []) == []
 
 
 def test_a_mixed_section_keeps_its_order():
@@ -185,3 +186,49 @@ def test_the_format_example_cannot_be_mistaken_for_a_computation():
 
     for line in WRITING_FORMAT.splitlines():
         assert not _TABLE.match(line.strip()), f"l'exemple passe pour un repère : {line}"
+
+
+# ------------------------------------------------- les trois bugs du 24/09
+
+def test_aucun_tableau_ne_se_lit_pas_comme_un_tableau_nomme_aucun():
+    """Le repli d'une liste vide ne doit pas ressembler à une entrée.
+
+    Observé en production : `{markers or "- aucun"}` rendait
+    « Tableaux disponibles, à placer par leur repère :\\n- aucun », le modèle
+    y lisait un tableau nommé « aucun » et écrivait `[Tableau: aucun]`. La
+    section mourait sur un tableau qui n'a jamais existé. Vingt-trois des
+    trente sections d'un projet « les deux documents » sont concernées :
+    aucune section du cahier des charges ne déclare de calcul.
+    """
+    corps = writing_prompt(SECTION, {}, [], "consultation", CATALOGUE)[1].content
+
+    assert "- aucun\n" not in corps and not corps.endswith("- aucun")
+    assert "Tableaux disponibles" not in corps
+    # Et l'interdiction est dite, pas seulement sous-entendue.
+    assert "[Tableau" in corps and "n'écris aucun repère" in corps.lower()
+
+
+def test_les_tableaux_disponibles_restent_annonces_quand_il_y_en_a():
+    """Le correctif ci-dessus ne doit pas faire disparaître le cas nominal."""
+    corps = writing_prompt(SECTION, {}, [THRESHOLD], "investisseur", CATALOGUE)[1].content
+
+    assert "Tableaux disponibles" in corps
+    assert f"[Tableau: {THRESHOLD.name}] — {THRESHOLD.title}" in corps
+
+
+def test_un_repere_inconnu_est_ignore_au_lieu_de_tuer_la_redaction():
+    """Un repère sans calcul correspondant ne bloque plus le projet.
+
+    Le code levait, au motif qu'une section relancée est réparable. Elle ne
+    l'est pas quand le modèle refait le même geste : sur
+    `CDC · risques_cdc`, huit reprises ont échoué d'affilée, avec un nom
+    inventé différent à chaque fois. Un trou dans un document se voit et se
+    corrige ; un projet bloqué pour toujours, non.
+    """
+    blocs = parse_written_text(
+        "Un paragraphe avant.\n\n[Tableau: risques_et_parades]\n\nUn paragraphe après.",
+        [],
+    )
+    textes = [b.text for b in blocs if isinstance(b, Paragraph)]
+    assert textes == ["Un paragraphe avant.", "Un paragraphe après."]
+    assert not any(isinstance(b, Table) for b in blocs)

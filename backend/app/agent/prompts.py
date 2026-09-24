@@ -12,6 +12,7 @@ avec `WRITING_FORMAT` pour que la consigne et l'analyseur qui la relit
 s'accordent au caractère près.
 """
 
+import logging
 import re
 
 from pydantic import BaseModel, Field
@@ -77,6 +78,8 @@ WRITING_FORMAT = """Format de sortie, à respecter strictement :
 
 N'écris ni titre de section, ni Markdown, ni HTML, ni numérotation."""
 
+logger = logging.getLogger(__name__)
+
 _PLACEHOLDER = re.compile(r"^\[Donnée à compléter\s*:\s*(?P<label>.+?)\]$")
 _TABLE = re.compile(r"^\[Tableau\s*:\s*(?P<name>[a-z0-9_]+)\]$")
 
@@ -111,10 +114,21 @@ def parse_written_text(text: str, computations: list[Computation]) -> list[Block
             if table:
                 name = table.group("name")
                 if name not in by_name:
-                    # Échouer ici fait repartir la section, ce qui est
-                    # réparable. Laisser passer produirait un document avec un
-                    # trou silencieux à la place d'un tableau.
-                    raise ValueError(f"tableau demandé sans calcul correspondant : {name}")
+                    # On ignore le repère au lieu de lever.
+                    #
+                    # Le code levait, au motif qu'une section relancée est
+                    # réparable. Elle ne l'est pas : le 2026-09-24, sur
+                    # `CDC · risques_cdc`, huit reprises d'affilée ont échoué,
+                    # le modèle inventant un nom différent à chaque fois
+                    # (`risques_et_parades`, `gravites_incidents`,
+                    # `controle_qualite_par_phase`…). Le projet restait bloqué
+                    # pour toujours, et « Reprendre » ne pouvait rien.
+                    #
+                    # Un tableau manquant se voit dans le document et se
+                    # corrige ; un projet qu'on ne peut plus finir, non.
+                    logger.warning(
+                        "repère de tableau sans calcul correspondant, ignoré : %s", name)
+                    continue
                 computation = by_name[name]
                 number += 1
                 blocks.append(Table(
@@ -184,6 +198,16 @@ def writing_prompt(
     """
     catalogue = catalogue or load_catalogue()
     markers = "\n".join(f"[Tableau: {c.name}] — {c.title}" for c in computations)
+    # Sans tableau, on le DIT au lieu de rendre une liste vide. Le repli
+    # d'avant, « - aucun », avait la forme exacte d'une entrée de liste : le
+    # modèle y lisait un tableau nommé « aucun » et écrivait
+    # `[Tableau: aucun]`, ce qui tuait la section. Vingt-trois des trente
+    # sections d'un projet « les deux documents » sont dans ce cas — aucune
+    # section du cahier des charges ne déclare de calcul.
+    tableaux = (f"Tableaux disponibles, à placer par leur repère :\n{markers}"
+                if markers else
+                "Aucun tableau n'est disponible pour cette section : "
+                "n'écris aucun repère [Tableau: …].")
     # `problems` n'était réclamé par personne : trois nœuds le remplissaient —
     # la critique, le vérificateur de chiffres, la relecture humaine — et ses
     # deux seuls lecteurs étaient des routeurs. Une « réécriture » réémettait
@@ -209,8 +233,7 @@ Consignes de rédaction :
 Faits établis :
 {_fact_lines(facts, catalogue)}
 
-Tableaux disponibles, à placer par leur repère :
-{markers or "- aucun"}
+{tableaux}
 {corrections}
 {WRITING_FORMAT}"""
     return [Message("system", _SYSTEM), Message("user", body)]

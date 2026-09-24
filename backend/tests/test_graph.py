@@ -336,3 +336,21 @@ def test_the_writing_prompt_carries_the_problems_to_correct():
 
     assert sans != avec, "le prompt de réécriture est identique au premier jet"
     assert "Le premier objectif n'est pas mesurable." in avec[1].content
+
+
+def test_le_nom_du_projet_est_un_fait_des_le_depart():
+    """Le nom saisi à la création doit atteindre l'agent.
+
+    Il ne l'atteignait pas : la ligne `projects` le portait, l'état du graphe
+    non. L'extraction le déduisait alors manquant — `nom_projet` valait
+    « donnée à compléter », source `deduced` — et la prose livrée écrivait
+    `[nom_projet]` en toutes lettres. L'auto-critique le relevait elle-même.
+    Observé le 2026-09-24 sur un parcours réel.
+
+    La source est `user` et non `deduced` : c'est une saisie, et
+    `merge_facts` garantit qu'aucune déduction ne l'écrasera.
+    """
+    state = initial_state("p-1", "cdc", "cadrage", None, "Une idée.", nom="Sillage")
+    fait = state["facts"]["nom_projet"]
+    assert fait.value == "Sillage"
+    assert fait.source == "user"

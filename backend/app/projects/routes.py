@@ -94,7 +94,7 @@ async def create(body: ProjectCreate, user=Depends(active_user)):
     # listes tenues dans deux fichiers que rien ne relie. Vérifié : en
     # faisant lever `start_run`, la ligne survit bel et bien.
     graph_input = initial_state("", body.documents, body.profil_cdc,
-                                body.profil_bp, body.idee)
+                                body.profil_bp, body.idee, nom=body.nom)
     async with connection() as conn:
         project_id = await create_project(
             conn, user["id"], nom=body.nom, documents=body.documents,
@@ -321,7 +321,7 @@ async def resume(project_id: UUID, user=Depends(active_user)):
             return {"reprise": False, "run_status": row["run_status"]}
         graph_input = initial_state(str(project_id), row["documents"],
                                     row["profil_cdc"], row["profil_bp"],
-                                    row["idee"])
+                                    row["idee"], nom=row["nom"])
         try:
             start_run(str(project_id), row["thread_id"], graph_input)
         except RunAlreadyRunning:

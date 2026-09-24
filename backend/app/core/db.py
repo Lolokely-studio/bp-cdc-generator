@@ -18,7 +18,18 @@ def _build_pool() -> AsyncConnectionPool:
         min_size=1,
         max_size=5,
         open=False,
-        kwargs={"autocommit": True},
+        # `prepare_threshold=None` désactive les requêtes préparées.
+        # psycopg3 en prépare une après sa cinquième exécution ; derrière le
+        # pooler de transactions de Supabase, chaque transaction peut
+        # atterrir sur une connexion serveur différente, où l'instruction
+        # préparée n'existe pas — `InvalidSqlStatementName: prepared
+        # statement "_pg3_0" does not exist`, à la sixième requête, sur la
+        # vérification du compte que fait chaque appel authentifié.
+        #
+        # Aucun test ne le voit : `tests/conftest.py` pointe sur le Postgres
+        # local en direct (port 5433), sans pooler, où les requêtes
+        # préparées fonctionnent.
+        kwargs={"autocommit": True, "prepare_threshold": None},
     )
 
 
